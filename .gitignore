@@ -4,3 +4,6 @@ dist
 .DS_Store
 .turbo
 coverage
+
+# An accidental `npm install` must not be committable.
+package-lock.json

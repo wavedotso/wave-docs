@@ -1,0 +1,18 @@
+# pnpm 11 configuration.
+#
+# This is the config file, not just a workspace manifest: since pnpm 11, .npmrc
+# holds registry and auth only, and every other setting lives here. That is true
+# even for a single-package repo like this one, which has no `packages:` key.
+
+# pnpm 11 refuses packages published less than 24h ago. It is a cheap, real
+# defence against a compromised release being pulled in minutes after it lands.
+minimumReleaseAge: 1440
+
+# ...but our own scope is not the threat model, and publishing @waveso/docs then
+# consuming it from wave-app the same afternoon is a normal workflow here.
+minimumReleaseAgeExclude:
+  - '@waveso/*'
+
+# No `allowBuilds` entry: this package's entire dependency tree contains zero
+# pre/post-install scripts (verified). If an entry ever appears here, read it —
+# an unexplained one is indistinguishable from a supply-chain compromise.
