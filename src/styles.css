@@ -1,0 +1,1009 @@
+/*
+ * @waveso/docs — the stylesheet for the React layer.
+ *
+ * In your app's CSS entry:
+ *
+ *   @import 'tailwindcss';        (optional — nothing below requires it)
+ *   @import '@waveso/docs/styles.css';
+ *
+ * Everything is plain CSS driven by `--wave-docs-*` custom properties, with no
+ * `@apply` anywhere: Tailwind is an *optional* peer dependency, and a
+ * stylesheet that explodes without it would be a broken promise. Retheme
+ * by redefining the tokens in your own `:root`; restyle by overriding the
+ * classes — both win on source order, since ours live in `@layer components`.
+ *
+ * `@tailwindcss/typography` is deliberately not used. `.prose` pins
+ * `max-width: 65ch` — wrong inside a three-column docs shell — and styles
+ * `pre`/`code` in direct conflict with Shiki's own output. `.wave-docs-prose`
+ * below does the same job without the fight.
+ */
+
+/* Register this package's compiled components as Tailwind sources, so a
+ * consumer using Tailwind gets any utility class we ship. It belongs here, not
+ * in the app: a consumer-side `@source "../node_modules/@waveso/docs"` hardcodes
+ * the relative depth of node_modules and breaks under pnpm's nested store. */
+@source "./";
+
+/* ---------------------------------------------------------------------------
+ * Tokens
+ *
+ * The dark block is spelled twice on purpose: `@media` and an attribute
+ * selector cannot be combined into one selector list. `data-theme` wins over
+ * the OS in both directions — `[data-theme='light']` opts out of a dark system,
+ * `[data-theme='dark']` opts into dark on a light one.
+ * ------------------------------------------------------------------------ */
+
+/*
+ * Every foreground/background pair these tokens compose is asserted to clear
+ * WCAG 1.4.3 (4.5:1) by `src/styles.test.ts`. None of the text this package
+ * renders is "large text" in the WCAG sense — the callout labels are 16px, the
+ * search breadcrumbs 12px, the sidebar separators 12px — so 3:1 is never
+ * enough. Retheme by all means; run that test afterwards.
+ *
+ * The light ramp reads fg (0.25) / fg-muted (0.45) / fg-subtle (0.54). The gap
+ * between the last two is small because `fg-subtle` cannot go lighter than
+ * ~0.555 and still clear 4.5:1 on `bg-subtle`; `fg-muted` moved down to keep
+ * three visibly distinct steps rather than two-and-a-half.
+ *
+ * The dark ramp is fg (0.93) / fg-muted (0.72) / fg-subtle (0.64), and its
+ * `accent-subtle` sits at 0.26 rather than 0.30 — `fg-subtle` paints the search
+ * breadcrumb, which lands on `accent-subtle` in the highlighted result, and a
+ * lighter tint there would force `fg-subtle` up into `fg-muted`.
+ */
+:root {
+  --wave-docs-bg: oklch(1 0 0);
+  --wave-docs-bg-subtle: oklch(0.985 0.002 260);
+  --wave-docs-fg: oklch(0.25 0.02 262);
+  --wave-docs-fg-muted: oklch(0.45 0.02 262);
+  --wave-docs-fg-subtle: oklch(0.54 0.015 262);
+  --wave-docs-border: oklch(0.91 0.006 262);
+  --wave-docs-border-strong: oklch(0.84 0.008 262);
+
+  /* Wave Blue #0074DE, darkened to #006EC8: the brand value clears 4.5:1 on
+   * white but only 4.26:1 on `accent-subtle`, which is what the active sidebar
+   * link is painted on. */
+  --wave-docs-accent: oklch(0.53 0.17 248);
+  --wave-docs-accent-hover: oklch(0.46 0.17 248);
+  --wave-docs-accent-fg: oklch(0.99 0 0);
+  --wave-docs-accent-subtle: oklch(0.96 0.025 248);
+
+  --wave-docs-code-bg: oklch(0.97 0.003 262);
+  --wave-docs-code-fg: oklch(0.32 0.03 300);
+  --wave-docs-code-block-bg: oklch(0.985 0.002 260);
+
+  /* Each accent is the label colour on its own tinted background, so each one
+   * is a 4.5:1 pair in its own right — not merely legible against the page. */
+  --wave-docs-callout-note: oklch(0.53 0.17 248);
+  --wave-docs-callout-note-bg: oklch(0.97 0.02 248);
+  --wave-docs-callout-tip: oklch(0.52 0.13 156);
+  --wave-docs-callout-tip-bg: oklch(0.97 0.03 156);
+  --wave-docs-callout-important: oklch(0.55 0.19 300);
+  --wave-docs-callout-important-bg: oklch(0.97 0.025 300);
+  --wave-docs-callout-warning: oklch(0.53 0.14 72);
+  --wave-docs-callout-warning-bg: oklch(0.97 0.04 82);
+  --wave-docs-callout-caution: oklch(0.55 0.2 24);
+  --wave-docs-callout-caution-bg: oklch(0.97 0.025 24);
+
+  --wave-docs-radius: 0.5rem;
+  --wave-docs-radius-sm: 0.375rem;
+  --wave-docs-header-height: 4rem;
+  --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
+
+  /* Focus ring, shared by every interactive thing in the package. */
+  --wave-docs-ring: 0 0 0 2px var(--wave-docs-bg),
+    0 0 0 4px var(--wave-docs-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --wave-docs-bg: oklch(0.19 0.015 265);
+    --wave-docs-bg-subtle: oklch(0.23 0.015 265);
+    --wave-docs-fg: oklch(0.93 0.008 265);
+    --wave-docs-fg-muted: oklch(0.72 0.014 265);
+    --wave-docs-fg-subtle: oklch(0.64 0.015 265);
+    --wave-docs-border: oklch(0.31 0.014 265);
+    --wave-docs-border-strong: oklch(0.4 0.016 265);
+
+    --wave-docs-accent: oklch(0.72 0.14 248);
+    --wave-docs-accent-hover: oklch(0.8 0.12 248);
+    --wave-docs-accent-fg: oklch(0.18 0.02 265);
+    --wave-docs-accent-subtle: oklch(0.26 0.06 248);
+
+    --wave-docs-code-bg: oklch(0.26 0.016 265);
+    --wave-docs-code-fg: oklch(0.86 0.04 300);
+    --wave-docs-code-block-bg: oklch(0.17 0.015 265);
+
+    --wave-docs-callout-note: oklch(0.75 0.13 248);
+    --wave-docs-callout-note-bg: oklch(0.27 0.05 248);
+    --wave-docs-callout-tip: oklch(0.78 0.14 156);
+    --wave-docs-callout-tip-bg: oklch(0.27 0.05 156);
+    --wave-docs-callout-important: oklch(0.76 0.14 300);
+    --wave-docs-callout-important-bg: oklch(0.28 0.06 300);
+    --wave-docs-callout-warning: oklch(0.82 0.14 82);
+    --wave-docs-callout-warning-bg: oklch(0.29 0.05 72);
+    --wave-docs-callout-caution: oklch(0.72 0.16 24);
+    --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
+  }
+}
+
+:root[data-theme='dark'] {
+  --wave-docs-bg: oklch(0.19 0.015 265);
+  --wave-docs-bg-subtle: oklch(0.23 0.015 265);
+  --wave-docs-fg: oklch(0.93 0.008 265);
+  --wave-docs-fg-muted: oklch(0.72 0.014 265);
+  --wave-docs-fg-subtle: oklch(0.64 0.015 265);
+  --wave-docs-border: oklch(0.31 0.014 265);
+  --wave-docs-border-strong: oklch(0.4 0.016 265);
+
+  --wave-docs-accent: oklch(0.72 0.14 248);
+  --wave-docs-accent-hover: oklch(0.8 0.12 248);
+  --wave-docs-accent-fg: oklch(0.18 0.02 265);
+  --wave-docs-accent-subtle: oklch(0.26 0.06 248);
+
+  --wave-docs-code-bg: oklch(0.26 0.016 265);
+  --wave-docs-code-fg: oklch(0.86 0.04 300);
+  --wave-docs-code-block-bg: oklch(0.17 0.015 265);
+
+  --wave-docs-callout-note: oklch(0.75 0.13 248);
+  --wave-docs-callout-note-bg: oklch(0.27 0.05 248);
+  --wave-docs-callout-tip: oklch(0.78 0.14 156);
+  --wave-docs-callout-tip-bg: oklch(0.27 0.05 156);
+  --wave-docs-callout-important: oklch(0.76 0.14 300);
+  --wave-docs-callout-important-bg: oklch(0.28 0.06 300);
+  --wave-docs-callout-warning: oklch(0.82 0.14 82);
+  --wave-docs-callout-warning-bg: oklch(0.29 0.05 72);
+  --wave-docs-callout-caution: oklch(0.72 0.16 24);
+  --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
+}
+
+/* ---------------------------------------------------------------------------
+ * Base
+ * ------------------------------------------------------------------------ */
+
+@layer base {
+  html {
+    /* Without this, every `#anchor` link parks its heading underneath the
+     * sticky header. Match it to your header's height. */
+    scroll-padding-top: var(--wave-docs-header-height);
+  }
+
+  /* Smooth scrolling is opt-in by the reader's OS setting, never by us:
+   * animated scrolling triggers nausea and migraine in people with vestibular
+   * disorders. Declared here rather than in JavaScript so there is exactly one
+   * place that decides it. */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Utilities used by the components
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  /* Ours, not Tailwind's `sr-only` — Tailwind is optional here. */
+  .wave-docs-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .wave-docs-skip-link {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    /* Off-screen rather than `display: none`: a hidden element is not
+     * focusable, and an unfocusable skip link is no skip link. */
+    transform: translateY(-150%);
+    padding: 0.625rem 1rem;
+    border-radius: 0 0 var(--wave-docs-radius) 0;
+    background: var(--wave-docs-accent);
+    color: var(--wave-docs-accent-fg);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .wave-docs-skip-link:focus-visible {
+    transform: translateY(0);
+    outline: none;
+    box-shadow: var(--wave-docs-ring);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-skip-link {
+      transition: transform 150ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Prose
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-prose {
+    color: var(--wave-docs-fg);
+    font-size: 1rem;
+    line-height: 1.75;
+    /* No `max-width` on purpose — the docs shell owns column width. */
+  }
+
+  .wave-docs-prose > * + * {
+    margin-block-start: 1.25em;
+  }
+
+  .wave-docs-prose :is(h1, h2, h3, h4, h5, h6) {
+    position: relative;
+    color: var(--wave-docs-fg);
+    font-weight: 650;
+    line-height: 1.25;
+    text-wrap: balance;
+    scroll-margin-top: var(--wave-docs-header-height);
+  }
+
+  .wave-docs-prose > :is(h2, h3, h4, h5, h6) {
+    margin-block-start: 2em;
+  }
+
+  .wave-docs-prose h1 {
+    font-size: 2.25rem;
+    letter-spacing: -0.02em;
+  }
+  .wave-docs-prose h2 {
+    font-size: 1.5rem;
+    letter-spacing: -0.015em;
+    padding-block-end: 0.3em;
+    border-block-end: 1px solid var(--wave-docs-border);
+  }
+  .wave-docs-prose h3 {
+    font-size: 1.25rem;
+  }
+  .wave-docs-prose h4 {
+    font-size: 1.0625rem;
+  }
+  .wave-docs-prose :is(h5, h6) {
+    font-size: 1rem;
+    color: var(--wave-docs-fg-muted);
+  }
+
+  .wave-docs-prose a {
+    color: var(--wave-docs-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 1px;
+    border-radius: 2px;
+  }
+
+  .wave-docs-prose a:hover {
+    color: var(--wave-docs-accent-hover);
+    text-decoration-thickness: 2px;
+  }
+
+  .wave-docs-prose a:focus-visible,
+  .wave-docs-sidebar :is(a, button):focus-visible,
+  .wave-docs-toc a:focus-visible,
+  .wave-docs-youtube__facade:focus-visible {
+    outline: none;
+    box-shadow: var(--wave-docs-ring);
+  }
+
+  .wave-docs-prose :is(ul, ol) {
+    padding-inline-start: 1.5rem;
+  }
+  .wave-docs-prose ul {
+    list-style: disc;
+  }
+  .wave-docs-prose ol {
+    list-style: decimal;
+  }
+  .wave-docs-prose li + li {
+    margin-block-start: 0.4em;
+  }
+  .wave-docs-prose li > :is(ul, ol) {
+    margin-block-start: 0.4em;
+  }
+  .wave-docs-prose li::marker {
+    color: var(--wave-docs-fg-subtle);
+  }
+
+  /* GFM task lists: the checkbox replaces the bullet. */
+  .wave-docs-prose li:has(> input[type='checkbox']) {
+    list-style: none;
+    margin-inline-start: -1.25rem;
+  }
+  .wave-docs-prose input[type='checkbox'] {
+    margin-inline-end: 0.5rem;
+    accent-color: var(--wave-docs-accent);
+  }
+
+  .wave-docs-prose blockquote {
+    padding-inline-start: 1rem;
+    border-inline-start: 3px solid var(--wave-docs-border-strong);
+    color: var(--wave-docs-fg-muted);
+    font-style: italic;
+  }
+
+  .wave-docs-prose hr {
+    border: 0;
+    border-block-start: 1px solid var(--wave-docs-border);
+    margin-block: 2.5em;
+  }
+
+  .wave-docs-prose :is(strong, b) {
+    font-weight: 650;
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-prose kbd {
+    padding: 0.15em 0.4em;
+    border: 1px solid var(--wave-docs-border-strong);
+    border-block-end-width: 2px;
+    border-radius: var(--wave-docs-radius-sm);
+    background: var(--wave-docs-bg-subtle);
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.85em;
+  }
+
+  .wave-docs-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--wave-docs-radius);
+  }
+
+  /* Inline code only. `.shiki` owns everything inside a `<pre>`. */
+  .wave-docs-prose :not(pre) > code {
+    padding: 0.15em 0.35em;
+    border-radius: var(--wave-docs-radius-sm);
+    background: var(--wave-docs-code-bg);
+    color: var(--wave-docs-code-fg);
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.875em;
+    /* Long identifiers must not push the whole column sideways. */
+    overflow-wrap: break-word;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Tables
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+  }
+
+  .wave-docs-table-scroll:focus-visible {
+    outline: none;
+    box-shadow: var(--wave-docs-ring);
+  }
+
+  .wave-docs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+
+  .wave-docs-table :is(th, td) {
+    padding: 0.625rem 0.875rem;
+    text-align: start;
+    vertical-align: top;
+  }
+
+  .wave-docs-table th {
+    background: var(--wave-docs-bg-subtle);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .wave-docs-table :is(thead, tbody tr + tr) {
+    border-block-start: 1px solid var(--wave-docs-border);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Heading anchors
+ *
+ * Emitted by `rehype-autolink-headings` as
+ * `<a class="heading-anchor" aria-hidden="true" tabindex="-1">#</a>`, and
+ * therefore purely decorative: it is out of the tab order and out of the
+ * accessibility tree, so it can never be focused and has no `:focus-visible`
+ * state to style. Revealed on hover of its heading, and nowhere else. The
+ * keyboard route to a section is the table of contents, which links the same
+ * anchors with real text.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .heading-anchor {
+    margin-inline-start: 0.35em;
+    color: var(--wave-docs-fg-subtle);
+    text-decoration: none;
+    opacity: 0;
+  }
+
+  :is(h1, h2, h3, h4, h5, h6):hover > .heading-anchor {
+    opacity: 1;
+  }
+
+  .heading-anchor:hover {
+    color: var(--wave-docs-accent);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .heading-anchor {
+      transition: opacity 120ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Shiki
+ *
+ * Dual-theme promotion. Shiki writes the light colour as an INLINE style on
+ * every token span and the dark one beside it as `--shiki-dark`, so switching
+ * themes means overriding an inline style. `!important` is the only thing in
+ * CSS that outranks one — this is a specificity requirement, not a preference,
+ * and removing it silently leaves dark mode rendering light-theme code.
+ * ------------------------------------------------------------------------ */
+
+.shiki {
+  padding: 1rem 1.125rem;
+  border: 1px solid var(--wave-docs-border);
+  border-radius: var(--wave-docs-radius);
+  background-color: var(--wave-docs-code-block-bg);
+  overflow-x: auto;
+  font-family: var(--wave-docs-font-mono);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  tab-size: 2;
+}
+
+.shiki code {
+  display: grid;
+  font-family: inherit;
+}
+
+.shiki .line {
+  min-height: 1lh;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .shiki,
+  :root:not([data-theme='light']) .shiki span {
+    color: var(--shiki-dark) !important;
+  }
+  :root:not([data-theme='light']) .shiki {
+    background-color: var(--shiki-dark-bg) !important;
+  }
+}
+
+:root[data-theme='dark'] .shiki,
+:root[data-theme='dark'] .shiki span {
+  color: var(--shiki-dark) !important;
+}
+:root[data-theme='dark'] .shiki {
+  background-color: var(--shiki-dark-bg) !important;
+}
+
+/* ---------------------------------------------------------------------------
+ * Callouts
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-callout {
+    --callout-accent: var(--wave-docs-callout-note);
+    --callout-bg: var(--wave-docs-callout-note-bg);
+
+    padding: 0.875rem 1rem;
+    border: 1px solid color-mix(in oklab, var(--callout-accent) 35%, transparent);
+    border-inline-start: 3px solid var(--callout-accent);
+    border-radius: var(--wave-docs-radius);
+    background: var(--callout-bg);
+  }
+
+  .wave-docs-callout--tip {
+    --callout-accent: var(--wave-docs-callout-tip);
+    --callout-bg: var(--wave-docs-callout-tip-bg);
+  }
+  .wave-docs-callout--important {
+    --callout-accent: var(--wave-docs-callout-important);
+    --callout-bg: var(--wave-docs-callout-important-bg);
+  }
+  .wave-docs-callout--warning {
+    --callout-accent: var(--wave-docs-callout-warning);
+    --callout-bg: var(--wave-docs-callout-warning-bg);
+  }
+  .wave-docs-callout--caution {
+    --callout-accent: var(--wave-docs-callout-caution);
+    --callout-bg: var(--wave-docs-callout-caution-bg);
+  }
+
+  .wave-docs-callout__label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 0.35rem;
+    color: var(--callout-accent);
+    font-weight: 650;
+    line-height: 1.4;
+  }
+
+  .wave-docs-callout__icon {
+    flex: none;
+  }
+
+  .wave-docs-callout__body > * {
+    margin: 0;
+  }
+
+  .wave-docs-callout__body > * + * {
+    margin-block-start: 0.75em;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * YouTube facade
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-youtube {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: var(--wave-docs-radius);
+    background: oklch(0 0 0);
+  }
+
+  .wave-docs-youtube__facade {
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+  }
+
+  .wave-docs-youtube__thumbnail {
+    width: 100%;
+    height: 100%;
+    /* `hqdefault` is 4:3 with letterbox bars baked in; cropping to 16:9 hides
+     * them. */
+    object-fit: cover;
+  }
+
+  .wave-docs-youtube__play {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  .wave-docs-youtube__play-bg {
+    fill: oklch(0.3 0 0 / 0.75);
+  }
+
+  .wave-docs-youtube__play-arrow {
+    fill: oklch(1 0 0);
+  }
+
+  .wave-docs-youtube__facade:is(:hover, :focus-visible)
+    .wave-docs-youtube__play-bg {
+    fill: oklch(0.55 0.22 27);
+  }
+
+  .wave-docs-youtube__frame {
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-youtube__play-bg {
+      transition: fill 150ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Sidebar
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-sidebar {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  .wave-docs-sidebar__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* Nested levels get a guide rail instead of raw indentation, so a deep tree
+   * stays readable at 240px wide. */
+  .wave-docs-sidebar__list:not([data-depth='0']) {
+    margin-inline-start: 0.5rem;
+    padding-inline-start: 0.5rem;
+    border-inline-start: 1px solid var(--wave-docs-border);
+  }
+
+  .wave-docs-sidebar__link,
+  .wave-docs-sidebar__group-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.3125rem 0.5rem;
+    border: 0;
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-muted);
+    font: inherit;
+    text-align: start;
+    text-decoration: none;
+  }
+
+  .wave-docs-sidebar__group-button {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-sidebar__link:hover,
+  .wave-docs-sidebar__group-button:hover {
+    background: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /* The active page. Driven by `aria-current`, so the visual state and the
+   * announced state cannot drift apart. */
+  .wave-docs-sidebar__link[aria-current='page'] {
+    background: var(--wave-docs-accent-subtle);
+    color: var(--wave-docs-accent);
+    font-weight: 600;
+  }
+
+  .wave-docs-sidebar__group-header {
+    display: flex;
+    align-items: center;
+  }
+
+  .wave-docs-sidebar__group-header .wave-docs-sidebar__link {
+    flex: 1 1 auto;
+    font-weight: 600;
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-sidebar__group-toggle {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0.375rem;
+    border: 0;
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-subtle);
+    cursor: pointer;
+  }
+
+  .wave-docs-sidebar__group-toggle:hover {
+    background: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-sidebar__chevron {
+    flex: none;
+    color: var(--wave-docs-fg-subtle);
+  }
+
+  .wave-docs-sidebar__chevron[data-open] {
+    rotate: 90deg;
+  }
+
+  .wave-docs-sidebar__separator-item {
+    margin-block: 1rem 0.25rem;
+  }
+
+  .wave-docs-sidebar__separator {
+    display: block;
+    padding-inline: 0.5rem;
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.75rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-sidebar__chevron {
+      transition: rotate 150ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Table of contents
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-toc {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .wave-docs-toc__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .wave-docs-toc__link {
+    display: block;
+    padding: 0.25rem 0.75rem;
+    /* The rail the active marker slides along. */
+    border-inline-start: 2px solid var(--wave-docs-border);
+    color: var(--wave-docs-fg-muted);
+    text-decoration: none;
+  }
+
+  /* Indent by heading depth rather than by nesting, so an h4 under an h2 with
+   * no h3 between them still lines up. */
+  .wave-docs-toc__link[data-depth='3'] {
+    padding-inline-start: 1.5rem;
+  }
+  .wave-docs-toc__link[data-depth='4'] {
+    padding-inline-start: 2.25rem;
+  }
+  .wave-docs-toc__link[data-depth='5'],
+  .wave-docs-toc__link[data-depth='6'] {
+    padding-inline-start: 3rem;
+  }
+
+  .wave-docs-toc__link:hover {
+    color: var(--wave-docs-fg);
+    border-inline-start-color: var(--wave-docs-border-strong);
+  }
+
+  .wave-docs-toc__link[aria-current='location'] {
+    color: var(--wave-docs-accent);
+    border-inline-start-color: var(--wave-docs-accent);
+    font-weight: 600;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-toc__link {
+      transition: color 120ms ease-out, border-color 120ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Search
+ *
+ * Classes emitted by `@waveso/docs/react/search-dialog`. The dialog is a
+ * `role="dialog"` div in a portal, not a `<dialog>` element, so the backdrop
+ * and stacking are ours to draw.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .wave-docs-search-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    max-width: 20rem;
+    padding: 0.4375rem 0.625rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    background: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg-muted);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .wave-docs-search-trigger:hover {
+    border-color: var(--wave-docs-border-strong);
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-search-trigger:focus-visible,
+  .wave-docs-search-close:focus-visible,
+  .wave-docs-search-result-link:focus-visible {
+    outline: none;
+    box-shadow: var(--wave-docs-ring);
+  }
+
+  /* The label is the flexible half of the trigger; the shortcut hint beside it
+   * must never be the thing that gets squeezed out at narrow widths. */
+  .wave-docs-search-trigger-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wave-docs-search-trigger-kbd {
+    flex: none;
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--wave-docs-border-strong);
+    border-radius: var(--wave-docs-radius-sm);
+    color: var(--wave-docs-fg-subtle);
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.75rem;
+  }
+
+  .wave-docs-search-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    justify-content: center;
+    /* Not centred: a dialog that grows downward from a fixed top does not
+     * shift under the reader as results stream in. */
+    padding: 10vh 1rem 1rem;
+    background: oklch(0.2 0.02 265 / 0.5);
+    backdrop-filter: blur(2px);
+  }
+
+  .wave-docs-search-dialog {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 34rem;
+    max-height: min(32rem, 80vh);
+    overflow: hidden;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    background: var(--wave-docs-bg);
+    box-shadow: 0 24px 48px -12px oklch(0 0 0 / 0.3);
+  }
+
+  .wave-docs-search-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border-block-end: 1px solid var(--wave-docs-border);
+  }
+
+  .wave-docs-search-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0.375rem 0.25rem;
+    border: 0;
+    background: none;
+    color: var(--wave-docs-fg);
+    font: inherit;
+    font-size: 1rem;
+  }
+
+  .wave-docs-search-input:focus {
+    /* The dialog frame is the focus indicator here; a ring on a full-width
+     * borderless input reads as an error state. */
+    outline: none;
+  }
+
+  .wave-docs-search-input::placeholder {
+    color: var(--wave-docs-fg-subtle);
+  }
+
+  .wave-docs-search-close {
+    flex: none;
+    padding: 0.3125rem 0.625rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-muted);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+
+  .wave-docs-search-close:hover {
+    color: var(--wave-docs-fg);
+    border-color: var(--wave-docs-border-strong);
+  }
+
+  .wave-docs-search-results {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 0.375rem;
+  }
+
+  .wave-docs-search-result {
+    border-radius: var(--wave-docs-radius-sm);
+  }
+
+  /* Driven by `aria-selected` through the active class the dialog sets — the
+   * combobox keeps focus in the input, so `:focus` never lands here. */
+  .wave-docs-search-result-active {
+    background: var(--wave-docs-accent-subtle);
+  }
+
+  .wave-docs-search-result-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: var(--wave-docs-radius-sm);
+    color: var(--wave-docs-fg);
+    text-decoration: none;
+  }
+
+  .wave-docs-search-result-heading {
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .wave-docs-search-result-breadcrumb {
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+
+  /* A crumb never wraps mid-title: the trail reads as a path or not at all.
+   * The breadcrumb line itself is free to wrap between crumbs. */
+  .wave-docs-search-result-crumb {
+    white-space: nowrap;
+  }
+
+  .wave-docs-search-result-crumb-separator {
+    margin-inline: 0.25rem;
+  }
+
+  .wave-docs-search-status {
+    margin: 0;
+    padding: 1.5rem 1rem;
+    color: var(--wave-docs-fg-muted);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  /* The four status modifiers share the base rule; only two need to look
+   * different from it. `-hint` and `-loading` are deliberately quiet — they
+   * appear on every open, and an empty dialog should not shout. */
+  .wave-docs-search-status-hint,
+  .wave-docs-search-status-loading {
+    color: var(--wave-docs-fg-subtle);
+  }
+
+  .wave-docs-search-status-empty {
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-search-status-error {
+    color: var(--wave-docs-callout-caution);
+  }
+
+  /* The live region must stay in the accessibility tree to be announced, so it
+   * is hidden the same way as any other visually-hidden text — never
+   * `display: none`. */
+  .wave-docs-search-announcer {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

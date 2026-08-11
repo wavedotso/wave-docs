@@ -1,0 +1,162 @@
+{
+  "name": "@waveso/docs",
+  "version": "0.0.0",
+  "description": "Markdown documentation for Next.js \u2014 parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "license": "MIT",
+  "keywords": [
+    "documentation",
+    "docs",
+    "markdown",
+    "remark",
+    "rehype",
+    "shiki",
+    "nextjs",
+    "react-server-components",
+    "static-site"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wavedotso/wave-docs.git"
+  },
+  "homepage": "https://github.com/wavedotso/wave-docs#readme",
+  "bugs": "https://github.com/wavedotso/wave-docs/issues",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    "./styles.css": "./dist/styles.css",
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./frontmatter": {
+      "types": "./dist/frontmatter.d.ts",
+      "default": "./dist/frontmatter.js"
+    },
+    "./source": {
+      "types": "./dist/source.d.ts",
+      "browser": null,
+      "default": "./dist/source.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "browser": null,
+      "default": "./dist/render.js"
+    },
+    "./highlighter": {
+      "types": "./dist/highlighter.d.ts",
+      "browser": null,
+      "default": "./dist/highlighter.js"
+    },
+    "./search-index": {
+      "types": "./dist/search-index.d.ts",
+      "browser": null,
+      "default": "./dist/search-index.js"
+    },
+    "./search-options": {
+      "types": "./dist/search-options.d.ts",
+      "default": "./dist/search-options.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "browser": null,
+      "default": "./dist/next.js"
+    },
+    "./react/*": {
+      "types": "./dist/react/*.d.ts",
+      "default": "./dist/react/*.js"
+    }
+  },
+  "files": [
+    "dist",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "format": "biome format --write",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "npm run build && changeset publish"
+  },
+  "dependencies": {
+    "@shikijs/langs": "4.4.3",
+    "@shikijs/rehype": "4.4.3",
+    "@shikijs/themes": "4.4.3",
+    "@types/hast": "^3.0.5",
+    "@types/mdast": "^4.0.4",
+    "gray-matter": "^4.0.3",
+    "hast-util-to-jsx-runtime": "^2.3.6",
+    "hast-util-to-string": "^3.0.1",
+    "minisearch": "^7.2.0",
+    "rehype-autolink-headings": "^7.1.0",
+    "rehype-github-alerts": "^4.2.0",
+    "rehype-slug": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "shiki": "4.4.3",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
+    "vfile": "^6.0.3"
+  },
+  "peerDependencies": {
+    "image-size": "^2.0.0",
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.0.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
+    "tailwindcss": {
+      "optional": true
+    },
+    "image-size": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
+    "@biomejs/biome": "^2.5.7",
+    "@changesets/cli": "^2.31.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "image-size": "^2.0.2",
+    "next": "^16.3.0",
+    "publint": "^0.3.23",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "tsdown": "^0.22.14",
+    "typescript": "^5.9.3",
+    "unrun": "^0.3.1",
+    "vitest": "^4.1.10",
+    "zod": "^4.4.3"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22.18.0",
+      "onFail": "warn"
+    }
+  }
+}

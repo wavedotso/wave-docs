@@ -1,0 +1,13 @@
+{
+  "title": "Wave",
+  "pages": [
+    "index",
+    "getting-started",
+    "---Reference---",
+    "...api",
+    "guides",
+    "...",
+    { "title": "GitHub", "href": "https://github.com/wavedotso/wave" },
+    { "title": "Changelog", "href": "/changelog" }
+  ]
+}

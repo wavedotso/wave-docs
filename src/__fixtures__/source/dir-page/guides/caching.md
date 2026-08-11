@@ -1,0 +1,5 @@
+---
+title: Caching
+---
+
+Cache headers.
