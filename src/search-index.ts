@@ -138,6 +138,11 @@ interface PendingSection {
  * folded into the enclosing section instead, which is what `rehypeCaptureToc`
  * does with the same heading — the two must not disagree about which sections
  * exist.
+ *
+ * Not generic over the frontmatter type, deliberately: `frontmatter.title` is
+ * the only field read, and a `RenderedDoc` carrying a project's own fields is
+ * assignable to this signature already. A type parameter here would appear in
+ * every call site and constrain nothing.
  */
 export function extractSearchRecords(
   doc: RenderedDoc,

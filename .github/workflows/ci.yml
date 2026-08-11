@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read # nothing here writes; publish.yml is where tokens live
+
+jobs:
+  ci:
+    name: Build & Check
+    runs-on: ubuntu-latest
+
+    steps:
+      # Third-party actions are pinned to a full commit SHA, not a tag: tags are
+      # mutable, and publish.yml hands OIDC-signed npm credentials to a job that
+      # shares this action set. Dependabot bumps the SHA and rewrites the
+      # trailing version comment, so the pin does not rot.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # pnpm/setup is the current official action; pnpm/action-setup is for
+      # pnpm 10 and older. It installs pnpm first and then uses pnpm's own
+      # runtime manager to install Node, which is why there is no
+      # actions/setup-node step here — and therefore no way to hit its ordering
+      # trap, where `cache: pnpm` fails with "Unable to locate executable file:
+      # pnpm" if the pnpm install has not already run. One step cannot be
+      # ordered wrongly.
+      #
+      # `version` is deliberately absent: the action reads `packageManager` from
+      # package.json, so pnpm@11.21.0 is pinned in exactly one place. Repeating
+      # it here would let CI silently test a different pnpm than the one every
+      # developer runs.
+      - name: Install pnpm and Node.js
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@26
+          cache: true
+          install: false # installed below, explicitly frozen
+
+      # The pnpm-only guard lives here, not in a `preinstall` script. A
+      # lifecycle script in a *published* package is run by every consumer's
+      # installer — and pnpm fails their install on its mere presence, even when
+      # the script does nothing (verified: ERR_PNPM_IGNORED_BUILDS on a
+      # dependency whose preinstall is `node -e "process.exit(0)"`). CI is the
+      # only place this check can live without shipping.
+      - name: Reject an npm lockfile
+        run: |
+          if [ -f package-lock.json ] || [ -f yarn.lock ]; then
+            echo "::error::This repo is pnpm-only. Delete the npm/yarn lockfile and run 'pnpm install'."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # biome.json sets vcs.useIgnoreFile, so this needs the .git directory that
+      # actions/checkout leaves behind — it reads .gitignore, not history, so a
+      # shallow clone is enough.
+      - name: Lint & format
+        run: pnpm exec biome ci
+
+      - name: Type-check
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm run test
+
+      - name: Build library
+        run: pnpm run build
+
+      # Must follow the build: `attw --pack .` packs the real tarball and
+      # resolves every export subpath against dist/.
+      - name: Check package (publint + are-the-types-wrong)
+        run: pnpm run check:package

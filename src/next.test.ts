@@ -1,8 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
+import { z } from 'zod';
 
+import { docFrontmatterSchema } from './frontmatter.js';
 import {
   createDocsRedirects,
   createDocsRoute,
@@ -231,6 +233,80 @@ describe('createDocsRoute', () => {
     await expect(
       route.Page({ params: Promise.resolve({ slug: ['nope'] }) }),
     ).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+});
+
+describe('createDocsRoute with a frontmatterSchema', () => {
+  const frontmatterSchema = docFrontmatterSchema.extend({
+    audience: z.enum(['user', 'operator']).exactOptional(),
+  });
+
+  it('carries the custom fields through the whole route, uninstantiated', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Ops\naudience: operator\n---\n\nRunbooks.\n',
+    });
+    // No type argument anywhere below: the shape comes from the schema.
+    const docs = createDocsRoute({
+      contentDir,
+      basePath: '/ops',
+      frontmatterSchema,
+    });
+
+    const doc = await docs.getPage([]);
+    expect(doc?.frontmatter.audience).toBe('operator');
+    expectTypeOf(doc?.frontmatter.audience).toEqualTypeOf<
+      'user' | 'operator' | undefined
+    >();
+
+    const [file] = await docs.source.all();
+    expectTypeOf(file?.frontmatter.audience).toEqualTypeOf<
+      'user' | 'operator' | undefined
+    >();
+
+    const [rendered] = await docs.renderAll();
+    expectTypeOf(rendered?.frontmatter.audience).toEqualTypeOf<
+      'user' | 'operator' | undefined
+    >();
+
+    // The built-ins still drive metadata, which is what the constraint on the
+    // schema's output type protects.
+    const metadata = await docs.generateMetadata({
+      params: Promise.resolve({}),
+    });
+    expect(metadata.title).toBe('Ops');
+
+    // The sitemap's `lastModified` hook sees the same shape.
+    const entries = await createDocsSitemap({
+      contentDir,
+      siteUrl: 'https://example.com',
+      frontmatterSchema,
+      lastModified: (file) => {
+        expectTypeOf(file.frontmatter.audience).toEqualTypeOf<
+          'user' | 'operator' | undefined
+        >();
+        return file.frontmatter.audience === 'operator'
+          ? new Date('2024-01-02T03:04:05.000Z')
+          : undefined;
+      },
+    });
+    expect(entries[0]?.lastModified).toEqual(
+      new Date('2024-01-02T03:04:05.000Z'),
+    );
+  });
+
+  it('fails the build on a page the project schema rejects', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Ops\naudience: sysadmin\n---\n',
+    });
+    const docs = createDocsRoute({
+      contentDir,
+      basePath: '/ops-invalid',
+      frontmatterSchema,
+    });
+
+    await expect(docs.generateStaticParams()).rejects.toThrow(
+      /Invalid frontmatter in index\.md/,
+    );
   });
 });
 

@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 import { docFrontmatterSchema, parseFrontmatter } from './frontmatter.js';
+import { extractSearchRecords } from './search-index.js';
 import { createDocsSource, resolveDocsConfig } from './source.js';
-import type { DocNavNode } from './types.js';
+import type { DocFrontmatter, DocNavNode, RenderedDoc } from './types.js';
 
 // Counting `readdir` is how the scan-once guarantee is asserted: one scan of
 // the `basic` fixture is exactly four directory reads.
@@ -231,43 +232,174 @@ describe('build-time failures', () => {
 });
 
 describe('parseFrontmatter', () => {
-  it('accepts the documented fields', () => {
-    expect(
+  it('accepts the documented fields', async () => {
+    await expect(
       parseFrontmatter(
         { title: 'Auth', aliases: ['old-auth'], order: 2 },
         'api/auth.md',
       ),
-    ).toEqual({ title: 'Auth', aliases: ['old-auth'], order: 2 });
+    ).resolves.toEqual({ title: 'Auth', aliases: ['old-auth'], order: 2 });
   });
 
-  it('leaves absent optional fields absent', () => {
-    const parsed = parseFrontmatter({ title: 'Auth' }, 'api/auth.md');
+  it('leaves absent optional fields absent', async () => {
+    const parsed = await parseFrontmatter({ title: 'Auth' }, 'api/auth.md');
     expect('description' in parsed).toBe(false);
   });
 
-  it('does not cap the description length', () => {
+  it('does not cap the description length', async () => {
     const description = 'x'.repeat(400);
-    expect(
-      parseFrontmatter({ title: 'Auth', description }, 'api/auth.md')
-        .description,
-    ).toBe(description);
+    const parsed = await parseFrontmatter(
+      { title: 'Auth', description },
+      'api/auth.md',
+    );
+    expect(parsed.description).toBe(description);
   });
 
-  it('reports every bad field path against the file', () => {
-    expect(() =>
+  it('reports every bad field path against the file', async () => {
+    await expect(
       parseFrontmatter(
         { title: 'Auth', aliases: [1], draft: 'yes' },
         'api/auth.md',
       ),
-    ).toThrow(/aliases\[0\]/);
+    ).rejects.toThrow(/aliases\[0\]/);
   });
 
-  it('accepts a caller-extended schema', () => {
+  it('accepts a caller-extended schema', async () => {
     const schema = docFrontmatterSchema.extend({
       audience: z.enum(['user', 'operator']).exactOptional(),
     });
-    expect(
+    await expect(
       parseFrontmatter({ title: 'Auth', audience: 'operator' }, 'a.md', schema),
-    ).toEqual({ title: 'Auth', audience: 'operator' });
+    ).resolves.toEqual({ title: 'Auth', audience: 'operator' });
+  });
+
+  it('awaits a schema whose validation is asynchronous', async () => {
+    // Standard Schema allows `~standard.validate` to return a promise, and any
+    // schema with an async refinement does. Refusing those would make half the
+    // spec silently unsupported.
+    const schema = docFrontmatterSchema.refine(async (value) => {
+      await Promise.resolve();
+      return value.title !== 'Reserved';
+    }, 'title "Reserved" is spoken for');
+
+    await expect(
+      parseFrontmatter({ title: 'Auth' }, 'api/auth.md', schema),
+    ).resolves.toEqual({ title: 'Auth' });
+    await expect(
+      parseFrontmatter({ title: 'Reserved' }, 'api/auth.md', schema),
+    ).rejects.toThrow(/Invalid frontmatter in api\/auth\.md/);
+  });
+});
+
+/**
+ * `frontmatterSchema` is the only way a project's own fields reach
+ * `DocFile.frontmatter`, and the generic it drives has to be *inferred* — a
+ * consumer who has to write `createDocsSource<MyFrontmatter>(...)` has been
+ * handed a second source of truth to keep in step with their schema.
+ *
+ * The `expectTypeOf` assertions below are checked by `pnpm run typecheck`, not
+ * by the test runner: at runtime they are no-ops.
+ */
+describe('frontmatterSchema', () => {
+  const frontmatterSchema = docFrontmatterSchema.extend({
+    audience: z.enum(['user', 'operator']).exactOptional(),
+  });
+
+  const source = createDocsSource({
+    contentDir: path.join(FIXTURES, 'custom-frontmatter'),
+    frontmatterSchema,
+  });
+
+  it('carries a field the base schema does not declare', async () => {
+    const page = await source.find(['tuning']);
+    expect(page?.frontmatter).toEqual({
+      title: 'Tuning',
+      label: 'Tune',
+      audience: 'user',
+      order: 1,
+    });
+
+    const index = await source.find([]);
+    expect(index?.frontmatter.audience).toBe('operator');
+  });
+
+  it('infers the frontmatter type with no explicit type argument', async () => {
+    const page = await source.find(['tuning']);
+    expectTypeOf(page?.frontmatter.audience).toEqualTypeOf<
+      'user' | 'operator' | undefined
+    >();
+    // The built-ins survive the extension, which is what keeps nav, redirects
+    // and metadata working.
+    expectTypeOf(page?.frontmatter.title).toEqualTypeOf<string | undefined>();
+
+    const [first] = await source.all();
+    expectTypeOf(first?.frontmatter.audience).toEqualTypeOf<
+      'user' | 'operator' | undefined
+    >();
+  });
+
+  it('still narrows to DocFrontmatter with no schema at all', async () => {
+    const plain = createDocsSource({ contentDir: BASIC });
+    const page = await plain.find(['installation']);
+    expectTypeOf(page?.frontmatter).toEqualTypeOf<DocFrontmatter | undefined>();
+    expect(resolveDocsConfig({ contentDir: BASIC })).not.toHaveProperty(
+      'frontmatterSchema',
+    );
+  });
+
+  it('rejects a schema that drops the fields the package needs', () => {
+    createDocsSource({
+      contentDir: BASIC,
+      // @ts-expect-error - no `title`, so nav, `<h1>` and `<title>` would break
+      frontmatterSchema: z.object({ audience: z.string() }),
+    });
+  });
+
+  it('does not share a scan between two different schemas', async () => {
+    const dir = path.join(FIXTURES, 'custom-frontmatter');
+    // Same directory, same defaults, different schema: sharing the memoised
+    // scan would hand this caller frontmatter parsed by the other's schema.
+    const plain = createDocsSource({ contentDir: dir });
+    expect(plain).not.toBe(source);
+    expect((await plain.find(['tuning']))?.frontmatter).not.toHaveProperty(
+      'audience',
+    );
+
+    // Identity, not structure: an equivalent schema is still a different scan.
+    const twin = docFrontmatterSchema.extend({
+      audience: z.enum(['user', 'operator']).exactOptional(),
+    });
+    expect(
+      createDocsSource({ contentDir: dir, frontmatterSchema: twin }),
+    ).not.toBe(source);
+    expect(createDocsSource({ contentDir: dir, frontmatterSchema })).toBe(
+      source,
+    );
+  });
+
+  it('names the file and the field path when a custom field is invalid', async () => {
+    const broken = createDocsSource({
+      contentDir: path.join(FIXTURES, 'bad-custom-frontmatter'),
+      frontmatterSchema,
+    });
+    const error = await broken.all().catch((err: unknown) => err);
+    expect(String(error)).toContain('Invalid frontmatter in tuning.md');
+    expect(String(error)).toContain('audience:');
+    // Whose schema rejected it: without this the author has no idea the rule is
+    // their own and not the package's.
+    expect(String(error)).toContain('`frontmatterSchema`');
+  });
+
+  it('feeds the search index without a type argument', async () => {
+    // `extractSearchRecords` reads nothing outside `DocFrontmatter`, so it stays
+    // non-generic; a custom `RenderedDoc` has to remain assignable to it.
+    const doc: RenderedDoc<{ title: string; audience?: 'user' }> = {
+      frontmatter: { title: 'Tuning', audience: 'user' },
+      hast: { type: 'root', children: [] },
+      toc: [],
+      segments: ['tuning'],
+      href: '/docs/tuning',
+    };
+    expect(extractSearchRecords(doc)).toHaveLength(1);
   });
 });

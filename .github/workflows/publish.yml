@@ -1,0 +1,75 @@
+name: Publish
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false # never cancel a job that may be mid-publish
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # create release commits & tags
+      pull-requests: write # open "Version Packages" PR
+      id-token: write # OIDC for npm trusted publishing
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # See ci.yml for why this is one step and why pnpm's version is not
+      # repeated here.
+      - name: Install pnpm and Node.js
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@26
+          cache: true
+          install: false # installed below, explicitly frozen
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The same gate as ci.yml, re-run here on purpose: this job publishes, so
+      # it must not depend on another workflow's result being green.
+      - name: Lint & format
+        run: pnpm exec biome ci
+
+      - name: Type-check
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm run test
+
+      # Fail before changesets/action starts mutating git history, rather than
+      # after. `pnpm run release` builds again; that redundancy is the point.
+      - name: Build library
+        run: pnpm run build
+
+      # Pinned to v1.9.0, not v1: v2.0.0 requires @changesets/cli v3 and renamed
+      # every input to kebab-case, and this repo is on @changesets/cli 2.31.1.
+      #
+      # No NPM_TOKEN and no NODE_AUTH_TOKEN, deliberately. changesets/action
+      # v1.9.0 checks NPM_TOKEN first and only falls through to OIDC trusted
+      # publishing when it is unset, so supplying a token would switch trusted
+      # publishing back off. NODE_AUTH_TOKEN would be inert regardless: nothing
+      # here writes the ~/.npmrc that references it, because there is no
+      # actions/setup-node `registry-url` step.
+      - name: Create release PR or publish
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        with:
+          publish: pnpm run release
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          # PNPM_CONFIG_*, not NPM_CONFIG_*. pnpm 11 stopped reading the
+          # npm_config_ prefix, and changesets routes `changeset publish` to
+          # `pnpm publish` as soon as it sees a pnpm lockfile — so the
+          # npm-prefixed variable would drop provenance attestations silently,
+          # with no error and no failed job.
+          PNPM_CONFIG_PROVENANCE: true

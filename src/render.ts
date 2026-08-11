@@ -97,7 +97,15 @@ export interface DocsRendererOptions {
   knownRoutes?: ReadonlySet<string>;
 }
 
-/** Renders {@link DocFile}s. Build one per process and reuse it. */
+/**
+ * Renders {@link DocFile}s. Build one per process and reuse it.
+ *
+ * The frontmatter type parameter sits on `render`, not on the interface: the
+ * renderer reads only `frontmatter.title` and passes the rest through, so one
+ * renderer serves files parsed by any schema — which is what lets a host build
+ * the processor and the highlighter once. A renderer-level parameter would
+ * force a second highlighter per frontmatter shape and buy nothing.
+ */
 export interface DocsRenderer {
   render<TFrontmatter extends DocFrontmatter>(
     file: DocFile<TFrontmatter>,

@@ -48,7 +48,9 @@ Three things follow from that shape and are worth knowing up front:
 npm install @waveso/docs
 ```
 
-`react`, `react-dom` and `zod` are required peers. `next` and `tailwindcss`
+`react`, `react-dom` and `zod` are required peers — `zod` because the built-in
+frontmatter schema is a Zod schema, though a schema of your own may come from any
+[Standard Schema](https://standardschema.dev) validator. `next` and `tailwindcss`
 are optional peers — install only the ones you use. `image-size`
 is optional too, and nothing here imports it: it is declared so that an
 `imageResolver` you write can `await import('image-size')` without adding a
@@ -289,49 +291,139 @@ the build rather than shipping an untitled page.
 are production builds, so branching on it would hide drafts in exactly the place
 reviewers look — drive `includeDrafts` from your own env check instead.
 
-**Unknown keys are stripped.** Fields the schema does not declare do not appear
-on `DocFile.frontmatter`, silently — a page with `audience: operator` parses
-fine and loses the value.
+### Your own fields
 
-`@waveso/docs/frontmatter` exports `docFrontmatterSchema` and
-`parseFrontmatter(raw, filePath, schema?)` so you can extend the schema and run
-it over your own walk:
+Pass a `frontmatterSchema` and every `DocFile` and `RenderedDoc` the host hands
+back carries your fields, with no type argument anywhere:
+
+```ts
+// content/docs-schema.ts — one module, imported by every route file
+import { docFrontmatterSchema } from '@waveso/docs/frontmatter';
+import { z } from 'zod';
+
+export const frontmatterSchema = docFrontmatterSchema.extend({
+  // `.exactOptional()`, not `.optional()` — see the note at the end.
+  audience: z.enum(['user', 'operator']).exactOptional(),
+});
+```
+
+```tsx
+// app/docs/[...slug]/page.tsx
+import { createDocsRoute } from '@waveso/docs/next';
+
+import { frontmatterSchema } from '@/content/docs-schema';
+
+const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  frontmatterSchema,
+});
+
+export default docs.Page;
+export const generateStaticParams = docs.generateStaticParams;
+export const generateMetadata = docs.generateMetadata;
+export const dynamicParams = false;
+
+// In a layout or a page of your own — inferred, no `createDocsRoute<…>`:
+const doc = await docs.getPage(['api', 'auth']);
+doc?.frontmatter.audience; // 'user' | 'operator' | undefined
+doc?.frontmatter.title; //    string
+```
+
+Five things are worth knowing before you write one.
+
+**Let the type be inferred — never name it.** `createDocsRoute(...)`,
+`createDocsSource(...)` and `parseFrontmatter(...)` all read your frontmatter
+type off the schema you pass. Naming it explicitly *and* omitting the schema
+type-checks and then lies:
+
+```ts
+// ⚠️ Compiles. Every extra field is `undefined` at runtime, typed as present.
+const docs = createDocsRoute<MyFrontmatter>({ contentDir: 'content/docs' });
+```
+
+Nothing validates `MyFrontmatter` there, because no schema was supplied. Making
+that unexpressible was tried — overloads requiring the schema whenever the type
+is named — and reverted: the same rule also rejects passing a `DocsConfig<T>`
+through generically, which is legitimate and which this package does internally.
+Pass the schema, omit the type argument, and the hazard cannot arise.
+
+**Any [Standard Schema](https://standardschema.dev) validator works** — Zod,
+Valibot, ArkType. The field is typed `StandardSchemaV1<unknown, TFrontmatter>`
+rather than as a Zod type, so the package does not dictate your validator, and a
+schema handed over through the spec interface cannot hit the mismatch two copies
+of Zod in one `node_modules` otherwise produce. `zod` stays a required peer
+because `docFrontmatterSchema` itself is a Zod schema, and extending it is the
+shortest path to a valid one.
+
+**Unknown keys are stripped**, by Zod and by every other validator worth using.
+The parsed frontmatter is exactly what the schema declares, so declare every
+field you intend to read — under the base schema a page with `audience: operator`
+parses fine and loses the value. `docFrontmatterSchema.extend(...)` keeps the
+built-ins; a `z.object({ … })` written from scratch does not.
+
+**The output must still satisfy `DocFrontmatter`.** `title` drives the `<h1>`
+fallback and `<title>`, `draft` the visibility filter, `aliases` the redirects,
+`order` and `label` the sidebar. A schema that drops them is a compile error
+where you pass it, not a mystery at render time:
+
+```ts
+createDocsRoute({
+  contentDir: 'content/docs',
+  // Type error: `{ audience: string }` is not assignable to `DocFrontmatter`,
+  // which requires `title`.
+  frontmatterSchema: z.object({ audience: z.string() }),
+});
+```
+
+**Identity is load-bearing.** The filesystem scan is memoised per resolved
+config, and two schema objects count as the same schema only when they are the
+same object — build one inline in each of the two route files and each file pays
+for its own scan. Export one from a shared module, as above. (Sharing a scan
+across *different* schemas would be far worse than an extra read: the cached
+frontmatter belongs to whichever schema arrived first.)
+
+A page the schema rejects fails the build, naming the file, every bad path, and
+whose schema rejected it:
+
+```
+Invalid frontmatter in api/auth.md:
+  - audience: Invalid option: expected one of "user"|"operator"
+Fix the YAML block at the top of that file, or the `frontmatterSchema` in your docs config.
+```
+
+For a walk of your own, `@waveso/docs/frontmatter` exports the pieces directly.
+`parseFrontmatter` is async because Standard Schema allows `validate` to return a
+promise, and a schema with an async refinement does:
 
 ```ts
 import { docFrontmatterSchema, parseFrontmatter } from '@waveso/docs/frontmatter';
 
-const schema = docFrontmatterSchema.extend({
-  // `.exactOptional()`, not `.optional()` — see the note at the end.
-  audience: z.enum(['user', 'operator']).exactOptional(),
-});
-
-const frontmatter = parseFrontmatter(raw, 'api/auth.md', schema);
+const frontmatter = await parseFrontmatter(raw, 'api/auth.md', frontmatterSchema);
 ```
-
-> **Known limitation.** `DocsConfig` has no `frontmatterSchema` field, so there
-> is currently no way to install a custom schema into `createDocsSource`, and
-> therefore none into `createDocsRoute` or `waveDocs`. The `TFrontmatter`
-> generic on `DocFile`/`RenderedDoc` is real but unreachable from either host
-> until that field exists.
 
 ## Configuration
 
 ```ts
-interface DocsConfig {
+interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
   contentDir: string;        // relative paths resolve against process.cwd()
   basePath?: string;         // default '/docs'; '/' normalises to ''
   includeDrafts?: boolean;   // default false
   assertLinks?: boolean;     // default true
+  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
 }
 ```
 
-Both adapters additionally accept `langs`, `themes`, `highlighter`,
-`titleHeading`, `linkResolver` and `imageResolver`; the Next adapter also takes
-`components`, `contentId`, `rescanPerRequest` and `siteUrl`.
+`TFrontmatter` is inferred from `frontmatterSchema` and defaults to
+`DocFrontmatter`, so a config without one behaves exactly as before — see
+[Your own fields](#your-own-fields).
+
+`createDocsRoute` additionally accepts `langs`, `themes`, `highlighter`,
+`titleHeading`, `linkResolver`, `imageResolver`, `components`, `contentId`,
+`rescanPerRequest` and `siteUrl`.
 
 `langs` is typed `readonly DocsLang[]` — the curated grammar set, re-exported
-from both adapter entry points — so a typo is a compile error rather than a
-build-time one. Load a grammar outside that set by passing your own
+from `@waveso/docs/next` so you need not reach into the Node-only highlighter
+entry point — so a typo is a compile error rather than a build-time one. Load a grammar outside that set by passing your own
 `highlighter`.
 
 `titleHeading` defaults to `true`: a page whose markdown does not start with

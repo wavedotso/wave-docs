@@ -79,7 +79,6 @@
     "LICENSE"
   ],
   "scripts": {
-    "preinstall": "node -e \"if(!(process.env.npm_config_user_agent||'').startsWith('pnpm')){console.error('\\n  This repo uses pnpm. Run: pnpm install\\n');process.exit(1)}\"",
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
@@ -90,15 +89,16 @@
     "test:watch": "vitest",
     "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "pnpm run build",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "npm run build && changeset publish"
+    "release": "pnpm run build && changeset publish"
   },
   "dependencies": {
     "@shikijs/langs": "4.4.3",
     "@shikijs/rehype": "4.4.3",
     "@shikijs/themes": "4.4.3",
+    "@standard-schema/spec": "^1.1.0",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
     "gray-matter": "^4.0.3",

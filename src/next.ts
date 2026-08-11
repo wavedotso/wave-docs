@@ -62,6 +62,7 @@ import type { DocsSource } from './source.js';
 import { createDocsSource, resolveDocsConfig, toAliasRoute } from './source.js';
 import type {
   DocFile,
+  DocFrontmatter,
   DocsConfig,
   ImageResolver,
   LinkResolver,
@@ -275,7 +276,9 @@ async function buildNextComponents(): Promise<MarkdownComponents> {
  * Route
  * ---------------------------------------------------------------------- */
 
-export interface DocsRouteOptions extends DocsConfig {
+export interface DocsRouteOptions<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+> extends DocsConfig<TFrontmatter> {
   /** Overrides merged over the Next-flavoured defaults (`next/link` + `next/image`). */
   components?: MarkdownComponents;
   /** Reuse an existing Shiki highlighter. */
@@ -355,8 +358,16 @@ export interface DocsPageMetadata {
   };
 }
 
-/** What {@link createDocsRoute} returns. */
-export interface DocsRoute {
+/**
+ * What {@link createDocsRoute} returns.
+ *
+ * The type parameter comes from `frontmatterSchema` on the options, so
+ * `docs.getPage(...)` and `docs.source.all()` hand back your own frontmatter
+ * fields without a type argument anywhere in the route file.
+ */
+export interface DocsRoute<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+> {
   /**
    * Default export for `app/<basePath>/[...slug]/page.tsx`.
    *
@@ -417,19 +428,21 @@ export interface DocsRoute {
    * The underlying source, for layouts: `docs.source.nav()` feeds
    * `DocsSidebar`.
    */
-  source: DocsSource;
+  source: DocsSource<TFrontmatter>;
   /**
    * Render one page yourself, for a custom layout that needs the TOC or the
    * frontmatter alongside the content. Resolves to `undefined` when no such
    * page exists, or when it is a draft and `includeDrafts` is off.
    */
-  getPage: (segments: string[]) => Promise<RenderedDoc | undefined>;
+  getPage: (
+    segments: string[],
+  ) => Promise<RenderedDoc<TFrontmatter> | undefined>;
   /**
    * Every published page, rendered. The input to
    * `extractSearchRecords`/`writeSearchIndex` — nothing builds the search index
    * for you.
    */
-  renderAll: () => Promise<RenderedDoc[]>;
+  renderAll: () => Promise<Array<RenderedDoc<TFrontmatter>>>;
 }
 
 /**
@@ -439,7 +452,9 @@ export interface DocsRoute {
  * scan, the highlighter and the component map are all shared per process, so
  * the second call is free.
  */
-export function createDocsRoute(options: DocsRouteOptions): DocsRoute {
+export function createDocsRoute<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+>(options: DocsRouteOptions<TFrontmatter>): DocsRoute<TFrontmatter> {
   const config = resolveDocsConfig(options);
   const source = createDocsSource(options);
   const siteUrl = normalizeSiteUrl(options.siteUrl);
@@ -508,7 +523,7 @@ export function createDocsRoute(options: DocsRouteOptions): DocsRoute {
    */
   const findVisible = async (
     segments: string[],
-  ): Promise<DocFile | undefined> => {
+  ): Promise<DocFile<TFrontmatter> | undefined> => {
     if (rescanPerRequest) {
       invalidate();
     }
@@ -524,7 +539,7 @@ export function createDocsRoute(options: DocsRouteOptions): DocsRoute {
 
   const getPage = async (
     segments: string[],
-  ): Promise<RenderedDoc | undefined> => {
+  ): Promise<RenderedDoc<TFrontmatter> | undefined> => {
     const file = await findVisible(segments);
     if (file === undefined) {
       return undefined;
@@ -533,7 +548,7 @@ export function createDocsRoute(options: DocsRouteOptions): DocsRoute {
     return loadRenderer().render(file);
   };
 
-  const renderAll = async (): Promise<RenderedDoc[]> => {
+  const renderAll = async (): Promise<Array<RenderedDoc<TFrontmatter>>> => {
     if (rescanPerRequest) {
       invalidate();
     }
@@ -640,7 +655,9 @@ export interface DocsSitemapEntry {
   priority?: number;
 }
 
-export interface DocsSitemapOptions extends DocsConfig {
+export interface DocsSitemapOptions<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+> extends DocsConfig<TFrontmatter> {
   /**
    * Absolute site origin, e.g. `'https://example.com'`. Required: sitemap
    * URLs must be absolute, and a relative one makes the whole file invalid.
@@ -658,7 +675,7 @@ export interface DocsSitemapOptions extends DocsConfig {
    * noise. Wire this to your git history if the dates are load-bearing.
    */
   lastModified?: (
-    file: DocFile,
+    file: DocFile<TFrontmatter>,
   ) => Date | undefined | Promise<Date | undefined>;
 }
 
@@ -680,12 +697,18 @@ export interface DocsSitemapOptions extends DocsConfig {
  * }
  * ```
  */
-export async function createDocsSitemap(
-  options: DocsSitemapOptions,
-): Promise<DocsSitemapEntry[]> {
+export async function createDocsSitemap<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+>(options: DocsSitemapOptions<TFrontmatter>): Promise<DocsSitemapEntry[]> {
   const siteUrl = requireSiteUrl(options.siteUrl);
   const files = await createDocsSource(options).all();
-  const readDate = options.lastModified ?? readMtime;
+  // Annotated because the two branches have different parameter types, and a
+  // union of signatures is not callable: `readMtime` reads nothing outside
+  // `DocFrontmatter`, so it accepts the narrower file too.
+  const readDate: (
+    file: DocFile<TFrontmatter>,
+  ) => Date | undefined | Promise<Date | undefined> =
+    options.lastModified ?? readMtime;
 
   return Promise.all(
     files.map(async (file): Promise<DocsSitemapEntry> => {

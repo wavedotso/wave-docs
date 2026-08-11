@@ -8,6 +8,7 @@
  * here — treat it as the contract, and change it deliberately.
  */
 
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import type { Root as HastRoot } from 'hast';
 
 /* -------------------------------------------------------------------------
@@ -17,9 +18,9 @@ import type { Root as HastRoot } from 'hast';
 /**
  * The frontmatter fields the package itself understands.
  *
- * Consumers may extend this with their own Zod schema (see
- * `@waveso/docs/source`); the extra fields flow through the generic parameter
- * on {@link DocFile} and friends rather than widening this interface.
+ * Consumers extend this with their own schema — {@link DocsConfig.frontmatterSchema} —
+ * and the extra fields flow through the generic parameter on {@link DocFile}
+ * and friends rather than widening this interface.
  */
 export interface DocFrontmatter {
   /** Page title. Used for `<h1>` fallbacks, `<title>`, and search. */
@@ -247,7 +248,18 @@ export type ImageResolver = (
   | { src: string; width?: number; height?: number }
   | undefined;
 
-export interface DocsConfig {
+/**
+ * How a documentation tree is read.
+ *
+ * The type parameter is inferred from
+ * {@link DocsConfig.frontmatterSchema} — pass one and every `DocFile` and
+ * `RenderedDoc` the host hands back carries your fields, with no explicit type
+ * argument anywhere. Omit it and the parameter defaults to
+ * {@link DocFrontmatter}, which is what every existing call site gets.
+ */
+export interface DocsConfig<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+> {
   /**
    * Content root. Relative paths resolve against `process.cwd()`, which is
    * the project root during both `next build` and `vite build`.
@@ -266,12 +278,57 @@ export interface DocsConfig {
    * exist. Defaults to `true`; there is no good reason to turn it off.
    */
   assertLinks?: boolean;
+  /**
+   * Validates every page's frontmatter. Defaults to `docFrontmatterSchema`
+   * from `@waveso/docs/frontmatter`.
+   *
+   * Any [Standard Schema](https://standardschema.dev) validator is accepted —
+   * Zod, Valibot, ArkType — rather than a Zod type specifically. That keeps the
+   * package from dictating a validator, and a schema handed over through the
+   * spec interface cannot hit the cross-instance mismatch two copies of Zod in
+   * one `node_modules` otherwise produce.
+   *
+   * ```ts
+   * // content/docs-schema.ts — one module, imported by every route file
+   * import { docFrontmatterSchema } from '@waveso/docs/frontmatter';
+   * import { z } from 'zod';
+   *
+   * export const frontmatterSchema = docFrontmatterSchema.extend({
+   *   audience: z.enum(['user', 'operator']).exactOptional(),
+   * });
+   * ```
+   *
+   * Three things are worth knowing before you write one:
+   *
+   *  - **The output must still satisfy {@link DocFrontmatter}.** `title` drives
+   *    the `<h1>` fallback and `<title>`, `draft` the visibility filter,
+   *    `aliases` the redirects, `order`/`label` the sidebar. A schema that
+   *    drops them is a compile error here, not a mystery at render time.
+   *  - **Unknown keys are stripped, by every validator worth using.** The
+   *    parsed frontmatter is exactly what the schema declares, so declare every
+   *    field you intend to read — extending
+   *    `docFrontmatterSchema` is the shortest way to keep the built-ins.
+   *  - **Identity is load-bearing.** The filesystem scan is memoised per
+   *    resolved config, and two schema objects are only "the same schema" when
+   *    they are the same object. Export one from a shared module (as above)
+   *    rather than building it inline in each route file, or each file pays for
+   *    its own scan.
+   */
+  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
 }
 
 /** {@link DocsConfig} with defaults applied. */
-export interface ResolvedDocsConfig {
+export interface ResolvedDocsConfig<
+  TFrontmatter extends DocFrontmatter = DocFrontmatter,
+> {
   contentDir: string;
   basePath: string;
   includeDrafts: boolean;
   assertLinks: boolean;
+  /**
+   * As supplied. Absent — never explicitly `undefined`, per
+   * `exactOptionalPropertyTypes` — when the built-in `docFrontmatterSchema`
+   * applies, so the default lives in one place: `parseFrontmatter`.
+   */
+  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
 }
