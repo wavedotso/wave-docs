@@ -1,7 +1,7 @@
 {
   "name": "@waveso/docs",
   "version": "0.0.0",
-  "description": "Markdown documentation for Next.js \u2014 parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "description": "Markdown documentation for Next.js — parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -79,6 +79,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "preinstall": "node -e \"if(!(process.env.npm_config_user_agent||'').startsWith('pnpm')){console.error('\\n  This repo uses pnpm. Run: pnpm install\\n');process.exit(1)}\"",
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
@@ -88,7 +89,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run build",
     "changeset": "changeset",
     "version": "changeset version",
@@ -158,5 +159,6 @@
       "version": ">=22.18.0",
       "onFail": "warn"
     }
-  }
+  },
+  "packageManager": "pnpm@11.21.0"
 }
