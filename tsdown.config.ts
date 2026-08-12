@@ -5,12 +5,19 @@ import { defineConfig } from 'tsdown';
  *
  * `unbundle` is load-bearing here, not a preference. The package.json
  * `exports` map points individual conditions at individual files: the
- * Node-only half (`./source`, `./render`, `./highlighter`, `./next`,
- * `./vite`) carries `"browser": null` so a client bundler fails with a
+ * Node-only half (`./source`, `./render`, `./highlighter`, `./search-index`,
+ * `./next`) carries `"browser": null` so a client bundler fails with a
  * located "module not found" instead of trying to resolve `node:fs`.
  * That guard only works if `dist/source.js` is genuinely its own file —
  * bundling into shared chunks would smear the Node half into modules the
  * browser condition is supposed to reach.
+ *
+ * `./markdown-links` deliberately does NOT carry it: `remark-doc-links` imports
+ * nothing from `node:`, and claiming otherwise would break a host reusing
+ * `resolveMarkdownLink` or `foldSegments` on the client.
+ *
+ * (This list named `./vite` before a Vite adapter existed. It still does not
+ * exist; when it does, it belongs in the Node-only set above.)
  *
  * `"use client"` directives survive natively (Rolldown tracks them rather
  * than stripping them), which the `src/react/*` client components rely on,

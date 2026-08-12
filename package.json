@@ -62,6 +62,10 @@
       "types": "./dist/search-options.d.ts",
       "default": "./dist/search-options.js"
     },
+    "./markdown-links": {
+      "types": "./dist/plugins/remark-doc-links.d.ts",
+      "default": "./dist/plugins/remark-doc-links.js"
+    },
     "./next": {
       "types": "./dist/next.d.ts",
       "browser": null,
@@ -89,7 +93,7 @@
     "test:watch": "vitest",
     "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "prepublishOnly": "pnpm run build",
+    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run check:package",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish"
