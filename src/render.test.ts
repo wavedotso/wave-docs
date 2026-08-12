@@ -72,6 +72,22 @@ function flattenToc(entries: readonly TocEntry[]): TocEntry[] {
   return entries.flatMap((entry) => [entry, ...flattenToc(entry.children)]);
 }
 
+/** Is any `<needle>` nested inside a `<haystack>` anywhere in the tree? */
+function hasNested(tree: Root, haystack: string, needle: string): boolean {
+  let found = false;
+  visit(tree, 'element', (node) => {
+    if (node.tagName !== haystack) {
+      return;
+    }
+    visit(node, 'element', (inner) => {
+      if (inner.tagName === needle) {
+        found = true;
+      }
+    });
+  });
+  return found;
+}
+
 /** Does any element of `tagName` contain an `<img>`? */
 function hasImageInside(tree: Root, tagName: string): boolean {
   let found = false;
@@ -203,6 +219,70 @@ describe('createDocsRenderer', () => {
     );
     expect(roots).toHaveLength(1);
     expect(hasImageInside(doc.hast, 'p')).toBe(true);
+  });
+
+  /**
+   * ⚠️ THE ASSERTION THAT WOULD HAVE CAUGHT THE HYDRATION MISMATCH, and the
+   * reason these tests are here rather than in `doc-content.test.tsx`.
+   *
+   * The old ones built an `<a>` at the hast root and checked the anchor
+   * component swapped it — true, and blind to the only thing that mattered:
+   * markdown wraps that link in a `<p>`, and the component returned a `<div>`.
+   * `<p><div></div></p>` is invalid HTML, the browser's parser hoists the div,
+   * and React 19 calls that a mismatch and re-renders the root.
+   *
+   * Going through the real pipeline from markdown is what makes the paragraph
+   * exist to assert about.
+   */
+  it('lifts a bare YouTube link out of its paragraph', async () => {
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+    });
+
+    const doc = await renderer.render(
+      makeDoc('https://www.youtube.com/watch?v=dQw4w9WgXcQ\n'),
+    );
+
+    expect(findAll(doc.hast, 'youtube')).toHaveLength(1);
+    expect(hasNested(doc.hast, 'p', 'youtube')).toBe(false);
+  });
+
+  it('accepts the youtu.be form', async () => {
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+    });
+
+    const doc = await renderer.render(
+      makeDoc('https://youtu.be/dQw4w9WgXcQ\n'),
+    );
+    const [video] = findAll(doc.hast, 'youtube');
+
+    expect(video?.properties).toMatchObject({ id: 'dQw4w9WgXcQ' });
+  });
+
+  it('leaves a labelled YouTube link as a link', async () => {
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+    });
+
+    const doc = await renderer.render(
+      makeDoc('[the intro](https://youtu.be/dQw4w9WgXcQ)\n'),
+    );
+
+    expect(findAll(doc.hast, 'youtube')).toHaveLength(0);
+    expect(findAll(doc.hast, 'a')).toHaveLength(1);
+  });
+
+  it('leaves a YouTube link with prose beside it alone', async () => {
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+    });
+
+    const doc = await renderer.render(
+      makeDoc('Watch https://youtu.be/dQw4w9WgXcQ for the setup.\n'),
+    );
+
+    expect(findAll(doc.hast, 'youtube')).toHaveLength(0);
   });
 
   it('resolves image sources and dimensions when a resolver is given', async () => {

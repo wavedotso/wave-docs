@@ -89,10 +89,23 @@ describe('DocContent', () => {
 });
 
 describe('markdown components', () => {
-  it('turns a bare YouTube autolink into a click-to-load facade', () => {
-    const href = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+  /**
+   * ⚠️ DETECTION MOVED TO `remarkYouTube`, so the two tests that used to live
+   * here — one per URL form — are now in `render.test.ts`, going through the
+   * real pipeline from markdown.
+   *
+   * They built an `<a>` at the HAST ROOT and asserted the anchor mapping
+   * swapped it. That passed, and it is exactly why the suite could not see the
+   * bug: in a real document the anchor is inside a `<p>`, and a `<div>` there
+   * is invalid HTML that hydrates as a mismatch. A fixture that omits the
+   * paragraph omits the defect.
+   *
+   * What belongs here is the element the pipeline now emits, and the consumer
+   * override that could not be reached while the anchor did the work.
+   */
+  it('renders a <youtube> element through the component map', () => {
     const html = render(
-      <DocContent hast={root(element('a', { href }, [text(href)]))} />,
+      <DocContent hast={root(element('youtube', { id: 'dQw4w9WgXcQ' }, []))} />,
     );
 
     expect(html).toContain('i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
@@ -101,13 +114,16 @@ describe('markdown components', () => {
     expect(html).not.toContain('<iframe');
   });
 
-  it('accepts the youtu.be form', () => {
-    const href = 'https://youtu.be/dQw4w9WgXcQ';
+  it('lets a consumer replace the youtube component', () => {
     const html = render(
-      <DocContent hast={root(element('a', { href }, [text(href)]))} />,
+      <DocContent
+        hast={root(element('youtube', { id: 'dQw4w9WgXcQ' }, []))}
+        components={{ youtube: ({ id }) => <span data-mine={id} /> }}
+      />,
     );
 
-    expect(html).toContain('i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+    expect(html).toContain('data-mine="dQw4w9WgXcQ"');
+    expect(html).not.toContain('ytimg.com');
   });
 
   it('leaves a labelled YouTube link alone', () => {

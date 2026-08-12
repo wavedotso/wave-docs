@@ -26,6 +26,7 @@ import { rehypeCaptureToc } from './plugins/rehype-capture-toc.js';
 import type { DocLinkRef } from './plugins/remark-doc-links.js';
 import { foldSegments, remarkDocLinks } from './plugins/remark-doc-links.js';
 import { remarkUnwrapImages } from './plugins/remark-unwrap-images.js';
+import { remarkYouTube } from './plugins/remark-youtube.js';
 import type {
   DocFile,
   DocFrontmatter,
@@ -240,20 +241,26 @@ function stripPositions(tree: HastRoot): HastRoot {
  *  4. `remarkUnwrapImages`  — must precede `remarkRehype` for the same reason:
  *                             the paragraph wrapper is created by the mdast to
  *                             hast conversion's phrasing rules.
- *  5. `remarkRehype`        — mdast to hast. `allowDangerousHtml` stays off:
+ *  5. `remarkYouTube`       — after `remarkDocLinks`, which leaves an external
+ *                             URL alone, and before `remarkRehype` on
+ *                             `remarkUnwrapImages`'s reasoning: this replaces
+ *                             the whole PARAGRAPH, because a block element left
+ *                             inside the `<p>` markdown wraps a link in is
+ *                             invalid HTML and hydrates as a mismatch.
+ *  6. `remarkRehype`        — mdast to hast. `allowDangerousHtml` stays off:
  *                             raw HTML in the source is dropped rather than
  *                             passed through, because this package does not
  *                             run `rehype-raw`, and `rehype-raw` on its own
  *                             happily reparses `<script>` into the tree.
- *  6. `rehypeGithubAlerts`  — `> [!NOTE]` is still a blockquote at this point;
+ *  7. `rehypeGithubAlerts`  — `> [!NOTE]` is still a blockquote at this point;
  *                             `remark-gfm` does not implement alerts at all.
  *                             Runs before slugging so a heading inside a
  *                             callout is slugged in its final position.
- *  7. `rehypeSlug`          — assigns heading ids.
- *  8. `rehypeCaptureToc`    — reads those ids. Before autolinking, so heading
+ *  8. `rehypeSlug`          — assigns heading ids.
+ *  9. `rehypeCaptureToc`    — reads those ids. Before autolinking, so heading
  *                             text is captured without the appended `#`.
- *  9. `rehypeAutolinkHeadings` — appends the permalink.
- * 10. `rehypeShikiFromHighlighter` — last: it replaces `<pre><code>` wholesale,
+ * 10. `rehypeAutolinkHeadings` — appends the permalink.
+ * 11. `rehypeShikiFromHighlighter` — last: it replaces `<pre><code>` wholesale,
  *                             and anything walking code blocks afterwards
  *                             would be walking Shiki's token spans instead.
  */
@@ -275,6 +282,7 @@ async function buildProcessor(options: DocsRendererOptions) {
         : { resolve: options.linkResolver }),
     })
     .use(remarkUnwrapImages)
+    .use(remarkYouTube)
     .use(remarkRehype, {
       allowDangerousHtml: false,
       // The generated footnote label is `class="sr-only"` by default — a class

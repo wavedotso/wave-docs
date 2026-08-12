@@ -80,75 +80,12 @@ export interface MarkdownComponentsOptions {
 const HTTP_SCHEME = /^https?:\/\//i;
 /** Any URL with a scheme, or protocol-relative. */
 const ABSOLUTE_URL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
-/** YouTube ids are 11 characters of base64url. */
-const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
-
-/**
- * Extract a video id from a YouTube watch/short/embed URL.
- *
- * Returns `undefined` for anything else, including YouTube URLs that are not a
- * single video (channels, playlists) — those stay ordinary links.
+/*
+ * `parseYouTubeId`, `getPlainText` and `isBareUrl` MOVED TO
+ * `plugins/remark-youtube.ts`. They were the render-path half of a
+ * substitution that now happens once per document in Node, so keeping them
+ * here would ship dead detection logic to every browser that loads a docs page.
  */
-export function parseYouTubeId(href: string): string | undefined {
-  let url: URL;
-  try {
-    url = new URL(href, 'https://example.invalid');
-  } catch {
-    return undefined;
-  }
-
-  const host = url.hostname.replace(/^(www|m)\./, '');
-  const segments = url.pathname.split('/').filter(Boolean);
-
-  if (host === 'youtu.be') {
-    const [id] = segments;
-    return id !== undefined && VIDEO_ID.test(id) ? id : undefined;
-  }
-
-  if (host !== 'youtube.com' && host !== 'youtube-nocookie.com') {
-    return undefined;
-  }
-
-  if (url.pathname === '/watch') {
-    const id = url.searchParams.get('v');
-    return id !== null && VIDEO_ID.test(id) ? id : undefined;
-  }
-
-  const [prefix, id] = segments;
-  if ((prefix === 'embed' || prefix === 'shorts') && id !== undefined) {
-    return VIDEO_ID.test(id) ? id : undefined;
-  }
-
-  return undefined;
-}
-
-/** Collapse a link's children to plain text, or `undefined` if not plain. */
-function getPlainText(children: ReactNode): string | undefined {
-  if (typeof children === 'string') {
-    return children;
-  }
-  if (Array.isArray(children) && children.every((c) => typeof c === 'string')) {
-    return children.join('');
-  }
-  return undefined;
-}
-
-/**
- * Whether this anchor is a bare URL rather than a labelled link.
- *
- * remark-gfm autolinks bare URLs into `<a href="X">X</a>`, sometimes dropping
- * the scheme from the label (`www.youtube.com/...`). Only those become video
- * facades: `[the intro](https://youtu.be/x)` keeps its label and stays a link.
- */
-function isBareUrl(href: string, children: ReactNode): boolean {
-  const text = getPlainText(children);
-  if (text === undefined) {
-    return false;
-  }
-  const strip = (value: string) =>
-    value.replace(HTTP_SCHEME, '').replace(/\/$/, '');
-  return strip(text) === strip(href);
-}
 
 function joinClassNames(
   ...values: Array<string | undefined>
@@ -178,13 +115,18 @@ function createAnchor(Link: DocsLinkComponent | undefined) {
       return <a {...rest}>{children}</a>;
     }
 
-    if (isBareUrl(href, children)) {
-      const videoId = parseYouTubeId(href);
-      if (videoId !== undefined) {
-        return <YouTube id={videoId} />;
-      }
-    }
-
+    /*
+     * NO YOUTUBE BRANCH HERE ANY MORE. Returning `<YouTube>` from the anchor
+     * mapping put a `<div>` inside the `<p>` that markdown wraps a link in,
+     * which is invalid HTML: the parser closes the paragraph early, the DOM
+     * stops matching the server output, and React 19 reports a hydration
+     * mismatch and re-renders the root.
+     *
+     * `remarkYouTube` replaces the whole paragraph at build time instead, so
+     * the tree is correct before this map is consulted — and
+     * `MarkdownComponents.youtube`, unreachable while the substitution happened
+     * here, is now the thing that renders.
+     */
     if (HTTP_SCHEME.test(href) || href.startsWith('//')) {
       return (
         <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
