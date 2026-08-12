@@ -354,7 +354,7 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
 | `contentId` | `'docs-content'` | The id `SkipLink` targets; `false` if your layout owns it |
 | `rescanPerRequest` | dev only | Re-scan the content directory per request |
 | `siteUrl` | — | Makes canonical URLs absolute |
-| `linkResolver` · `imageResolver` | — | Override link rewriting and image dimensions |
+| `linkResolver` · `imageResolver` | — | Override link rewriting and image dimensions. An `imageResolver` receives a folded, contained src — except an absolute `/logo.png` or a schemed `https://…`, which arrive unfolded, so branch on them |
 
 `titleHeading` defaults on because a document with no `h1` has a broken heading outline and fails every accessibility audit. Turn it off if your layout renders the title itself.
 

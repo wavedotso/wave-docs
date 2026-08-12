@@ -288,6 +288,15 @@ export type LinkResolver = (
  * this onto a filesystem path is not handing a document author a way to read
  * `../../../../.env`. That was not true before: images skipped folding
  * entirely and arrived exactly as authored.
+ *
+ * Two shapes are the exception, and they still reach you: an absolute
+ * `/logo.png` and a schemed `https://…` are passed through UNFOLDED, because the
+ * first is already a public URL and the second belongs to someone else. Folding
+ * them would be meaningless, but they are not filtered out — a host that wants
+ * to rewrite `/logo.png` onto a CDN needs the call. So an implementation that
+ * blindly prefixes what it is handed produces `/cdn//logo.png` and
+ * `/cdn/https://example.com/a.png`. Branch on them, or return `undefined` to
+ * leave the src as authored.
  */
 export type ImageResolver = (
   src: string,
