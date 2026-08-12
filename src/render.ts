@@ -24,11 +24,12 @@ import type { DocsHighlighter, DocsLang, DocsThemes } from './highlighter.js';
 import { createDocsHighlighter, DEFAULT_DOCS_THEMES } from './highlighter.js';
 import { rehypeCaptureToc } from './plugins/rehype-capture-toc.js';
 import type { DocLinkRef } from './plugins/remark-doc-links.js';
-import { remarkDocLinks } from './plugins/remark-doc-links.js';
+import { foldSegments, remarkDocLinks } from './plugins/remark-doc-links.js';
 import { remarkUnwrapImages } from './plugins/remark-unwrap-images.js';
 import type {
   DocFile,
   DocFrontmatter,
+  DocLinkContext,
   ImageResolver,
   LinkResolver,
   RenderedDoc,
@@ -141,6 +142,31 @@ function toDirSegments(relativePath: string): string[] {
     .split(/[/\\]+/)
     .slice(0, -1)
     .filter(Boolean);
+}
+
+/** `scheme:` — `https:`, `data:`, anything that is not ours to resolve. */
+const IMAGE_HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+/**
+ * An image `src` folded against the page's directory, or `undefined` if it
+ * climbs out of the content root.
+ *
+ * Absolute (`/logo.png`), protocol-relative and schemed sources are returned
+ * UNCHANGED: they are already public URLs, and folding one would corrupt it.
+ * Everything else is relative to the file that wrote it, which is what an
+ * author means by `![](./diagram.png)` and what the link path has always done.
+ */
+function foldImageSrc(
+  src: string,
+  dirSegments: readonly string[],
+): string | undefined {
+  if (src.startsWith('/') || IMAGE_HAS_SCHEME.test(src)) {
+    return src;
+  }
+
+  const segments = foldSegments(dirSegments, src);
+
+  return segments === undefined ? undefined : segments.join('/');
 }
 
 /** Route without its `?query` / `#anchor`, for existence checks. */
@@ -298,6 +324,25 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
   const { config, imageResolver, knownRoutes } = options;
   const titleHeading = options.titleHeading ?? true;
 
+  /**
+   * Hand every `<img>` to the resolver, FOLDED AND CONTAINED.
+   *
+   * ⚠️ IMAGES USED TO SKIP FOLDING ENTIRELY. `remarkDocLinks` visits `link` and
+   * `definition` and never `image`, so an image `src` reached the resolver
+   * exactly as authored — `../../../../.env` included — while every LINK on the
+   * same page went through `foldSegments`, which refuses a chain that climbs
+   * out of the content root. Two paths into the same kind of consumer code,
+   * one of them guarded.
+   *
+   * That is a containment hole rather than a formatting bug: the resolver's
+   * documented job is to turn a src into a public URL, and a reasonable
+   * implementation joins it onto a directory. So the fold happens HERE, before
+   * the call, and an escape throws with the file named — the same treatment
+   * `assertLinks` gives a link that climbs out.
+   *
+   * Absolute and external srcs are passed through untouched: `/logo.png` is
+   * already a public URL and `https://…` belongs to someone else.
+   */
   async function resolveImages(
     tree: HastRoot,
     file: DocFile,
@@ -310,13 +355,28 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
       }
     });
 
+    const context: DocLinkContext = {
+      segments: file.segments,
+      dirSegments: toDirSegments(file.relativePath),
+      relativePath: file.relativePath,
+    };
+
     await Promise.all(
       images.map(async (node) => {
         const src = node.properties.src;
         if (typeof src !== 'string' || src === '') {
           return;
         }
-        const resolved = await resolve(src, file.segments);
+
+        const folded = foldImageSrc(src, context.dirSegments);
+
+        if (folded === undefined) {
+          throw new Error(
+            `@waveso/docs: image "${src}" in ${file.relativePath} climbs above the content root.`,
+          );
+        }
+
+        const resolved = await resolve(folded, context);
         if (resolved === undefined) {
           return;
         }
@@ -372,6 +432,7 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
       vfile.data.docLinkContext = {
         segments: file.segments,
         dirSegments: toDirSegments(file.relativePath),
+        relativePath: file.relativePath,
       };
 
       const hast = await processor.run(processor.parse(vfile), vfile);

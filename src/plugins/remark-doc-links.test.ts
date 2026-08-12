@@ -3,6 +3,7 @@ import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
 import { describe, expect, it } from 'vitest';
 import { VFile } from 'vfile';
+import type { DocLinkContext } from '../types.js';
 import type { DocLinkRef } from './remark-doc-links.js';
 import { remarkDocLinks, resolveMarkdownLink } from './remark-doc-links.js';
 
@@ -18,7 +19,7 @@ interface Run {
  */
 function run(
   markdown: string,
-  document: { segments: string[]; dirSegments: string[] },
+  document: DocLinkContext,
   options: Parameters<typeof remarkDocLinks>[0] = { basePath: '/docs' },
 ): Run {
   const processor = unified().use(remarkParse).use(remarkDocLinks, options);
@@ -35,7 +36,31 @@ function run(
   return { urls, refs: file.data.docLinks ?? [] };
 }
 
-const FROM_PAGE = { segments: ['guide', 'setup'], dirSegments: ['guide'] };
+const FROM_PAGE: DocLinkContext = {
+  segments: ['guide', 'setup'],
+  dirSegments: ['guide'],
+  relativePath: 'guide/setup.md',
+};
+
+/**
+ * The pair the resolver contract was changed for.
+ *
+ * `api/index.md` and `api.md` have IDENTICAL route segments and DIFFERENT
+ * directories, so a resolver handed only the route cannot resolve
+ * `./auth.md` correctly from both. These two fixtures differ in exactly the
+ * field that separates them.
+ */
+const FROM_DIR_INDEX: DocLinkContext = {
+  segments: ['api'],
+  dirSegments: ['api'],
+  relativePath: 'api/index.md',
+};
+
+const FROM_DIR_PAGE: DocLinkContext = {
+  segments: ['api'],
+  dirSegments: [],
+  relativePath: 'api.md',
+};
 
 describe('remarkDocLinks', () => {
   it('rewrites relative markdown links to routes', () => {
@@ -107,14 +132,12 @@ describe('remarkDocLinks', () => {
   it('resolves against the directory, not the route, for index pages', () => {
     // `api/index.md` and `api.md` share the route segments `['api']` but sit
     // in different directories — the whole reason dirSegments exists.
-    const fromIndex = run('[a](./auth.md)', {
-      segments: ['api'],
-      dirSegments: ['api'],
-    });
-    const fromLeaf = run('[a](./auth.md)', {
-      segments: ['api'],
-      dirSegments: [],
-    });
+    //
+    // This covered the BUILT-IN resolver, which is why the built-in was always
+    // right. The custom-resolver equivalent below it is the one that was
+    // missing, and the one the contract change exists for.
+    const fromIndex = run('[a](./auth.md)', FROM_DIR_INDEX);
+    const fromLeaf = run('[a](./auth.md)', FROM_DIR_PAGE);
 
     expect(fromIndex.urls).toEqual(['/docs/api/auth']);
     expect(fromLeaf.urls).toEqual(['/docs/auth']);
@@ -147,6 +170,43 @@ describe('remarkDocLinks', () => {
     ]);
   });
 
+  /**
+   * ⚠️ THE REGRESSION TEST FOR THE RESOLVER CONTRACT.
+   *
+   * A custom resolver used to receive route segments only. `api/index.md` and
+   * `api.md` share the route `['api']`, so the two calls below were
+   * INDISTINGUISHABLE — and `./auth.md` means `api/auth` from one and `auth`
+   * from the other. No resolver could have told them apart, whatever it did.
+   *
+   * Reverting the argument to `context.segments` makes both expectations equal
+   * and this fails on the second.
+   */
+  it('gives a custom resolver the directory, so a dir-index page resolves siblings correctly', () => {
+    const resolve = (href: string, from: DocLinkContext): string =>
+      `/x/${[...from.dirSegments, href.replace('./', '')].join('/')}`;
+
+    const fromIndex = run('[a](./auth.md)', FROM_DIR_INDEX, {
+      basePath: '/docs',
+      resolve,
+    });
+    const fromPage = run('[a](./auth.md)', FROM_DIR_PAGE, {
+      basePath: '/docs',
+      resolve,
+    });
+
+    expect(fromIndex.urls).toEqual(['/x/api/auth.md']);
+    expect(fromPage.urls).toEqual(['/x/auth.md']);
+  });
+
+  it('gives a custom resolver the source path, for its own error messages', () => {
+    const { urls } = run('[a](./auth.md)', FROM_DIR_INDEX, {
+      basePath: '/docs',
+      resolve: (_href, from) => `/x/${from.relativePath}`,
+    });
+
+    expect(urls).toEqual(['/x/api/index.md']);
+  });
+
   it('honours a custom LinkResolver for every relative link', () => {
     const { urls, refs } = run(
       '[a](./install.md) [b](../assets/logo.svg)',
@@ -154,7 +214,7 @@ describe('remarkDocLinks', () => {
       {
         basePath: '/docs',
         resolve: (href, from) =>
-          href.endsWith('.md') ? `/x/${from.join('-')}` : undefined,
+          href.endsWith('.md') ? `/x/${from.segments.join('-')}` : undefined,
       },
     );
 

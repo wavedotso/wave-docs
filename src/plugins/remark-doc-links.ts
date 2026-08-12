@@ -18,7 +18,7 @@ import type { Root } from 'mdast';
 import type { Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
-import type { LinkResolver } from '../types.js';
+import type { DocLinkContext, LinkResolver } from '../types.js';
 
 /**
  * Where a link was found and what it resolved to.
@@ -43,20 +43,12 @@ export interface DocLinkRef {
  * Passed through `file.data` rather than plugin options so a single frozen
  * processor can render every page. Constructing a processor per file is the
  * obvious mistake here and it costs more than the parse does.
+ *
+ * DECLARED IN `types.ts` NOW, because it is the second argument of both public
+ * resolvers and a consumer has to be able to name it. Re-exported here so the
+ * plugin still reads as self-contained.
  */
-export interface DocLinkContext {
-  /** Route segments, e.g. `['api', 'auth']`. Handed to a {@link LinkResolver}. */
-  segments: string[];
-  /**
-   * Directory segments of the source file relative to the content root, e.g.
-   * `['api']` for both `api/auth.md` and `api/auth/index.md`.
-   *
-   * Distinct from `segments` on purpose: `api/index.md` and `api.md` produce
-   * identical route segments but resolve `./auth.md` to different pages, and
-   * only the on-disk path can tell them apart.
-   */
-  dirSegments: string[];
-}
+export type { DocLinkContext } from '../types.js';
 
 declare module 'vfile' {
   interface DataMap {
@@ -108,8 +100,14 @@ function isRelativeLink(href: string): boolean {
  * filesystem paths: they must use `/` on Windows and must not pick up the
  * process working directory. Returns `undefined` when the chain climbs above
  * the content root, which is always an authoring error worth surfacing.
+ *
+ * EXPORTED as part of the wrap-don't-replace surface. Getting `../` right is
+ * the fiddly half of writing a {@link LinkResolver}, and a host that reuses
+ * this cannot disagree with the built-in resolver about where a link points.
+ * It is also what `render.ts` folds image sources with, so links and images
+ * are contained by one implementation rather than two.
  */
-function foldSegments(
+export function foldSegments(
   from: readonly string[],
   path: string,
 ): string[] | undefined {
@@ -232,8 +230,16 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
         return;
       }
 
+      /*
+       * ⚠️ THE WHOLE CONTEXT, NOT `context.segments`. This used to hand a
+       * custom resolver the ROUTE segments while the built-in one below took
+       * the DIRECTORY segments — so a consumer replacing the resolver got
+       * strictly less than it needed, and `./sibling.md` resolved wrongly on
+       * every directory index page. The comment on `DocLinkContext` is the
+       * diagnosis; this line was the bug it described.
+       */
       const href = resolve
-        ? resolve(raw, context.segments)
+        ? resolve(raw, context)
         : resolveMarkdownLink(raw, context.dirSegments, basePath);
 
       const line = node.position?.start.line;

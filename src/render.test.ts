@@ -209,7 +209,7 @@ describe('createDocsRenderer', () => {
     const renderer = createDocsRenderer({
       config: { basePath: '/docs', assertLinks: false },
       imageResolver: (src, from) => ({
-        src: `/assets/${path.basename(src)}?from=${from.join('/')}`,
+        src: `/assets/${path.basename(src)}?from=${from.dirSegments.join('/')}`,
         width: 1200,
         height: 630,
       }),
@@ -220,10 +220,63 @@ describe('createDocsRenderer', () => {
     const [img] = findAll(rendered.hast, 'img');
 
     expect(img?.properties).toMatchObject({
-      src: '/assets/architecture.png?from=guide/getting-started',
+      src: '/assets/architecture.png?from=guide',
       width: 1200,
       height: 630,
     });
+  });
+
+  /**
+   * ⚠️ THE CONTAINMENT GAP, AND IT IS THE REASON THE ARGUMENT CHANGED SHAPE.
+   *
+   * `remarkDocLinks` visits `link` and `definition` and never `image`, so an
+   * image src reached the resolver EXACTLY AS AUTHORED while every link on the
+   * same page was folded and bounded by `foldSegments`. A resolver that joins
+   * its argument onto a directory — which is the documented job — was therefore
+   * reachable with `../../../../.env`.
+   */
+  it('folds an image src against the page directory before the resolver sees it', async () => {
+    const seen: string[] = [];
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+      imageResolver: (src) => {
+        seen.push(src);
+        return { src: '/ok.png' };
+      },
+    });
+
+    await renderer.render(makeDoc('![a](../assets/architecture.png)\n'));
+
+    // From `guide/getting-started.md`, `../assets/…` folds to `assets/…`.
+    expect(seen).toEqual(['assets/architecture.png']);
+  });
+
+  it('refuses an image src that climbs above the content root', async () => {
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+      imageResolver: (src) => ({ src }),
+    });
+
+    await expect(
+      renderer.render(makeDoc('![a](../../../../.env)\n')),
+    ).rejects.toThrow(/climbs above the content root/);
+  });
+
+  it('leaves an absolute or external image src alone', async () => {
+    const seen: string[] = [];
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+      imageResolver: (src) => {
+        seen.push(src);
+        return undefined;
+      },
+    });
+
+    await renderer.render(
+      makeDoc('![a](/logo.png)\n\n![b](https://example.com/x.png)\n'),
+    );
+
+    expect(seen).toEqual(['/logo.png', 'https://example.com/x.png']);
   });
 
   it('does not pass raw HTML through', async () => {

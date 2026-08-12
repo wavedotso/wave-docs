@@ -221,6 +221,33 @@ export interface SearchRecord {
  * ---------------------------------------------------------------------- */
 
 /**
+ * Where a link or an image was authored: the route AND the directory.
+ *
+ * ⚠️ BOTH, AND THE DIFFERENCE IS THE ENTIRE REASON THIS IS AN OBJECT. `api.md`
+ * and `api/index.md` produce IDENTICAL route segments — `['api']` — and resolve
+ * `./auth.md` to different pages, because one folds against the content root
+ * and the other against `api/`. Only the on-disk path separates them.
+ *
+ * The resolvers used to receive route segments alone, so a custom resolver was
+ * handed strictly less than the built-in one had and could not get
+ * `./sibling.md` right on any directory index page. No rule recovers the
+ * directory from the route, which is why the fix had to be the argument rather
+ * than a note in the docs.
+ */
+export interface DocLinkContext {
+  /** Route segments of the containing document, e.g. `['api', 'auth']`. */
+  segments: string[];
+  /**
+   * Directory segments of the SOURCE FILE, relative to the content root:
+   * `['api']` for both `api/auth.md` and `api/auth/index.md`. This is what a
+   * relative href folds against.
+   */
+  dirSegments: string[];
+  /** The source path, e.g. `'api/auth.md'`. For error messages. */
+  relativePath: string;
+}
+
+/**
  * Resolve an internal markdown link target to a route.
  *
  * Called for every relative link found in the source. Returning `undefined`
@@ -230,8 +257,7 @@ export interface SearchRecord {
 export type LinkResolver = (
   /** The raw href as authored, e.g. `'./api/auth.md'`. */
   href: string,
-  /** Segments of the document containing the link. */
-  from: string[],
+  from: DocLinkContext,
 ) => string | undefined;
 
 /**
@@ -239,10 +265,17 @@ export type LinkResolver = (
  *
  * Dimensions are read at build time because markdown carries none and
  * `next/image` refuses to render without them (short of `fill`).
+ *
+ * ⚠️ `src` ARRIVES FOLDED AND CONTAINED. A `../` chain is resolved against
+ * `from.dirSegments` before this is called, and one that climbs above the
+ * content root throws instead of reaching you — so an implementation that joins
+ * this onto a filesystem path is not handing a document author a way to read
+ * `../../../../.env`. That was not true before: images skipped folding
+ * entirely and arrived exactly as authored.
  */
 export type ImageResolver = (
   src: string,
-  from: string[],
+  from: DocLinkContext,
 ) =>
   | Promise<{ src: string; width?: number; height?: number } | undefined>
   | { src: string; width?: number; height?: number }
