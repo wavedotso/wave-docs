@@ -8,9 +8,15 @@
  *
  * Everything is plain CSS driven by `--wave-docs-*` custom properties, with no
  * `@apply` anywhere: Tailwind is an *optional* peer dependency, and a
- * stylesheet that explodes without it would be a broken promise. Retheme
- * by redefining the tokens in your own `:root`; restyle by overriding the
- * classes — both win on source order, since ours live in `@layer components`.
+ * stylesheet that explodes without it would be a broken promise.
+ *
+ * Retheme by redefining the tokens in your own `:root`; restyle by overriding
+ * the classes. Both win, and NOT because of source order — everything this file
+ * declares lives in a `@layer`, and unlayered CSS beats every layer regardless
+ * of specificity. That distinction is the whole fix: the dark token block is
+ * `:root:not([data-theme='light'])`, which is (0,2,0), so an unlayered `:root`
+ * at (0,1,0) used to lose no matter where it was loaded — the cascade never got
+ * as far as order. A consumer had to write `:root:root:root` to outrank us.
  *
  * `@tailwindcss/typography` is deliberately not used. `.prose` pins
  * `max-width: 65ch` — wrong inside a three-column docs shell — and styles
@@ -23,6 +29,11 @@
  * in the app: a consumer-side `@source "../node_modules/@waveso/docs"` hardcodes
  * the relative depth of node_modules and breaks under pnpm's nested store. */
 @source "./";
+
+/* Explicit, so the order does not silently depend on which block appears
+ * first. `theme` holds the tokens, `base` the element resets, `components`
+ * the classes. A consumer's own unlayered CSS outranks all three. */
+@layer theme, base, components;
 
 /* ---------------------------------------------------------------------------
  * Tokens
@@ -50,53 +61,88 @@
  * breadcrumb, which lands on `accent-subtle` in the highlighted result, and a
  * lighter tint there would force `fg-subtle` up into `fg-muted`.
  */
-:root {
-  --wave-docs-bg: oklch(1 0 0);
-  --wave-docs-bg-subtle: oklch(0.985 0.002 260);
-  --wave-docs-fg: oklch(0.25 0.02 262);
-  --wave-docs-fg-muted: oklch(0.45 0.02 262);
-  --wave-docs-fg-subtle: oklch(0.54 0.015 262);
-  --wave-docs-border: oklch(0.91 0.006 262);
-  --wave-docs-border-strong: oklch(0.84 0.008 262);
+@layer theme {
+  /* Layered so a consumer's unlayered `:root` outranks these without having
+   * to out-specify `:root:not([data-theme='light'])`. Inside this layer the
+   * usual rules still apply, so the dark blocks keep beating the light one. */
+  :root {
+    --wave-docs-bg: oklch(1 0 0);
+    --wave-docs-bg-subtle: oklch(0.985 0.002 260);
+    --wave-docs-fg: oklch(0.25 0.02 262);
+    --wave-docs-fg-muted: oklch(0.45 0.02 262);
+    --wave-docs-fg-subtle: oklch(0.54 0.015 262);
+    --wave-docs-border: oklch(0.91 0.006 262);
+    --wave-docs-border-strong: oklch(0.84 0.008 262);
 
-  /* Wave Blue #0074DE, darkened to #006EC8: the brand value clears 4.5:1 on
-   * white but only 4.26:1 on `accent-subtle`, which is what the active sidebar
-   * link is painted on. */
-  --wave-docs-accent: oklch(0.53 0.17 248);
-  --wave-docs-accent-hover: oklch(0.46 0.17 248);
-  --wave-docs-accent-fg: oklch(0.99 0 0);
-  --wave-docs-accent-subtle: oklch(0.96 0.025 248);
+    /* Wave Blue #0074DE, darkened to #006EC8: the brand value clears 4.5:1 on
+     * white but only 4.26:1 on `accent-subtle`, which is what the active sidebar
+     * link is painted on. */
+    --wave-docs-accent: oklch(0.53 0.17 248);
+    --wave-docs-accent-hover: oklch(0.46 0.17 248);
+    --wave-docs-accent-fg: oklch(0.99 0 0);
+    --wave-docs-accent-subtle: oklch(0.96 0.025 248);
 
-  --wave-docs-code-bg: oklch(0.97 0.003 262);
-  --wave-docs-code-fg: oklch(0.32 0.03 300);
-  --wave-docs-code-block-bg: oklch(0.985 0.002 260);
+    --wave-docs-code-bg: oklch(0.97 0.003 262);
+    --wave-docs-code-fg: oklch(0.32 0.03 300);
+    --wave-docs-code-block-bg: oklch(0.985 0.002 260);
 
-  /* Each accent is the label colour on its own tinted background, so each one
-   * is a 4.5:1 pair in its own right — not merely legible against the page. */
-  --wave-docs-callout-note: oklch(0.53 0.17 248);
-  --wave-docs-callout-note-bg: oklch(0.97 0.02 248);
-  --wave-docs-callout-tip: oklch(0.52 0.13 156);
-  --wave-docs-callout-tip-bg: oklch(0.97 0.03 156);
-  --wave-docs-callout-important: oklch(0.55 0.19 300);
-  --wave-docs-callout-important-bg: oklch(0.97 0.025 300);
-  --wave-docs-callout-warning: oklch(0.53 0.14 72);
-  --wave-docs-callout-warning-bg: oklch(0.97 0.04 82);
-  --wave-docs-callout-caution: oklch(0.55 0.2 24);
-  --wave-docs-callout-caution-bg: oklch(0.97 0.025 24);
+    /* Each accent is the label colour on its own tinted background, so each one
+     * is a 4.5:1 pair in its own right — not merely legible against the page. */
+    --wave-docs-callout-note: oklch(0.53 0.17 248);
+    --wave-docs-callout-note-bg: oklch(0.97 0.02 248);
+    --wave-docs-callout-tip: oklch(0.52 0.13 156);
+    --wave-docs-callout-tip-bg: oklch(0.97 0.03 156);
+    --wave-docs-callout-important: oklch(0.55 0.19 300);
+    --wave-docs-callout-important-bg: oklch(0.97 0.025 300);
+    --wave-docs-callout-warning: oklch(0.53 0.14 72);
+    --wave-docs-callout-warning-bg: oklch(0.97 0.04 82);
+    --wave-docs-callout-caution: oklch(0.55 0.2 24);
+    --wave-docs-callout-caution-bg: oklch(0.97 0.025 24);
 
-  --wave-docs-radius: 0.5rem;
-  --wave-docs-radius-sm: 0.375rem;
-  --wave-docs-header-height: 4rem;
-  --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, "Liberation Mono", monospace;
+    --wave-docs-radius: 0.5rem;
+    --wave-docs-radius-sm: 0.375rem;
+    --wave-docs-header-height: 4rem;
+    --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+      Consolas, "Liberation Mono", monospace;
 
-  /* Focus ring, shared by every interactive thing in the package. */
-  --wave-docs-ring: 0 0 0 2px var(--wave-docs-bg),
-    0 0 0 4px var(--wave-docs-accent);
-}
+    /* Focus ring, shared by every interactive thing in the package. */
+    --wave-docs-ring: 0 0 0 2px var(--wave-docs-bg),
+      0 0 0 4px var(--wave-docs-accent);
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --wave-docs-bg: oklch(0.19 0.015 265);
+      --wave-docs-bg-subtle: oklch(0.23 0.015 265);
+      --wave-docs-fg: oklch(0.93 0.008 265);
+      --wave-docs-fg-muted: oklch(0.72 0.014 265);
+      --wave-docs-fg-subtle: oklch(0.64 0.015 265);
+      --wave-docs-border: oklch(0.31 0.014 265);
+      --wave-docs-border-strong: oklch(0.4 0.016 265);
+
+      --wave-docs-accent: oklch(0.72 0.14 248);
+      --wave-docs-accent-hover: oklch(0.8 0.12 248);
+      --wave-docs-accent-fg: oklch(0.18 0.02 265);
+      --wave-docs-accent-subtle: oklch(0.26 0.06 248);
+
+      --wave-docs-code-bg: oklch(0.26 0.016 265);
+      --wave-docs-code-fg: oklch(0.86 0.04 300);
+      --wave-docs-code-block-bg: oklch(0.17 0.015 265);
+
+      --wave-docs-callout-note: oklch(0.75 0.13 248);
+      --wave-docs-callout-note-bg: oklch(0.27 0.05 248);
+      --wave-docs-callout-tip: oklch(0.78 0.14 156);
+      --wave-docs-callout-tip-bg: oklch(0.27 0.05 156);
+      --wave-docs-callout-important: oklch(0.76 0.14 300);
+      --wave-docs-callout-important-bg: oklch(0.28 0.06 300);
+      --wave-docs-callout-warning: oklch(0.82 0.14 82);
+      --wave-docs-callout-warning-bg: oklch(0.29 0.05 72);
+      --wave-docs-callout-caution: oklch(0.72 0.16 24);
+      --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
+    }
+  }
+
+  :root[data-theme='dark'] {
     --wave-docs-bg: oklch(0.19 0.015 265);
     --wave-docs-bg-subtle: oklch(0.23 0.015 265);
     --wave-docs-fg: oklch(0.93 0.008 265);
@@ -125,41 +171,11 @@
     --wave-docs-callout-caution: oklch(0.72 0.16 24);
     --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
   }
+
+  /* ---------------------------------------------------------------------------
+   * Base
+   * ------------------------------------------------------------------------ */
 }
-
-:root[data-theme='dark'] {
-  --wave-docs-bg: oklch(0.19 0.015 265);
-  --wave-docs-bg-subtle: oklch(0.23 0.015 265);
-  --wave-docs-fg: oklch(0.93 0.008 265);
-  --wave-docs-fg-muted: oklch(0.72 0.014 265);
-  --wave-docs-fg-subtle: oklch(0.64 0.015 265);
-  --wave-docs-border: oklch(0.31 0.014 265);
-  --wave-docs-border-strong: oklch(0.4 0.016 265);
-
-  --wave-docs-accent: oklch(0.72 0.14 248);
-  --wave-docs-accent-hover: oklch(0.8 0.12 248);
-  --wave-docs-accent-fg: oklch(0.18 0.02 265);
-  --wave-docs-accent-subtle: oklch(0.26 0.06 248);
-
-  --wave-docs-code-bg: oklch(0.26 0.016 265);
-  --wave-docs-code-fg: oklch(0.86 0.04 300);
-  --wave-docs-code-block-bg: oklch(0.17 0.015 265);
-
-  --wave-docs-callout-note: oklch(0.75 0.13 248);
-  --wave-docs-callout-note-bg: oklch(0.27 0.05 248);
-  --wave-docs-callout-tip: oklch(0.78 0.14 156);
-  --wave-docs-callout-tip-bg: oklch(0.27 0.05 156);
-  --wave-docs-callout-important: oklch(0.76 0.14 300);
-  --wave-docs-callout-important-bg: oklch(0.28 0.06 300);
-  --wave-docs-callout-warning: oklch(0.82 0.14 82);
-  --wave-docs-callout-warning-bg: oklch(0.29 0.05 72);
-  --wave-docs-callout-caution: oklch(0.72 0.16 24);
-  --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
-}
-
-/* ---------------------------------------------------------------------------
- * Base
- * ------------------------------------------------------------------------ */
 
 @layer base {
   html {

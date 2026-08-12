@@ -290,14 +290,56 @@ Raw HTML in the source is **dropped**, not passed through. `rehype-raw` is not i
 
 A bare YouTube URL on its own line becomes a click-to-load facade: one ~15 KB thumbnail instead of ~717 KB of embed and player JavaScript on page load. A labelled link keeps its label and stays a link.
 
-Sixteen grammars load by default — what technical documentation actually contains:
+Eighteen grammars load by default — what technical documentation actually contains:
 
 ```
 typescript  tsx  javascript  jsx  json  shellscript  css  html
-markdown    yaml  diff  sql  python  go  rust  prisma
+markdown    yaml  diff  sql  python  go  rust  prisma  ini  toml
 ```
 
+A ```` ```cfg ```` fence (or ```` ```conf ````) uses the `ini` grammar, because
+the fence an author types follows the filename — nobody writes ```` ```ini ````
+above a file called `server.cfg`.
+
 Anything outside that set falls back to plain text rather than throwing. Pass `langs` to change the set, or `highlighter` to supply your own.
+
+## Theming
+
+Every colour is a `--wave-docs-*` custom property. Redefine the ones you want in
+your own `:root`, after the import:
+
+```css
+@import '@waveso/docs/styles.css';
+
+:root {
+  --wave-docs-accent: oklch(0.55 0.2 265);
+  --wave-docs-bg-subtle: oklch(0.98 0.004 265);
+}
+```
+
+That works because **everything this stylesheet declares lives in a `@layer`** —
+`theme` for the tokens, `base` for element resets, `components` for the classes —
+and unlayered CSS outranks every layer regardless of specificity.
+
+The distinction matters. The dark tokens are declared as
+`:root:not([data-theme='light'])`, which is specificity (0,2,0). Before the
+layers, an unlayered `:root` at (0,1,0) lost *no matter where it was loaded* —
+the cascade never reached source order, and overriding meant writing
+`:root:root:root`. Now source order and layering settle it, and a plain `:root`
+is enough.
+
+Dark mode follows the OS by default and `data-theme` overrides it in both
+directions: `[data-theme='light']` opts out of a dark system,
+`[data-theme='dark']` opts into dark on a light one.
+
+To restyle rather than retheme, override the classes — `.wave-docs-prose`,
+`.wave-docs-skip-link`, and the rest — from your own unlayered CSS.
+
+> [!NOTE]
+> If you retheme, re-check contrast. `src/styles.test.ts` asserts every
+> foreground/background pair the shipped tokens compose clears WCAG 1.4.3
+> (4.5:1); none of the text here is "large" in the WCAG sense, so 3:1 is never
+> enough.
 
 ## Search
 

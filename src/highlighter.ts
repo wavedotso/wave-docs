@@ -39,6 +39,32 @@ export type DocsHighlighter = Awaited<ReturnType<typeof createHighlighterCore>>;
  * Every entry is a static `import()` specifier: that is what lets a bundler
  * see the dependency without pulling the full bundle.
  */
+/**
+ * The `ini` grammar, with `cfg` and `conf` registered as aliases of it.
+ *
+ * ⚠️ SHIKI RESOLVES A FENCE AGAINST A GRAMMAR'S OWN ALIASES, not against the
+ * keys of {@link LANG_LOADERS}. `ini` ships exactly one alias, `properties`, so
+ * ```cfg threw `Language 'cfg' not found` and `fallbackLanguage` rendered the
+ * block as plain text. Loading the grammar under a `cfg` key would not have
+ * helped — the lookup that fails is Shiki's, not ours.
+ *
+ * It matters because the fence an author types follows the filename. A FiveM
+ * docs site is mostly `server.cfg`, and nobody writes ```ini above a file
+ * called `server.cfg`.
+ *
+ * One function object, shared by every key that wants it: the dedup below is by
+ * loader identity, so `langs: ['ini', 'cfg']` still loads the grammar once.
+ */
+const loadIni: LanguageInput = async () => {
+  const loaded = (await import('@shikijs/langs/ini')).default;
+  const grammars = Array.isArray(loaded) ? loaded : [loaded];
+  return grammars.map((grammar) =>
+    grammar.name === 'ini'
+      ? { ...grammar, aliases: [...(grammar.aliases ?? []), 'cfg', 'conf'] }
+      : grammar,
+  );
+};
+
 const LANG_LOADERS = {
   typescript: () => import('@shikijs/langs/typescript'),
   ts: () => import('@shikijs/langs/typescript'),
@@ -66,6 +92,11 @@ const LANG_LOADERS = {
   rust: () => import('@shikijs/langs/rust'),
   rs: () => import('@shikijs/langs/rust'),
   prisma: () => import('@shikijs/langs/prisma'),
+  ini: loadIni,
+  cfg: loadIni,
+  conf: loadIni,
+  properties: loadIni,
+  toml: () => import('@shikijs/langs/toml'),
 } satisfies Record<string, LanguageInput>;
 
 /** Theme loaders. Same static-import constraint as {@link LANG_LOADERS}. */
@@ -126,6 +157,8 @@ export const DEFAULT_DOCS_LANGS: readonly DocsLang[] = [
   'go',
   'rust',
   'prisma',
+  'ini',
+  'toml',
 ];
 
 /** Default theme pair. */
