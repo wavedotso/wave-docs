@@ -64,9 +64,15 @@ describe('extractSearchRecords', () => {
     expect(lead).toBeDefined();
     expect(lead?.heading).toBe('Authentication');
     expect(lead?.title).toBe('Authentication');
-    expect(lead?.titles).toStrictEqual([]);
+    expect(lead?.ancestors).toStrictEqual([]);
     expect(lead?.href).toBe('/docs/api/auth');
-    expect(lead?.id).toBe('/docs/api/auth');
+    /*
+     * THE ID IS THE SLUG AND THE HREF CARRIES `basePath` — the difference is
+     * the point. Storing the route twice per record inflated the one artifact
+     * this package is sold on the size of, and tied every record's identity to
+     * a base path a site is free to change.
+     */
+    expect(lead?.id).toBe('api/auth');
     // The `h1` text itself is not prose; the lead carries what follows it.
     expect(lead?.text).toMatch(/^Wave signs every request/);
   });
@@ -75,9 +81,11 @@ describe('extractSearchRecords', () => {
     const byAnchor = new Map(
       records.map((record) => [record.href.split('#')[1], record]),
     );
-    expect(byAnchor.get('installation')?.titles).toStrictEqual([]);
-    expect(byAnchor.get('options')?.titles).toStrictEqual(['Installation']);
-    expect(byAnchor.get('options-1')?.titles).toStrictEqual(['Configuration']);
+    expect(byAnchor.get('installation')?.ancestors).toStrictEqual([]);
+    expect(byAnchor.get('options')?.ancestors).toStrictEqual(['Installation']);
+    expect(byAnchor.get('options-1')?.ancestors).toStrictEqual([
+      'Configuration',
+    ]);
   });
 
   it('drops code blocks but keeps inline code', () => {
@@ -170,7 +178,7 @@ describe('buildSearchIndex', () => {
     expect(top?.title).toBe('Authentication');
     expect(typeof top?.href).toBe('string');
     expect(typeof top?.heading).toBe('string');
-    expect(Array.isArray(top?.titles)).toBe(true);
+    expect(Array.isArray(top?.ancestors)).toBe(true);
   });
 
   it('combines terms with AND', () => {

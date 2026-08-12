@@ -13,7 +13,6 @@
 
 import type MiniSearch from 'minisearch';
 import type {
-  ComponentType,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
@@ -25,6 +24,17 @@ import { createPortal } from 'react-dom';
 // configuration both halves must agree on carries no Node imports at all.
 import { SEARCH_INDEX_OPTIONS } from '../search-options.js';
 import type { SearchRecord } from '../types.js';
+/*
+ * ⚠️ ONE LINK CONTRACT FOR THE WHOLE PACKAGE. This file used to declare its own
+ * `SearchLinkProps`, a strict subset of `DocsLinkProps` — so the package
+ * published two answers to "what must a link component accept", and a wrapper
+ * satisfying one carried no guarantee about the other. `sidebar.tsx` already
+ * reached across for the shared type; the dialog was the outlier.
+ *
+ * A type-only import, so nothing about the markdown layer is pulled into this
+ * client bundle.
+ */
+import type { DocsLinkComponent } from './markdown-components.js';
 
 /**
  * Tab stops inside the dialog. Every clause excludes `tabindex="-1"`: the
@@ -43,22 +53,6 @@ const FOCUSABLE_SELECTOR = [
   .map((selector) => `${selector}:not([tabindex="-1"])`)
   .join(', ');
 
-/** Props a caller-supplied link component must accept. */
-export interface SearchLinkProps {
-  href: string;
-  className?: string;
-  /**
-   * Always `-1`. The listbox is driven by `aria-activedescendant` with focus
-   * parked in the input, so a result that is a tab stop lets Tab walk out of
-   * the combobox — arrow keys and Enter then stop working while the highlight
-   * still claims to be somewhere else. Declared here because `next/link`
-   * renders a bare `<a href>`, which the focus trap would otherwise count.
-   */
-  tabIndex?: number;
-  onClick?: (event: ReactMouseEvent<HTMLAnchorElement>) => void;
-  children: ReactNode;
-}
-
 export interface SearchDialogProps {
   /**
    * URL of the serialised index, e.g. `/search-index.json`. Whatever
@@ -75,7 +69,7 @@ export interface SearchDialogProps {
    * Optional link component for results, e.g. `next/link`, so hovering a hit
    * prefetches the page. Results fall back to a plain anchor.
    */
-  Link?: ComponentType<SearchLinkProps>;
+  Link?: DocsLinkComponent;
   /** Trigger button label. Defaults to `'Search'`. */
   triggerLabel?: string;
   /** Input placeholder. Defaults to `'Search documentation'`. */
@@ -93,7 +87,7 @@ interface SearchHit {
   id: string;
   title: string;
   heading: string;
-  titles: string[];
+  ancestors: string[];
   href: string;
 }
 
@@ -435,7 +429,7 @@ function SearchResultOption({
   isActive: boolean;
   onActivate: () => void;
   onSelect: (hit: SearchHit) => void;
-  Link?: ComponentType<SearchLinkProps>;
+  Link?: DocsLinkComponent;
 }): ReactNode {
   function handleClick(event: ReactMouseEvent<HTMLAnchorElement>): void {
     // Leave modified clicks to the browser: new tab, new window, download.
@@ -591,7 +585,7 @@ async function loadIndex(url: string): Promise<MiniSearch<SearchRecord>> {
 function toSearchHit(result: unknown): SearchHit | undefined {
   if (typeof result !== 'object' || result === null) return undefined;
   const row: Record<string, unknown> = result as Record<string, unknown>;
-  const { id, title, heading, href, titles } = row;
+  const { id, title, heading, href, ancestors } = row;
   if (typeof id !== 'string') return undefined;
   if (typeof title !== 'string') return undefined;
   if (typeof heading !== 'string') return undefined;
@@ -601,8 +595,8 @@ function toSearchHit(result: unknown): SearchHit | undefined {
     title,
     heading,
     href,
-    titles: Array.isArray(titles)
-      ? titles.filter((entry): entry is string => typeof entry === 'string')
+    ancestors: Array.isArray(ancestors)
+      ? ancestors.filter((entry): entry is string => typeof entry === 'string')
       : [],
   };
 }
@@ -612,12 +606,12 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
 }
 
 /**
- * Page title first, then the ancestor headings: `titles` deliberately excludes
+ * Page title first, then the ancestor headings: `ancestors` deliberately excludes
  * the page title so the index does not carry it twice.
  */
 function toBreadcrumbs(hit: SearchHit): Array<{ key: string; text: string }> {
   let trail = '';
-  return [hit.title, ...hit.titles].map((text) => {
+  return [hit.title, ...hit.ancestors].map((text) => {
     trail = trail === '' ? text : `${trail}/${text}`;
     return { key: trail, text };
   });

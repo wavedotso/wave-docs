@@ -29,7 +29,7 @@ export interface DocFrontmatter {
   description?: string;
   /**
    * Sidebar label, when it should differ from {@link DocFrontmatter.title}.
-   * Sidebars are narrow; page titles are not.
+   * Sidebars are narrow; page ancestors are not.
    */
   label?: string;
   /**
@@ -202,14 +202,30 @@ export interface RenderedDoc<
  * deep link is the point.
  */
 export interface SearchRecord {
-  /** Stable id, `slug#anchor`. */
+  /**
+   * Stable id: `slug#anchor`, or the bare slug for a page's lead section.
+   *
+   * ⚠️ NOT THE `href`, WHICH IS WHAT IT USED TO BE. Two reasons, and both are
+   * about the shipped `search-index.json` rather than about tidiness. It
+   * carried the whole route twice per record, on the one artifact the README
+   * sells on download size. And an href embeds `basePath`, so a site moving
+   * from `/docs` to `/reference` changed the identity of every record for no
+   * reason. A slug survives that.
+   */
   id: string;
   /** Page title. */
   title: string;
   /** Heading text for this section; equals `title` for the lead section. */
   heading: string;
-  /** Ancestor headings, outermost first, for breadcrumbed results. */
-  titles: string[];
+  /**
+   * Ancestor headings, outermost first.
+   *
+   * NAMED FOR WHAT IT IS, not for what the dialog does with it. This was
+   * `titles`, which sat between `title` and `heading` and meant neither — three
+   * fields whose names differed by a plural. The UI turning these into
+   * breadcrumbs is the UI's decision; the record is data.
+   */
+  ancestors: string[];
   /** Route including the anchor, e.g. `/docs/api/auth#bearer-token`. */
   href: string;
   /** Plain text of the section, truncated to the configured excerpt length. */

@@ -25,12 +25,12 @@ import type { SearchRecord } from './types.js';
  * usable handful.
  */
 export const SEARCH_INDEX_OPTIONS: MiniSearchOptions<SearchRecord> = {
-  fields: ['title', 'heading', 'text', 'titles'],
-  storeFields: ['title', 'heading', 'titles', 'href'],
+  fields: ['title', 'heading', 'text', 'ancestors'],
+  storeFields: ['title', 'heading', 'ancestors', 'href'],
   searchOptions: {
     prefix: true,
     fuzzy: 0.2,
     combineWith: 'AND',
-    boost: { title: 4, heading: 3, text: 2, titles: 1 },
+    boost: { title: 4, heading: 3, text: 2, ancestors: 1 },
   },
 };

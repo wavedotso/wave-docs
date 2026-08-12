@@ -101,7 +101,16 @@ describe('createDocsSource', () => {
     expect(page?.content).not.toContain('title:');
   });
 
-  it('ignores dotfiles, non-markdown files and underscore directories', async () => {
+  /**
+   * ⚠️ `_scratch.md` IS IN THE FIXTURE TREE AND MUST NOT APPEAR BELOW.
+   *
+   * `isIgnoredDir` skipped `_` and `.`; `isPageFile` skipped only `.`. So
+   * `_drafts/` was excluded while `_notes.md` beside it published — routed, in
+   * the sidebar, in the sitemap, in the search index. The underscore is the only
+   * way to keep a markdown file in the tree unpublished, and it silently did
+   * not work for the file form.
+   */
+  it('ignores dotfiles, non-markdown files, and underscore files and directories', async () => {
     const slugs = (await source.all()).map((file) => file.slug);
     expect(slugs).toEqual([
       '',

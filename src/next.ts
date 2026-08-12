@@ -492,7 +492,9 @@ export function createDocsRoute<
         // this, moving a page would fail the build on every link that still
         // points at its old name — the exact case `aliases` exists to survive.
         for (const alias of file.frontmatter.aliases ?? []) {
-          knownRoutes.add(toAliasRoute(alias, config.basePath, file));
+          knownRoutes.add(
+            toAliasRoute(alias, config.basePath, file.relativePath),
+          );
         }
       }
     }));
@@ -782,7 +784,7 @@ export async function createDocsRedirects(
 
   for (const file of files) {
     for (const alias of file.frontmatter.aliases ?? []) {
-      const route = toAliasRoute(alias, resolved.basePath, file);
+      const route = toAliasRoute(alias, resolved.basePath, file.relativePath);
 
       const page = routes.get(route);
       if (page !== undefined) {

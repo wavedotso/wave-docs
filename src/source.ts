@@ -519,12 +519,19 @@ function isVisibleIn(file: DocFile, config: ResolvedDocsConfig): boolean {
 export function toAliasRoute(
   alias: string,
   basePath: string,
-  file: DocFile,
+  /**
+   * The source path, for the error. A STRING rather than the whole `DocFile`
+   * it used to take: this function dereferenced exactly one property of it, and
+   * demanding the object meant a cache reader or a manifest-driven redirect
+   * table had to fabricate a `DocFile` to agree with the package about which
+   * routes exist. That is the reason it is exported at all.
+   */
+  sourceLabel: string,
 ): string {
   const trimmed = alias.trim().replace(/^\/+/, '').replace(/\/+$/, '');
   if (trimmed === '') {
     throw new Error(
-      `@waveso/docs: ${file.relativePath} has an empty entry in its ` +
+      `@waveso/docs: ${sourceLabel} has an empty entry in its ` +
         '`aliases` frontmatter. Each alias is a former URL for this page, ' +
         'relative to the docs base path — e.g. `aliases: [quickstart]`.',
     );
@@ -536,9 +543,22 @@ export function toAliasRoute(
  * Naming
  * ---------------------------------------------------------------------- */
 
+/**
+ * ⚠️ `_` AND `.` BOTH, MATCHING `isIgnoredDir` BELOW — which is what this did
+ * NOT do. A leading dot was skipped and a leading underscore was not, so
+ * `_drafts/` was excluded while `_notes.md` beside it was published: routed,
+ * listed in the sidebar, written into the sitemap, indexed for search.
+ *
+ * The asymmetry cannot have been intentional. There is no `ignore` option in
+ * `DocsConfig`, and `draft: true` still demands a valid `title`, so the
+ * underscore is the ONLY way to keep a markdown file in the tree without
+ * publishing it — and it silently did not work for the half people reach for
+ * first. Docusaurus and Nextra skip both forms.
+ */
 function isPageFile(name: string): boolean {
   return (
     !name.startsWith('.') &&
+    !name.startsWith('_') &&
     name.endsWith(PAGE_EXTENSION) &&
     name.length > PAGE_EXTENSION.length
   );

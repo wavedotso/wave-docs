@@ -41,7 +41,11 @@ Three things follow from that shape, and they are the reasons to choose this ove
 pnpm add @waveso/docs
 ```
 
-`react`, `react-dom` and `zod` are required peers. `next`, `tailwindcss` and `image-size` are optional — install only what you use.
+`react`, `react-dom` and `zod` are required peers; `next` and `tailwindcss` are optional — install only what you use.
+
+The `zod` floor is `4.4.3`, not `^4.0.0`: the built-in frontmatter schema calls `.exactOptional()` at module scope, so an earlier 4.x throws on import of `@waveso/docs/frontmatter` with nothing in the message naming zod.
+
+There is no `image-size` peer. An `imageResolver` you write is welcome to read dimensions with it — but it is your dependency, in your own `package.json`. It was declared here as an optional peer, which installs nothing and therefore does not make `await import('image-size')` resolve for you; the declaration only looked like it helped.
 
 ## Quick start
 

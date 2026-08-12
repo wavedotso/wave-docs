@@ -118,7 +118,7 @@ interface PendingSection {
   heading: string;
   /** Anchor id, or `undefined` for the lead section, which links to the top. */
   anchor: string | undefined;
-  titles: string[];
+  ancestors: string[];
   parts: string[];
 }
 
@@ -151,24 +151,36 @@ export function extractSearchRecords(
   const excerptLength = options.excerptLength ?? DEFAULT_EXCERPT_LENGTH;
   const title = doc.frontmatter.title;
   const records: SearchRecord[] = [];
+  // `RenderedDoc` carries segments, not a slug; they are the same thing joined.
+  const slug = doc.segments.join('/');
 
   /** Open headings, outermost first, that enclose the current section. */
   const ancestors: Array<{ depth: number; text: string }> = [];
   let section: PendingSection = {
     heading: title,
     anchor: undefined,
-    titles: [],
+    ancestors: [],
     parts: [],
   };
 
   const flush = (): void => {
     const href =
       section.anchor === undefined ? doc.href : `${doc.href}#${section.anchor}`;
+
+    /*
+     * THE SLUG, NOT THE HREF. An href carries `basePath`, so moving a site from
+     * `/docs` to `/reference` changed the identity of every record for no
+     * reason — and storing it here put the whole route in the index twice, on
+     * the one artifact whose download size is the reason this package exists.
+     */
+    const id =
+      section.anchor === undefined ? slug : `${slug}#${section.anchor}`;
+
     records.push({
-      id: href,
+      id,
       title,
       heading: section.heading,
-      titles: section.titles,
+      ancestors: section.ancestors,
       href,
       text: truncateAtWordBoundary(
         collapseWhitespace(section.parts.join(' ')),
@@ -207,7 +219,7 @@ export function extractSearchRecords(
         section = {
           heading,
           anchor,
-          titles: ancestors.map((ancestor) => ancestor.text),
+          ancestors: ancestors.map((ancestor) => ancestor.text),
           parts: [],
         };
         ancestors.push({ depth, text: heading });

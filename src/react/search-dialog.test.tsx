@@ -8,7 +8,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import type { SearchLinkProps } from './search-dialog.js';
+// `SearchLinkProps` is gone. The dialog takes `DocsLinkComponent` — the one
+// link contract the package publishes, which `sidebar.tsx` already used.
+import type { DocsLinkProps } from './markdown-components.js';
 import { SearchDialog } from './search-dialog.js';
 
 describe('SearchDialog', () => {
@@ -28,17 +30,28 @@ describe('SearchDialog', () => {
     expect(html).not.toContain('wave-docs-search-trigger-kbd');
   });
 
-  it('lets an injected link take the tabIndex the listbox requires', () => {
-    // `next/link` renders a bare `<a href>`, which the focus trap counts as a
-    // tab stop unless it carries `tabindex="-1"` — and the dialog can only pass
-    // that if the prop type admits it. Without this member the dialog's own
-    // `tabIndex={-1}` on the `<Link>` branch is a compile error, which is the
-    // guard: `tsc --noEmit` fails before this test ever runs.
-    const props: SearchLinkProps = {
+  /**
+   * ⚠️ THE COMPILER IS THE ASSERTION HERE, and this used to pretend otherwise.
+   *
+   * `next/link` renders a bare `<a href>`, which the focus trap counts as a tab
+   * stop unless it carries `tabindex="-1"` — and the dialog can only pass that
+   * if the prop type admits it. If it does not, the dialog's own
+   * `tabIndex={-1}` on the `<Link>` branch fails to compile and `tsc --noEmit`
+   * stops the build before this file is ever executed.
+   *
+   * The old version ended `expect(props.tabIndex).toBe(-1)` — asserting a
+   * literal it had written two lines above, which cannot fail and reads as
+   * coverage. The type annotation below is the whole test; the runtime check is
+   * that the module imports.
+   */
+  it('accepts a link component carrying the tabIndex the listbox requires', () => {
+    const props: DocsLinkProps = {
       href: '/docs/api',
       tabIndex: -1,
       children: null,
     };
-    expect(props.tabIndex).toBe(-1);
+
+    expect(SearchDialog).toBeTypeOf('function');
+    expect(props.href).toBe('/docs/api');
   });
 });
