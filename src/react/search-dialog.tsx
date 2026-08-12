@@ -123,6 +123,8 @@ export function SearchDialog({
   const listRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const indexRef = useRef<Promise<MiniSearch<SearchRecord>> | null>(null);
+  /** Whether the dialog has ever been open. See the focus effect below. */
+  const hasOpenedRef = useRef(false);
 
   const baseId = useId();
   const listId = `${baseId}-results`;
@@ -190,9 +192,19 @@ export function SearchDialog({
   // Focus into the input on open, back to the trigger on close.
   useEffect(() => {
     if (isOpen) {
+      hasOpenedRef.current = true;
       inputRef.current?.focus();
       return;
     }
+    /*
+     * ⚠️ MOUNT RUNS THIS EFFECT TOO, WITH `isOpen` ALREADY FALSE, so without
+     * this guard "restore focus on close" fired on page load: every docs page
+     * yanked focus onto the search trigger before the reader touched anything,
+     * past the skip link this package ships. And focusing the trigger fires its
+     * `onFocus`, which warms the index — so the 200–500 KB the whole lazy-load
+     * dance in this file exists to defer was fetched on every page view.
+     */
+    if (!hasOpenedRef.current) return;
     const previous = returnFocusRef.current;
     returnFocusRef.current = null;
     // ⌘K on a freshly-loaded page snapshots `document.body`, which is not
@@ -298,12 +310,15 @@ export function SearchDialog({
       setActiveIndex((index) => (index + delta + hits.length) % hits.length);
       return;
     }
-    if (event.key === 'Home' || event.key === 'End') {
-      if (hits.length === 0) return;
-      event.preventDefault();
-      setActiveIndex(event.key === 'Home' ? 0 : hits.length - 1);
-      return;
-    }
+    /*
+     * ⚠️ NO `Home`/`End` BRANCH, AND THAT IS THE POINT. Jumping to the first
+     * and last option is a tempting two lines, but this listbox is driven from
+     * a text input the reader is typing a query into, and the APG's combobox
+     * pattern requires the textbox to keep the standard single-line editing
+     * keys. Swallowing `Home` left no way to reach the start of a query being
+     * corrected — while buying nothing, because the arrow keys above wrap:
+     * ArrowUp from the first option already *is* End.
+     */
     if (event.key === 'Enter') {
       const hit = hits[activeIndex];
       if (hit === undefined) return;
@@ -320,6 +335,16 @@ export function SearchDialog({
         type="button"
         ref={triggerRef}
         className="wave-docs-search-trigger"
+        /*
+         * The hint is a shortcut, not part of the button's name. Named from
+         * content, this button announced as "Search Ctrl K" — and `⌘` reads as
+         * "place of interest sign" on more than one screen reader. The explicit
+         * label pins the name to the label the consumer chose, and
+         * `aria-keyshortcuts` is where the shortcut itself belongs, so nothing
+         * is hidden from a reader, it is just exposed as what it is.
+         */
+        aria-label={triggerLabel}
+        aria-keyshortcuts="Meta+K Control+K"
         onClick={openDialog}
         onPointerEnter={warmIndex}
         onFocus={warmIndex}
@@ -447,24 +472,28 @@ function SearchResultOption({
     onSelect(hit);
   }
 
+  const trail = toBreadcrumbs(hit);
+
   const body = (
     <>
       <span className="wave-docs-search-result-heading">{hit.heading}</span>
-      <span className="wave-docs-search-result-breadcrumb">
-        {toBreadcrumbs(hit).map((crumb, index) => (
-          <span className="wave-docs-search-result-crumb" key={crumb.key}>
-            {index === 0 ? null : (
-              <span
-                className="wave-docs-search-result-crumb-separator"
-                aria-hidden="true"
-              >
-                ›
-              </span>
-            )}
-            {crumb.text}
-          </span>
-        ))}
-      </span>
+      {trail.length === 0 ? null : (
+        <span className="wave-docs-search-result-breadcrumb">
+          {trail.map((crumb, index) => (
+            <span className="wave-docs-search-result-crumb" key={crumb.key}>
+              {index === 0 ? null : (
+                <span
+                  className="wave-docs-search-result-crumb-separator"
+                  aria-hidden="true"
+                >
+                  ›
+                </span>
+              )}
+              {crumb.text}
+            </span>
+          ))}
+        </span>
+      )}
     </>
   );
 
@@ -478,6 +507,16 @@ function SearchResultOption({
       }
       role="option"
       aria-selected={isActive}
+      /*
+       * Named explicitly rather than from its own content. The separators are
+       * `aria-hidden` and the crumbs are adjacent inline spans, so the computed
+       * name ran them together — "InstallationRequirements" — and the visual
+       * `margin-inline` that separates them for a sighted reader contributes
+       * nothing to the accessibility tree. Commas here are what the trail
+       * sounds like read aloud, and `›` stays out of it: more than one screen
+       * reader pronounces it.
+       */
+      aria-label={[hit.heading, ...trail.map((crumb) => crumb.text)].join(', ')}
       // Options are never tab stops in the combobox pattern: focus stays in
       // the input and `aria-activedescendant` does the pointing.
       tabIndex={-1}
@@ -608,8 +647,15 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
 /**
  * Page title first, then the ancestor headings: `ancestors` deliberately excludes
  * the page title so the index does not carry it twice.
+ *
+ * A page's lead record carries `heading === title` and no ancestors (see
+ * `extractSearchRecords`), so its trail would be the one string already printed
+ * above it. "Installation" over "Installation" is not a path, it is a bug that
+ * reads as a rendering glitch — such a hit gets no trail at all.
  */
 function toBreadcrumbs(hit: SearchHit): Array<{ key: string; text: string }> {
+  if (hit.ancestors.length === 0 && hit.heading === hit.title) return [];
+
   let trail = '';
   return [hit.title, ...hit.ancestors].map((text) => {
     trail = trail === '' ? text : `${trail}/${text}`;

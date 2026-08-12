@@ -1,4 +1,14 @@
 /**
+ * Guards on the shipped stylesheet: the contrast of its tokens, and the two
+ * declarations that decide whether the skip link can be seen at all.
+ *
+ * The skip-link rules are asserted here rather than from a mounted component
+ * because jsdom's CSSOM drops `@layer` blocks outright — `getComputedStyle`
+ * reports `position: static; transform: none` for the sheet as shipped, so a
+ * computed-style assertion in a DOM test would pass no matter what the CSS said.
+ *
+ * ---
+ *
  * Contrast guard for the shipped theme.
  *
  * The tokens in `styles.css` are the theme a consumer gets without touching
@@ -155,6 +165,41 @@ describe.each(BLOCK_SELECTORS)('tokens in %s', (selector) => {
     // checker would show, not 4.499999999.
     const ratio = Math.round(contrast(foreground, background) * 100) / 100;
     expect(ratio).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('the skip link', () => {
+  /**
+   * The declarations of a rule, comments stripped — they discuss `display: none`
+   * and would satisfy a `not.toContain` check on their own. The first match
+   * wins, which is the base rule: the only later repeat of a skip-link selector
+   * is inside the reduced-motion query, and it sets nothing but a transition.
+   */
+  function readRule(selector: string): string {
+    const at = css.indexOf(`${selector} {`);
+    expect(at, `${selector} not found in styles.css`).toBeGreaterThan(-1);
+    return readBlock(css, at).replace(/\/\*[\s\S]*?\*\//g, '');
+  }
+
+  it('is moved out of view rather than hidden, so it stays focusable', () => {
+    const resting = readRule('.wave-docs-skip-link');
+
+    expect(resting).toContain('transform: translateY(-150%)');
+    // `display: none` and `visibility: hidden` both remove an element from the
+    // tab order, and a skip link nobody can focus is worse than none.
+    expect(resting).not.toContain('display: none');
+    expect(resting).not.toContain('visibility: hidden');
+  });
+
+  it('comes back into view on plain focus, not only focus-visible', () => {
+    // A host that focuses this link on a client-side route change does so
+    // programmatically, and `:focus-visible` does not match a programmatic focus
+    // that followed a pointer interaction — the reader would have a focused
+    // control parked off-screen with no indicator anywhere on the page.
+    expect(readRule('.wave-docs-skip-link:focus')).toContain(
+      'transform: translateY(0)',
+    );
+    expect(css).not.toContain('.wave-docs-skip-link:focus-visible');
   });
 });
 

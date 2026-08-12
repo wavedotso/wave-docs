@@ -66,7 +66,10 @@ const CALLOUT_ICON_PATHS: Record<CalloutType, readonly string[]> = {
   ],
 };
 
-/** `note` and `caution` draw an enclosing shape before the glyph strokes. */
+/**
+ * `note` is the only glyph whose enclosing shape is not already one of its
+ * paths, so it gets a circle drawn before the strokes.
+ */
 const CALLOUT_ICON_CIRCLE: Partial<Record<CalloutType, boolean>> = {
   note: true,
 };
@@ -96,7 +99,10 @@ export function Callout({
   children,
 }: CalloutProps): ReactNode {
   const kind = normalizeCalloutType(type);
-  const label = title ?? CALLOUT_LABELS[kind];
+  // Blank is absent: `title` arrives as an unvalidated attribute like `type`,
+  // and an empty one leaves the callout with no accessible name at all — the
+  // one thing this component exists to provide.
+  const label = title?.trim() || CALLOUT_LABELS[kind];
 
   return (
     <aside

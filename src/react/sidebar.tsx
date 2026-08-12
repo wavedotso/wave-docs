@@ -41,6 +41,13 @@ function containsActive(node: DocNavNode, pathname: string): boolean {
         (node.href !== undefined && isActiveHref(pathname, node.href)) ||
         node.children.some((child) => containsActive(child, pathname))
       );
+    case 'link':
+      // The same rule `NavList` applies when it decides `aria-current`. A link
+      // node is only external when its href carries a scheme, so
+      // `{ title, href: '/docs/roadmap' }` in meta.json is a real route — and a
+      // group whose active child is one of those has to open, or the current
+      // page is the one entry the reader cannot see.
+      return !node.external && isActiveHref(pathname, node.href);
     default:
       return false;
   }

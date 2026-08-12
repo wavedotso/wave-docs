@@ -1,5 +1,15 @@
 import type { ReactNode } from 'react';
 
+/**
+ * The `id` this link targets, and the one `createDocsRoute` puts on its
+ * `<article>`.
+ *
+ * One constant for both halves: the two files spelled the string independently,
+ * and a skip link pointing at an id nothing carries scrolls nowhere and focuses
+ * nothing — a failure with no symptom until a keyboard user hits it.
+ */
+export const DOCS_CONTENT_ID = 'docs-content';
+
 export interface SkipLinkProps {
   /** Fragment id of the main content region. */
   href?: string | undefined;
@@ -25,7 +35,7 @@ export interface SkipLinkProps {
  * ```
  */
 export function SkipLink({
-  href = '#docs-content',
+  href = `#${DOCS_CONTENT_ID}`,
   className,
   children = 'Skip to content',
 }: SkipLinkProps): ReactNode {

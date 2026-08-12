@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { TocEntry } from '../types.js';
@@ -57,6 +57,20 @@ export function DocsToc({
 }: DocsTocProps): ReactNode {
   const ids = useMemo(() => flattenTocIds(entries), [entries]);
   const [activeId, setActiveId] = useState<string | undefined>(undefined);
+
+  // Forget the highlight when the document changes under us. On a client-side
+  // navigation this component keeps its instance, and heading ids repeat across
+  // pages — `#install` is on half of them — so a retained active id lights up an
+  // entry on a page the reader has not scrolled a pixel of. That is the same lie
+  // the server render refuses to tell. Resetting during render is the supported
+  // way to react to a changed prop, and `sidebar.tsx` re-syncs its groups the
+  // same way; the observer re-fires for every newly observed target, so the real
+  // current entry comes straight back.
+  const lastIds = useRef(ids);
+  if (lastIds.current !== ids) {
+    lastIds.current = ids;
+    setActiveId(undefined);
+  }
 
   useEffect(() => {
     // Bail out where there is nothing to observe or no observer to do it —

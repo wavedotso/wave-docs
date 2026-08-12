@@ -41,7 +41,9 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
   // into a URL. Encoding it keeps a crafted "id" from adding query parameters
   // or escaping the path.
   const safeId = encodeURIComponent(id);
-  const label = title ?? DEFAULT_TITLE;
+  // Blank is absent: `title=""` reaches us the same untrusted way `id` does,
+  // and it would name the button "Play video:" and the frame nothing at all.
+  const label = title?.trim() || DEFAULT_TITLE;
   const rootClassName = ['wave-docs-youtube', className]
     .filter(Boolean)
     .join(' ');

@@ -56,6 +56,7 @@ import type {
   MarkdownComponents,
 } from './react/markdown-components.js';
 import { createMarkdownComponents } from './react/markdown-components.js';
+import { DOCS_CONTENT_ID } from './react/skip-link.js';
 import type { DocsRenderer } from './render.js';
 import { createDocsRenderer } from './render.js';
 import type { DocsSource } from './source.js';
@@ -458,7 +459,7 @@ export function createDocsRoute<
   const config = resolveDocsConfig(options);
   const source = createDocsSource(options);
   const siteUrl = normalizeSiteUrl(options.siteUrl);
-  const contentId = options.contentId ?? 'docs-content';
+  const contentId = options.contentId ?? DOCS_CONTENT_ID;
   const rescanPerRequest =
     options.rescanPerRequest ?? process.env.NODE_ENV !== 'production';
 

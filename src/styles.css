@@ -213,7 +213,15 @@
     text-decoration: none;
   }
 
-  .wave-docs-skip-link:focus-visible {
+  /* `:focus`, not `:focus-visible`. A host that moves focus here on a
+   * client-side route change is focusing it programmatically, and
+   * `:focus-visible` does not match a programmatic focus that followed a
+   * pointer interaction — leaving a focused control parked off-screen with no
+   * indicator anywhere (WCAG 2.4.7). This element is unreachable by pointer
+   * while it is off-screen, so there is no stray-focus-ring case to avoid.
+   * Bootstrap's `.visually-hidden-focusable` and GOV.UK's skip link both use
+   * plain `:focus` for the same reason. */
+  .wave-docs-skip-link:focus {
     transform: translateY(0);
     outline: none;
     box-shadow: var(--wave-docs-ring);

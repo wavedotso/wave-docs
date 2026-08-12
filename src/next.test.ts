@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { isValidElement } from 'react';
 import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 
@@ -222,6 +223,43 @@ describe('createDocsRoute', () => {
     // A production build must not re-read the tree between pages; the content
     // cannot change while it runs, and caching is the whole point.
     expect(JSON.stringify(await built.getPage([]))).toContain('Original body');
+  });
+
+  it('gives the article the id the skip link targets, and makes it focusable', async () => {
+    // The literal, not the constant the adapter imports: this is the published
+    // default, and `SkipLink`'s own test pins the same string on the `href`. Both
+    // now derive from `DOCS_CONTENT_ID`, so the pair cannot drift apart — but a
+    // change to the value itself is a breaking change and has to fail here.
+    //
+    // `tabIndex` matters as much as the id: a fragment link moves the scroll
+    // position and not always the focus, so an unfocusable target leaves a
+    // keyboard reader at the top of the sidebar they were trying to skip.
+    const page = await route.Page({
+      params: Promise.resolve({ slug: ['getting-started'] }),
+    });
+
+    if (!isValidElement<{ id?: string; tabIndex?: number }>(page)) {
+      throw new Error('expected `Page` to return an element');
+    }
+    expect(page.type).toBe('article');
+    expect(page.props.id).toBe('docs-content');
+    expect(page.props.tabIndex).toBe(-1);
+  });
+
+  it('renders no id at all when the consumer turns it off', async () => {
+    const bare = createDocsRoute({ contentDir: BASIC, contentId: false });
+
+    const page = await bare.Page({
+      params: Promise.resolve({ slug: ['getting-started'] }),
+    });
+
+    if (!isValidElement<{ id?: string; tabIndex?: number }>(page)) {
+      throw new Error('expected `Page` to return an element');
+    }
+    // Both halves go together: an id with no `tabIndex` is the stranded-focus
+    // case above, and a `tabIndex` with no id is a tab stop pointing nowhere.
+    expect(page.props.id).toBeUndefined();
+    expect(page.props.tabIndex).toBeUndefined();
   });
 
   it('calls `notFound()` for an unknown slug', async () => {
