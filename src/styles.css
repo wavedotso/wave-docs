@@ -14,21 +14,15 @@
  * the classes. Both win, and NOT because of source order — everything this file
  * declares lives in a `@layer`, and unlayered CSS beats every layer regardless
  * of specificity. That distinction is the whole fix: the dark token block is
- * `:root:not([data-theme='light'])`, which is (0,2,0), so an unlayered `:root`
- * at (0,1,0) used to lose no matter where it was loaded — the cascade never got
- * as far as order. A consumer had to write `:root:root:root` to outrank us.
+ * `:root[data-theme='dark']`, which is (0,2,0), so an unlayered `:root` at
+ * (0,1,0) would lose no matter where it was loaded — the cascade never gets as
+ * far as order. A consumer would have to write `:root:root:root` to outrank us.
  *
  * `@tailwindcss/typography` is deliberately not used. `.prose` pins
  * `max-width: 65ch` — wrong inside a three-column docs shell — and styles
  * `pre`/`code` in direct conflict with Shiki's own output. `.wave-docs-prose`
  * below does the same job without the fight.
  */
-
-/* Register this package's compiled components as Tailwind sources, so a
- * consumer using Tailwind gets any utility class we ship. It belongs here, not
- * in the app: a consumer-side `@source "../node_modules/@waveso/docs"` hardcodes
- * the relative depth of node_modules and breaks under pnpm's nested store. */
-@source "./";
 
 /* Explicit, so the order does not silently depend on which block appears
  * first. `theme` holds the tokens, `base` the element resets, `components`
@@ -38,10 +32,17 @@
 /* ---------------------------------------------------------------------------
  * Tokens
  *
+ * ⚠️ DARK IS OPT-IN, NEVER AUTOMATIC. This sheet paints a region of somebody
+ * else's page, and it cannot see that page's background. Installing the dark
+ * ramp from `prefers-color-scheme` alone put near-white text (1.23:1) on the
+ * white page of every light-only site with a /docs section — and on every site
+ * using next-themes, whose default `attribute="class"` sets `.dark` and never
+ * `data-theme`. So: `[data-theme='dark']` or `.dark` switches, and a host that
+ * genuinely wants to follow the OS says so with `[data-theme='system']`.
+ *
  * The dark block is spelled twice on purpose: `@media` and an attribute
- * selector cannot be combined into one selector list. `data-theme` wins over
- * the OS in both directions — `[data-theme='light']` opts out of a dark system,
- * `[data-theme='dark']` opts into dark on a light one.
+ * selector cannot be combined into one selector list. The two copies are
+ * asserted identical by `src/styles.test.ts`.
  * ------------------------------------------------------------------------ */
 
 /*
@@ -56,16 +57,22 @@
  * ~0.555 and still clear 4.5:1 on `bg-subtle`; `fg-muted` moved down to keep
  * three visibly distinct steps rather than two-and-a-half.
  *
- * The dark ramp is fg (0.93) / fg-muted (0.72) / fg-subtle (0.64), and its
+ * The dark ramp is fg (0.93) / fg-muted (0.72) / fg-subtle (0.665), and its
  * `accent-subtle` sits at 0.26 rather than 0.30 — `fg-subtle` paints the search
  * breadcrumb, which lands on `accent-subtle` in the highlighted result, and a
  * lighter tint there would force `fg-subtle` up into `fg-muted`.
  */
 @layer theme {
   /* Layered so a consumer's unlayered `:root` outranks these without having
-   * to out-specify `:root:not([data-theme='light'])`. Inside this layer the
-   * usual rules still apply, so the dark blocks keep beating the light one. */
+   * to out-specify `:root[data-theme='dark']`. Inside this layer the usual
+   * rules still apply, so the dark blocks keep beating the light one. */
   :root {
+    /* Native scrollbars, form controls and the canvas behind an overscroll are
+     * painted by the UA, not by us; without this they stay light on a dark
+     * page. It is declared alongside the ramp it belongs to, so the two can
+     * never disagree. */
+    color-scheme: light;
+
     --wave-docs-bg: oklch(1 0 0);
     --wave-docs-bg-subtle: oklch(0.985 0.002 260);
     --wave-docs-fg: oklch(0.25 0.02 262);
@@ -84,7 +91,11 @@
 
     --wave-docs-code-bg: oklch(0.97 0.003 262);
     --wave-docs-code-fg: oklch(0.32 0.03 300);
-    --wave-docs-code-block-bg: oklch(0.985 0.002 260);
+    /* Darker than `bg-subtle`: this one has to read as a surface against the
+     * page (1.07:1) rather than merge into it, because it is the only thing
+     * separating a code block from the prose around it apart from a 1px
+     * border. */
+    --wave-docs-code-block-bg: oklch(0.975 0.003 262);
 
     /* Each accent is the label colour on its own tinted background, so each one
      * is a 4.5:1 pair in its own right — not merely legible against the page. */
@@ -94,14 +105,17 @@
     --wave-docs-callout-tip-bg: oklch(0.97 0.03 156);
     --wave-docs-callout-important: oklch(0.55 0.19 300);
     --wave-docs-callout-important-bg: oklch(0.97 0.025 300);
-    --wave-docs-callout-warning: oklch(0.53 0.14 72);
-    --wave-docs-callout-warning-bg: oklch(0.97 0.04 82);
+    --wave-docs-callout-warning: oklch(0.53 0.14 80);
+    --wave-docs-callout-warning-bg: oklch(0.97 0.04 80);
     --wave-docs-callout-caution: oklch(0.55 0.2 24);
     --wave-docs-callout-caution-bg: oklch(0.97 0.025 24);
 
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
-    --wave-docs-header-height: 4rem;
+    /* How far below the top of the scrollport an anchored heading parks —
+     * i.e. the height of the host's sticky header. Set it to 0 if there is no
+     * such header; nothing else in this sheet reads it. */
+    --wave-docs-scroll-padding: 4rem;
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
 
@@ -110,13 +124,16 @@
       0 0 0 4px var(--wave-docs-accent);
   }
 
+  /* Only for a host that has explicitly delegated the choice to the OS. */
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) {
+    :root[data-theme='system'] {
+      color-scheme: dark;
+
       --wave-docs-bg: oklch(0.19 0.015 265);
       --wave-docs-bg-subtle: oklch(0.23 0.015 265);
       --wave-docs-fg: oklch(0.93 0.008 265);
       --wave-docs-fg-muted: oklch(0.72 0.014 265);
-      --wave-docs-fg-subtle: oklch(0.64 0.015 265);
+      --wave-docs-fg-subtle: oklch(0.665 0.015 265);
       --wave-docs-border: oklch(0.31 0.014 265);
       --wave-docs-border-strong: oklch(0.4 0.016 265);
 
@@ -135,19 +152,28 @@
       --wave-docs-callout-tip-bg: oklch(0.27 0.05 156);
       --wave-docs-callout-important: oklch(0.76 0.14 300);
       --wave-docs-callout-important-bg: oklch(0.28 0.06 300);
-      --wave-docs-callout-warning: oklch(0.82 0.14 82);
-      --wave-docs-callout-warning-bg: oklch(0.29 0.05 72);
+      --wave-docs-callout-warning: oklch(0.82 0.14 80);
+      --wave-docs-callout-warning-bg: oklch(0.29 0.05 80);
       --wave-docs-callout-caution: oklch(0.72 0.16 24);
       --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
     }
   }
 
-  :root[data-theme='dark'] {
+  /* `.dark` as well as `[data-theme='dark']`: next-themes defaults to
+   * `attribute="class"`, and that default is what most consumers ship. */
+  :root[data-theme='dark'],
+  :root.dark {
+    color-scheme: dark;
+
     --wave-docs-bg: oklch(0.19 0.015 265);
     --wave-docs-bg-subtle: oklch(0.23 0.015 265);
     --wave-docs-fg: oklch(0.93 0.008 265);
     --wave-docs-fg-muted: oklch(0.72 0.014 265);
-    --wave-docs-fg-subtle: oklch(0.64 0.015 265);
+    /* 0.665, not 0.64: `fg-subtle` paints the list markers and heading
+     * anchors, and inside a callout it composes against `callout-*-bg`, where
+     * 0.64 measured 4.21-4.47:1. It still clears 4.5:1 on `accent-subtle`,
+     * which is the constraint pulling it the other way. */
+    --wave-docs-fg-subtle: oklch(0.665 0.015 265);
     --wave-docs-border: oklch(0.31 0.014 265);
     --wave-docs-border-strong: oklch(0.4 0.016 265);
 
@@ -166,33 +192,47 @@
     --wave-docs-callout-tip-bg: oklch(0.27 0.05 156);
     --wave-docs-callout-important: oklch(0.76 0.14 300);
     --wave-docs-callout-important-bg: oklch(0.28 0.06 300);
-    --wave-docs-callout-warning: oklch(0.82 0.14 82);
-    --wave-docs-callout-warning-bg: oklch(0.29 0.05 72);
+    --wave-docs-callout-warning: oklch(0.82 0.14 80);
+    --wave-docs-callout-warning-bg: oklch(0.29 0.05 80);
     --wave-docs-callout-caution: oklch(0.72 0.16 24);
     --wave-docs-callout-caution-bg: oklch(0.28 0.06 24);
   }
-
-  /* ---------------------------------------------------------------------------
-   * Base
-   * ------------------------------------------------------------------------ */
 }
 
+/* ---------------------------------------------------------------------------
+ * Base
+ * ------------------------------------------------------------------------ */
+
 @layer base {
-  html {
-    /* Without this, every `#anchor` link parks its heading underneath the
-     * sticky header. Match it to your header's height. */
-    scroll-padding-top: var(--wave-docs-header-height);
+  /*
+   * The ground the ramp is composed against.
+   *
+   * A foreground token is only as legible as the background under it, and this
+   * sheet cannot see the host's. Painting our own containers — never `body`,
+   * which belongs to the host — is what makes every ratio in
+   * `src/styles.test.ts` a fact about the shipped page rather than about a
+   * background nobody declared.
+   */
+  .wave-docs-prose,
+  .wave-docs-sidebar,
+  .wave-docs-toc {
+    background: var(--wave-docs-bg);
+    color: var(--wave-docs-fg);
+    /* Inert unless the container is itself the scrollport, which a sidebar or
+     * a TOC pane usually is. Headings carry the matching `scroll-margin-top`
+     * for the far commoner case where the document scrolls. */
+    scroll-padding-top: var(--wave-docs-scroll-padding);
   }
 
-  /* Smooth scrolling is opt-in by the reader's OS setting, never by us:
-   * animated scrolling triggers nausea and migraine in people with vestibular
-   * disorders. Declared here rather than in JavaScript so there is exactly one
-   * place that decides it. */
-  @media (prefers-reduced-motion: no-preference) {
-    html {
-      scroll-behavior: smooth;
-    }
-  }
+  /*
+   * No `scroll-behavior: smooth` anywhere, and not for the usual reason.
+   * Next 16 only suppresses smooth scrolling across a route change when
+   * `<html>` carries `data-scroll-behavior="smooth"` — an attribute only the
+   * host can set — so a package-level `html { scroll-behavior: smooth }`
+   * animates every navigation and makes dev builds warn about a stylesheet
+   * inside `node_modules`. Hosts that want it opt in on their own `<html>`,
+   * with that attribute, behind `prefers-reduced-motion: no-preference`.
+   */
 }
 
 /* ---------------------------------------------------------------------------
@@ -239,7 +279,14 @@
    * plain `:focus` for the same reason. */
   .wave-docs-skip-link:focus {
     transform: translateY(0);
-    outline: none;
+    /* Transparent rather than `none`, here and at every other ring in this
+     * file: forced-colors mode zeroes `box-shadow` and honours `outline`, so
+     * `outline: none` would strictly remove the UA indicator and put nothing
+     * back. A transparent outline is invisible normally and repainted in a
+     * system colour there. The explicit `forced-colors` block at the end of
+     * this file is the belt to this pair of braces. */
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--wave-docs-ring);
   }
 
@@ -259,6 +306,12 @@
     color: var(--wave-docs-fg);
     font-size: 1rem;
     line-height: 1.75;
+    /* Inherited by every descendant, which is the point: a sha256 digest in a
+     * paragraph, a long word in a heading or a list item each pushed the page
+     * to a 553-784px scrollWidth at the 320px viewport WCAG 1.4.10 Reflow
+     * tests at. `break-word` and not `word-break: break-all`, which would also
+     * chop ordinary prose mid-syllable. */
+    overflow-wrap: break-word;
     /* No `max-width` on purpose — the docs shell owns column width. */
   }
 
@@ -272,7 +325,7 @@
     font-weight: 650;
     line-height: 1.25;
     text-wrap: balance;
-    scroll-margin-top: var(--wave-docs-header-height);
+    scroll-margin-top: var(--wave-docs-scroll-padding);
   }
 
   .wave-docs-prose > :is(h2, h3, h4, h5, h6) {
@@ -306,6 +359,12 @@
     text-underline-offset: 0.2em;
     text-decoration-thickness: 1px;
     border-radius: 2px;
+    /* `anywhere`, not `break-word`: a link label is often one unbreakable
+     * token (`/api/v1/some-long-path`), and `break-word` only breaks a word
+     * that would overflow a line of its own. A bare autolinked URL already
+     * breaks after `/` under UAX#14 without help — which is why no
+     * `word-break` appears anywhere in this file. */
+    overflow-wrap: anywhere;
   }
 
   .wave-docs-prose a:hover {
@@ -317,7 +376,8 @@
   .wave-docs-sidebar :is(a, button):focus-visible,
   .wave-docs-toc a:focus-visible,
   .wave-docs-youtube__facade:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--wave-docs-ring);
   }
 
@@ -409,7 +469,8 @@
   }
 
   .wave-docs-table-scroll:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--wave-docs-ring);
   }
 
@@ -475,50 +536,69 @@
 /* ---------------------------------------------------------------------------
  * Shiki
  *
- * Dual-theme promotion. Shiki writes the light colour as an INLINE style on
- * every token span and the dark one beside it as `--shiki-dark`, so switching
- * themes means overriding an inline style. `!important` is the only thing in
- * CSS that outranks one — this is a specificity requirement, not a preference,
- * and removing it silently leaves dark mode rendering light-theme code.
+ * Dual-theme promotion, driven entirely by custom properties. `render.ts`
+ * passes `defaultColor: false`, so Shiki writes NO inline `color` at all — each
+ * token span carries `--shiki-light` and `--shiki-dark` and nothing else, and
+ * picking a theme is an ordinary cascade problem solved by an ordinary
+ * selector. No `!important` is involved, and none may be reintroduced: it would
+ * outrank the consumer's own overrides for no benefit.
+ *
+ * Scoped to `.wave-docs-prose`, and inside `@layer components` like everything
+ * else here. A bare, unlayered `.shiki` beat every layer on any page that also
+ * renders Shiki output from another package, silently repainting it.
  * ------------------------------------------------------------------------ */
 
-.shiki {
-  padding: 1rem 1.125rem;
-  border: 1px solid var(--wave-docs-border);
-  border-radius: var(--wave-docs-radius);
-  background-color: var(--wave-docs-code-block-bg);
-  overflow-x: auto;
-  font-family: var(--wave-docs-font-mono);
-  font-size: 0.875rem;
-  line-height: 1.7;
-  tab-size: 2;
-}
-
-.shiki code {
-  display: grid;
-  font-family: inherit;
-}
-
-.shiki .line {
-  min-height: 1lh;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .shiki,
-  :root:not([data-theme='light']) .shiki span {
-    color: var(--shiki-dark) !important;
+@layer components {
+  .wave-docs-prose .shiki {
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    /* Our token, not `--shiki-light-bg`: the code block is part of the page's
+     * surface ramp, and a theme's own background is whatever GitHub chose. */
+    background-color: var(--wave-docs-code-block-bg);
+    overflow-x: auto;
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    tab-size: 2;
   }
-  :root:not([data-theme='light']) .shiki {
-    background-color: var(--shiki-dark-bg) !important;
-  }
-}
 
-:root[data-theme='dark'] .shiki,
-:root[data-theme='dark'] .shiki span {
-  color: var(--shiki-dark) !important;
-}
-:root[data-theme='dark'] .shiki {
-  background-color: var(--shiki-dark-bg) !important;
+  .wave-docs-prose .shiki,
+  .wave-docs-prose .shiki span {
+    color: var(--shiki-light);
+  }
+
+  /* Shiki puts `tabindex="0"` on the `<pre>` so a keyboard reader can scroll a
+   * wide block — which makes it the one focusable element in this package that
+   * had no focus style. */
+  .wave-docs-prose .shiki:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: var(--wave-docs-ring);
+  }
+
+  .wave-docs-prose .shiki code {
+    display: grid;
+    font-family: inherit;
+  }
+
+  .wave-docs-prose .shiki .line {
+    min-height: 1lh;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root[data-theme='system'] .wave-docs-prose .shiki,
+    :root[data-theme='system'] .wave-docs-prose .shiki span {
+      color: var(--shiki-dark);
+    }
+  }
+
+  :root[data-theme='dark'] .wave-docs-prose .shiki,
+  :root[data-theme='dark'] .wave-docs-prose .shiki span,
+  :root.dark .wave-docs-prose .shiki,
+  :root.dark .wave-docs-prose .shiki span {
+    color: var(--shiki-dark);
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -851,7 +931,8 @@
   .wave-docs-search-trigger:focus-visible,
   .wave-docs-search-close:focus-visible,
   .wave-docs-search-result-link:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--wave-docs-ring);
   }
 
@@ -905,6 +986,22 @@
     gap: 0.5rem;
     padding: 0.75rem;
     border-block-end: 1px solid var(--wave-docs-border);
+    /* Matches the dialog's corners, so the focus ring below traces them
+     * instead of poking out of the rounded frame. */
+    border-start-start-radius: var(--wave-docs-radius);
+    border-start-end-radius: var(--wave-docs-radius);
+  }
+
+  /* The ring belongs to the row, not the input. A 2px ring drawn around a
+   * borderless full-width input reads as an error state, and the previous
+   * answer — "the dialog frame is the indicator" — was a static 1.31:1 border
+   * that looks identical focused and unfocused (WCAG 2.4.7 wants a change of
+   * appearance, 1.4.11 wants 3:1; `accent` on `bg` is 5.16:1 / 7.50:1).
+   * `outline-offset: -2px` draws it inward, because the dialog clips with
+   * `overflow: hidden` and an outward ring would be sliced off. */
+  .wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible) {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: -2px;
   }
 
   .wave-docs-search-input {
@@ -918,9 +1015,10 @@
     font-size: 1rem;
   }
 
+  /* Not `outline: 2px solid transparent` like every other control here: the
+   * row above already draws a real outline, and a second one on the input
+   * would double up in forced-colors mode. */
   .wave-docs-search-input:focus {
-    /* The dialog frame is the focus indicator here; a ring on a full-width
-     * borderless input reads as an error state. */
     outline: none;
   }
 
@@ -956,9 +1054,16 @@
   }
 
   /* Driven by `aria-selected` through the active class the dialog sets — the
-   * combobox keeps focus in the input, so `:focus` never lands here. */
+   * combobox keeps focus in the input and every result is `tabindex="-1"`, so
+   * `:focus-visible` can never fire here and the tint IS the whole indicator.
+   * A tint alone is 1.12:1 light / 1.19:1 dark; WCAG 1.4.11 asks 3:1 of a
+   * state indicator, so the outline carries it (`accent` on `accent-subtle` is
+   * 4.60:1 / 6.30:1) and the tint is left to do the soft work. Inset by 2px so
+   * it stays inside the scrolling results list. */
   .wave-docs-search-result-active {
     background: var(--wave-docs-accent-subtle);
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: -2px;
   }
 
   .wave-docs-search-result-link {
@@ -1029,5 +1134,46 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Forced colours
+ *
+ * Windows High Contrast and its kin drop `box-shadow` entirely and replace
+ * every colour with one from the user's palette. Every focus indicator in this
+ * package is a `box-shadow` ring, so without this block the package would
+ * *remove* the UA outline from every focusable surface it styles and draw
+ * nothing in its place — a strictly worse page than shipping no CSS at all.
+ *
+ * `Highlight` rather than a token: user-chosen system colours are the whole
+ * point of the mode, and `--wave-docs-accent` is forced to something else
+ * anyway. This list must stay in step with every `:focus-visible` rule above;
+ * `src/styles.test.ts` fails if one appears without its entry here.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  @media (forced-colors: active) {
+    .wave-docs-skip-link:focus,
+    .wave-docs-prose a:focus-visible,
+    .wave-docs-sidebar :is(a, button):focus-visible,
+    .wave-docs-toc a:focus-visible,
+    .wave-docs-youtube__facade:focus-visible,
+    .wave-docs-table-scroll:focus-visible,
+    .wave-docs-prose .shiki:focus-visible,
+    .wave-docs-search-trigger:focus-visible,
+    .wave-docs-search-close:focus-visible,
+    .wave-docs-search-result-link:focus-visible {
+      outline: 3px solid Highlight;
+      outline-offset: 2px;
+    }
+
+    /* Inward, like their normal-mode rules: one is clipped by the dialog, the
+     * other by the scrolling results list. */
+    .wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible),
+    .wave-docs-search-result-active {
+      outline: 2px solid Highlight;
+      outline-offset: -2px;
+    }
   }
 }
