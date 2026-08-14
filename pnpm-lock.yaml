@@ -68,6 +68,9 @@ importers:
       vfile:
         specifier: ^6.0.3
         version: 6.0.3
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@arethetypeswrong/cli':
         specifier: ^0.18.5
@@ -126,9 +129,6 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@24.13.3)(jsdom@30.0.1)(vite@8.2.1(@types/node@24.13.3))
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
 
 packages:
 

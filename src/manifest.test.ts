@@ -52,6 +52,7 @@ const manifest = readJson(path.join(ROOT, 'package.json'));
 describe('peer dependencies', () => {
   const peers = section(manifest, 'peerDependencies');
   const meta = section(manifest, 'peerDependenciesMeta');
+  const dependencies = section(manifest, 'dependencies');
 
   /**
    * `optional` means "need not be installed" — npm still validates the range
@@ -66,14 +67,26 @@ describe('peer dependencies', () => {
   });
 
   /**
-   * Only `./frontmatter` and `./meta` build a `z.object` at module scope;
-   * `./react/*`, `./search-options`, `./types` and `./markdown-links` all
-   * import cleanly in a zod-free install. A hard peer punished every one of
-   * those consumers for a range they never touch.
+   * `frontmatter.ts` and `meta.ts` import Zod at module scope, which is what a
+   * dependency is. As a peer — even an optional one, which npm still
+   * range-checks whenever the package is present — `^4.4.3` refused to install
+   * beside the Zod that ~69% of the ecosystem was on at the time of writing:
+   * 47% still on 3.x, plus every 4.x below 4.4.3. Owning the copy also makes
+   * the `.extend()` instance-identity guarantee structural rather than
+   * documented, via the `z` re-exported from `./frontmatter`.
    */
-  it('marks zod optional', () => {
-    expect(peers.zod).toBe('^4.4.3');
-    expect(meta.zod).toEqual({ optional: true });
+  it('depends on zod rather than demanding it', () => {
+    expect(dependencies.zod).toBe('^4.4.3');
+    expect(peers).not.toHaveProperty('zod');
+    expect(meta).not.toHaveProperty('zod');
+  });
+
+  /** A dependency must not also be a devDependency; the two would drift. */
+  it('does not duplicate a dependency into devDependencies', () => {
+    const dev = section(manifest, 'devDependencies');
+    for (const name of Object.keys(dependencies)) {
+      expect(dev).not.toHaveProperty(name);
+    }
   });
 });
 

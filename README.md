@@ -41,15 +41,15 @@ Three things follow from that shape, and they are the reasons to choose this ove
 pnpm add @waveso/docs
 ```
 
-`react` and `react-dom` are required peers. `next` and `zod` are optional — install only what you use.
+That is the whole installation. `react` and `react-dom` are required peers; `next` is optional, needed only by `@waveso/docs/next`.
 
-**`zod` is needed by three entry points, not by the package as a whole**: `@waveso/docs/frontmatter`, `@waveso/docs/source` and `@waveso/docs/next`, because `docFrontmatterSchema` is a Zod schema. `@waveso/docs/react/*`, `/render`, `/search-index`, `/search-options`, `/markdown-links` and `/types` all load without it. If you import any of the first three, install it:
+**Zod is not a peer.** It ships as a dependency of this package, so your project's Zod — version 3, version 4, or none at all — is irrelevant and nothing conflicts. When you extend the built-in schema, take `z` from here rather than from your own install:
 
-```sh
-pnpm add zod
+```ts
+import { docFrontmatterSchema, z } from '@waveso/docs/frontmatter';
 ```
 
-The floor is `4.4.3`, not `^4.0.0`: the built-in frontmatter schema calls `.exactOptional()` at module scope, so an earlier 4.x throws on import with nothing in the message naming zod.
+That is not a style preference. `.extend()` produces a schema only as trustworthy as the instance that built it, and re-exporting ours means the extension is built from the same module object by construction rather than by luck. Your own Zod stays yours, for everything else in your app.
 
 **There is no `tailwindcss` peer and no Tailwind involved.** The stylesheet is plain CSS with `wave-docs-*` class names. It was declared as an optional peer once, which blocked `npm install` outright for any project on Tailwind 3 — npm still range-checks an optional peer that happens to be installed.
 
@@ -112,7 +112,7 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS` |
 | `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex`, `writeSearchIndex` |
 | `@waveso/docs/react/*` | Browser + RSC | See [Components](#components) |
-| `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter` |
+| `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/search-options` | Any | `SEARCH_INDEX_OPTIONS` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
 | `@waveso/docs/styles.css` | — | The stylesheet |
@@ -219,8 +219,7 @@ Pass a `frontmatterSchema` and every `DocFile` and `RenderedDoc` carries your fi
 
 ```ts
 // content/docs-schema.ts — one module, imported by every route file
-import { docFrontmatterSchema } from '@waveso/docs/frontmatter';
-import { z } from 'zod';
+import { docFrontmatterSchema, z } from '@waveso/docs/frontmatter';
 
 export const frontmatterSchema = docFrontmatterSchema.extend({
   audience: z.enum(['user', 'operator']).exactOptional(),
@@ -235,7 +234,7 @@ doc?.frontmatter.audience; // 'user' | 'operator' | undefined
 doc?.frontmatter.title; //    string
 ```
 
-Any [Standard Schema](https://standardschema.dev) validator works — Zod, Valibot, ArkType. The field is typed `StandardSchemaV1<unknown, TFrontmatter>` rather than as a Zod type, so the package does not dictate your validator. Reach for `zod` only if you extend `docFrontmatterSchema`, which is itself a Zod schema — see [Installation](#installation).
+Any [Standard Schema](https://standardschema.dev) validator works — Zod, Valibot, ArkType. The field is typed `StandardSchemaV1<unknown, TFrontmatter>` rather than as a Zod type, so the package does not dictate your validator; a schema you hand over is never re-wrapped by the Zod in here. The `z` above is re-exported from this package precisely so that extending `docFrontmatterSchema` needs no install and no matching version.
 
 Four things are worth knowing before you write one.
 

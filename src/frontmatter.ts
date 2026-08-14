@@ -2,10 +2,9 @@
  * Frontmatter validation.
  *
  * The base schema lives here rather than inline in the filesystem walk because
- * Zod is a *peer* dependency: consumers extend {@link docFrontmatterSchema}
- * with their own fields and hand the result back through
- * `DocsConfig.frontmatterSchema`, so the base schema has to be a first-class
- * export rather than an implementation detail.
+ * consumers extend {@link docFrontmatterSchema} with their own fields and hand
+ * the result back through `DocsConfig.frontmatterSchema`, so it has to be a
+ * first-class export rather than an implementation detail.
  *
  * Validation itself goes through [Standard Schema](https://standardschema.dev)
  * and not through Zod's own API, so a consumer may hand over a Valibot or
@@ -17,6 +16,23 @@ import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 import type { DocFrontmatter } from './types.js';
 import { docsError } from './docs-error.js';
+
+/**
+ * The Zod instance {@link docFrontmatterSchema} is built from.
+ *
+ * `.extend()` composes shapes across copies of Zod, but the resulting schema is
+ * only ever as trustworthy as the instance that made it — and a consumer with
+ * their own Zod has no way to know whether it is the same one. Re-exporting
+ * ours removes the question: `import { z } from '@waveso/docs/frontmatter'` and
+ * the extension is built from the same module object, by construction.
+ *
+ * It also removes the need to install anything. Zod is a dependency of this
+ * package, not a peer, because it is imported at module scope here and in
+ * `meta.ts` — which is what a dependency is. As a peer it blocked `npm install`
+ * outright for the ~47% of the ecosystem still on Zod 3, and for anyone on a
+ * Zod 4 below 4.4.3, over a range most of them would never touch.
+ */
+export { z };
 
 /**
  * The frontmatter fields the package itself understands, as a Zod schema.
