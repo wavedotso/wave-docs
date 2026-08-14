@@ -5,6 +5,9 @@ import { orderNavEntries, parseDocsMeta, readDocsMeta } from './meta.js';
 import type { DocNavNode, DocsMeta } from './types.js';
 
 const META_PATH = '/content/meta.json';
+/** Depth of a directory below the content root; the root itself is 0. */
+const NESTED = 1;
+const ROOT = 0;
 const FIXTURES = path.join(
   import.meta.dirname,
   '__fixtures__',
@@ -55,6 +58,7 @@ describe('orderNavEntries without meta.json', () => {
       ],
       undefined,
       META_PATH,
+      NESTED,
     );
 
     expect(titles(nodes)).toEqual([
@@ -75,9 +79,46 @@ describe('orderNavEntries without meta.json', () => {
       ],
       undefined,
       META_PATH,
+      NESTED,
     );
 
     expect(titles(nodes)).toEqual(['page:Guide']);
+  });
+
+  /**
+   * The root is the case the "never list an index" rule did not consider:
+   * nothing encloses it, so no group heading carries its href. Without this the
+   * landing page is missing from its own sidebar and a reader who follows any
+   * link has no way back — and every install writes a `meta.json` whose only
+   * job is to undo the default.
+   */
+  it('lists the content root own index, which no group heading links', () => {
+    const entries = [
+      page('index', 'Home', { isIndex: true, order: 1 }),
+      page('guide', 'Guide'),
+    ];
+
+    expect(
+      titles(orderNavEntries(entries, undefined, META_PATH, ROOT)),
+    ).toEqual(['page:Home', 'page:Guide']);
+    // Still not when it is a draft.
+    const draftIndex = [
+      page('index', 'Home', { isIndex: true, hidden: true }),
+      page('guide', 'Guide'),
+    ];
+    expect(
+      titles(orderNavEntries(draftIndex, undefined, META_PATH, ROOT)),
+    ).toEqual(['page:Guide']);
+  });
+
+  it('splices the root index into the wildcard too', () => {
+    const nodes = orderNavEntries(
+      [page('index', 'Home', { isIndex: true, order: 1 }), page('a', 'A')],
+      { pages: ['...'] },
+      META_PATH,
+      ROOT,
+    );
+    expect(titles(nodes)).toEqual(['page:Home', 'page:A']);
   });
 
   it('drops directories with no children and no index', () => {
@@ -85,6 +126,7 @@ describe('orderNavEntries without meta.json', () => {
       [group('empty', 'Empty', []), page('guide', 'Guide')],
       undefined,
       META_PATH,
+      NESTED,
     );
 
     expect(titles(nodes)).toEqual(['page:Guide']);
@@ -117,7 +159,7 @@ describe('orderNavEntries with meta.json pages', () => {
       ],
     };
 
-    const nodes = orderNavEntries(entries, meta, META_PATH);
+    const nodes = orderNavEntries(entries, meta, META_PATH, NESTED);
 
     expect(titles(nodes)).toEqual([
       'page:Overview',
@@ -143,7 +185,7 @@ describe('orderNavEntries with meta.json pages', () => {
       ],
     };
 
-    const nodes = orderNavEntries(entries, meta, META_PATH);
+    const nodes = orderNavEntries(entries, meta, META_PATH, NESTED);
     const external = nodes.map((node) =>
       node.type === 'link' ? node.external : null,
     );
@@ -152,7 +194,12 @@ describe('orderNavEntries with meta.json pages', () => {
   });
 
   it('drops unnamed entries when there is no wildcard', () => {
-    const nodes = orderNavEntries(entries, { pages: ['intro'] }, META_PATH);
+    const nodes = orderNavEntries(
+      entries,
+      { pages: ['intro'] },
+      META_PATH,
+      NESTED,
+    );
     expect(titles(nodes)).toEqual(['page:Intro']);
   });
 
@@ -161,25 +208,31 @@ describe('orderNavEntries with meta.json pages', () => {
       entries,
       { pages: ['unreleased', 'intro'] },
       META_PATH,
+      NESTED,
     );
     expect(titles(nodes)).toEqual(['page:Intro']);
   });
 
   it('throws naming the file and the entry when a page is missing', () => {
     expect(() =>
-      orderNavEntries(entries, { pages: ['intro', 'inrto'] }, META_PATH),
+      orderNavEntries(
+        entries,
+        { pages: ['intro', 'inrto'] },
+        META_PATH,
+        NESTED,
+      ),
     ).toThrow(/\/content\/meta\.json lists "inrto", which does not exist/);
   });
 
   it('lists the available entries in that error', () => {
     expect(() =>
-      orderNavEntries(entries, { pages: ['inrto'] }, META_PATH),
+      orderNavEntries(entries, { pages: ['inrto'] }, META_PATH, NESTED),
     ).toThrow(/Available entries: advanced, api, index, installation, intro/);
   });
 
   it('throws when an inline expansion does not name a directory', () => {
     expect(() =>
-      orderNavEntries(entries, { pages: ['...intro'] }, META_PATH),
+      orderNavEntries(entries, { pages: ['...intro'] }, META_PATH, NESTED),
     ).toThrow(/is not a subdirectory here\. Subdirectories: api\./);
   });
 
@@ -209,6 +262,7 @@ describe('orderNavEntries with meta.json pages', () => {
       [withIndex],
       { pages: ['...api'] },
       META_PATH,
+      NESTED,
     );
     expect(nodes).toEqual([
       { type: 'page', title: 'API', href: '/docs/api', slug: 'api' },
@@ -222,6 +276,7 @@ describe('orderNavEntries with meta.json pages', () => {
         [page('guides', 'Guides overview'), group('guides', 'Guides', [])],
         { pages: ['guides'] },
         META_PATH,
+        NESTED,
       ),
     ).toThrow(
       /cannot address "guides": guides\.md and guides\/ both claim that name/,
@@ -230,8 +285,72 @@ describe('orderNavEntries with meta.json pages', () => {
 
   it('throws on a second wildcard', () => {
     expect(() =>
-      orderNavEntries(entries, { pages: ['...', 'intro', '...'] }, META_PATH),
+      orderNavEntries(
+        entries,
+        { pages: ['...', 'intro', '...'] },
+        META_PATH,
+        NESTED,
+      ),
     ).toThrow(/more than one "\.\.\." entry/);
+  });
+
+  /**
+   * A page named twice rendered twice, with both copies highlighted as the
+   * current page — and the sidebar keys its items positionally, so React never
+   * warned about the duplicate either.
+   */
+  it('throws when a page is named twice', () => {
+    expect(() =>
+      orderNavEntries(
+        entries,
+        { pages: ['intro', 'installation', 'intro'] },
+        META_PATH,
+        NESTED,
+      ),
+    ).toThrow(/lists "intro" more than once/);
+  });
+
+  it('counts an inline expansion as naming its directory', () => {
+    expect(() =>
+      orderNavEntries(entries, { pages: ['api', '...api'] }, META_PATH, NESTED),
+    ).toThrow(/lists "\.\.\.api" more than once/);
+  });
+
+  /**
+   * The group a separator labels can empty out — every page in it a draft — and
+   * `includeDrafts`, which is how an author previews the site, is exactly the
+   * mode where it does not.
+   */
+  it('drops a separator that ended up labelling nothing', () => {
+    const drafted = [
+      page('intro', 'Intro'),
+      group('api', 'API', []),
+      page('unreleased', 'Unreleased', { hidden: true }),
+    ];
+
+    expect(
+      titles(
+        orderNavEntries(
+          drafted,
+          { pages: ['intro', '---Reference---', 'api', 'unreleased'] },
+          META_PATH,
+          NESTED,
+        ),
+      ),
+    ).toEqual(['page:Intro']);
+  });
+
+  it('drops a separator at the end of the list, and a run of them', () => {
+    expect(
+      titles(
+        orderNavEntries(
+          entries,
+          { pages: ['---A---', '---B---', 'intro', '---Trailing---'] },
+          META_PATH,
+          NESTED,
+        ),
+      ),
+    ).toEqual(['separator:B', 'page:Intro']);
   });
 });
 

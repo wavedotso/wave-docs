@@ -11,6 +11,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import type { DocNavNode, DocsMeta } from './types.js';
+import { docsError } from './docs-error.js';
 
 /** A `"---Label---"` separator entry. */
 const SEPARATOR_PATTERN = /^---(.+)---$/;
@@ -89,7 +90,10 @@ export function parseDocsMeta(raw: unknown, filePath: string): DocsMeta {
     .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
     .join('\n');
 
-  throw new Error(`Invalid meta.json at ${filePath}:\n${details}`);
+  throw docsError(
+    'invalid-meta',
+    `Invalid meta.json at ${filePath}:\n${details}`,
+  );
 }
 
 /**
@@ -115,7 +119,13 @@ export async function readDocsMeta(
     parsed = JSON.parse(raw);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(`Could not parse ${filePath} as JSON: ${reason}`);
+    throw docsError(
+      'invalid-meta',
+      `Could not parse ${filePath} as JSON: ${reason}`,
+      // `JSON.parse` reports a byte offset the message keeps but the wrapper
+      // would otherwise strip from anything programmatic.
+      { cause: err },
+    );
   }
 
   return parseDocsMeta(parsed, filePath);
@@ -132,20 +142,25 @@ export async function readDocsMeta(
  * @param entries - The directory's children.
  * @param meta - Its validated `meta.json`, if any.
  * @param metaPath - Path to that `meta.json`, used in error messages.
- * @throws When `pages` names a child that does not exist — always a typo, and
- *   catching it here is the entire reason `meta.json` is validated at build.
+ * @param depth - How far this directory sits below the content root, which
+ *   decides whether its own `index.md` is listed by default. See
+ *   {@link isListedByDefault}.
+ * @throws When `pages` names a child that does not exist, or names one twice —
+ *   always a typo, and catching it here is the entire reason `meta.json` is
+ *   validated at build.
  */
 export function orderNavEntries(
   entries: readonly MetaDirEntry[],
   meta: DocsMeta | undefined,
   metaPath: string,
+  depth: number,
 ): DocNavNode[] {
   const pages = meta?.pages;
   if (pages === undefined) {
     return dropEmptyGroups(
-      sortEntries(entries.filter((entry) => isListedByDefault(entry))).map(
-        (entry) => entry.node,
-      ),
+      sortEntries(
+        entries.filter((entry) => isListedByDefault(entry, depth)),
+      ).map((entry) => entry.node),
     );
   }
 
@@ -176,7 +191,8 @@ export function orderNavEntries(
 
     if (page === REST) {
       if (restAt !== -1) {
-        throw new Error(
+        throw docsError(
+          'invalid-meta',
           `${metaPath} has more than one "..." entry. ` +
             'A directory has a single set of unnamed pages, so only one ' +
             'wildcard can be honoured — remove the extra.',
@@ -190,12 +206,14 @@ export function orderNavEntries(
       const name = page.slice(REST.length);
       const target = byName.get(name);
       if (!target?.inlineChildren) {
-        throw new Error(
+        throw docsError(
+          'invalid-meta',
           `${metaPath} entry "${page}" expands a directory named ` +
             `"${name}", which is not a subdirectory here. ` +
             `${describeAvailable(entries, true)}`,
         );
       }
+      assertUnused(used, name, page, metaPath);
       used.add(name);
       // The group wrapper is what `"...name"` discards; its `href` is not.
       if (target.indexNode !== undefined) {
@@ -207,11 +225,13 @@ export function orderNavEntries(
 
     const target = byName.get(page);
     if (!target) {
-      throw new Error(
+      throw docsError(
+        'invalid-meta',
         `${metaPath} lists "${page}", which does not exist. ` +
           `${describeAvailable(entries, false)}`,
       );
     }
+    assertUnused(used, page, page, metaPath);
     used.add(page);
     if (!target.hidden) {
       nodes.push(target.node);
@@ -221,13 +241,37 @@ export function orderNavEntries(
   if (restAt !== -1) {
     const rest = sortEntries(
       entries.filter(
-        (entry) => isListedByDefault(entry) && !used.has(entry.name),
+        (entry) => isListedByDefault(entry, depth) && !used.has(entry.name),
       ),
     ).map((entry) => entry.node);
     nodes.splice(restAt, 0, ...rest);
   }
 
-  return dropEmptyGroups(nodes);
+  return dropDanglingSeparators(dropEmptyGroups(nodes));
+}
+
+/**
+ * A child named twice is a typo, not an instruction.
+ *
+ * It renders the page twice, both copies highlighted on the page they link to,
+ * and the sidebar keys its items positionally — so there is no duplicate-key
+ * warning either. Every other ambiguity in this file is a build error; this
+ * one only looked deliberate because nothing checked for it.
+ */
+function assertUnused(
+  used: ReadonlySet<string>,
+  name: string,
+  written: string,
+  metaPath: string,
+): void {
+  if (used.has(name)) {
+    throw docsError(
+      'invalid-meta',
+      `${metaPath} lists "${written}" more than once. It would appear twice ` +
+        'in the sidebar, both copies marked as the current page. Remove the ' +
+        'duplicate.',
+    );
+  }
 }
 
 /**
@@ -247,7 +291,8 @@ function indexByName(
   for (const entry of entries) {
     const clash = byName.get(entry.name);
     if (clash !== undefined) {
-      throw new Error(
+      throw docsError(
+        'invalid-meta',
         `${metaPath} cannot address "${entry.name}": ${describeEntry(clash)} ` +
           `and ${describeEntry(entry)} both claim that name. Rename one.`,
       );
@@ -279,9 +324,44 @@ function dropEmptyGroups(nodes: readonly DocNavNode[]): DocNavNode[] {
   );
 }
 
-/** An entry appears without being named: not the index, not a draft. */
-function isListedByDefault(entry: MetaDirEntry): boolean {
-  return entry.isIndex !== true && entry.hidden !== true;
+/**
+ * A separator labels whatever follows it. When that turned out to be nothing —
+ * every page in the next group a draft, or two separators in a row after one
+ * of them emptied — the heading is left standing over nothing.
+ *
+ * Runs after {@link dropEmptyGroups}, which is what empties them, and cannot be
+ * left to the author to notice: `includeDrafts` is how a docs site is
+ * previewed, and it is exactly the mode where the group is not empty.
+ */
+function dropDanglingSeparators(nodes: readonly DocNavNode[]): DocNavNode[] {
+  const kept: DocNavNode[] = [];
+  // Backwards, because whether a separator survives depends on what follows it.
+  for (const node of [...nodes].reverse()) {
+    const next = kept.at(-1);
+    if (
+      node.type === 'separator' &&
+      (next === undefined || next.type === 'separator')
+    ) {
+      continue;
+    }
+    kept.push(node);
+  }
+  return kept.reverse();
+}
+
+/**
+ * An entry appears without being named: not a draft, and not the directory's
+ * own `index.md` — which is the group heading's link, and would be a second
+ * entry for a page the sidebar already shows.
+ *
+ * The content root is the exception, and the case the rule never considered:
+ * nothing encloses it, so its `index.md` is the one page that has no heading
+ * to carry its href. Without this, the site's landing page is missing from its
+ * own sidebar — a reader who follows any link cannot get back — and every
+ * install writes a `meta.json` whose only purpose is to undo the default.
+ */
+function isListedByDefault(entry: MetaDirEntry, depth: number): boolean {
+  return entry.hidden !== true && (entry.isIndex !== true || depth === 0);
 }
 
 function sortEntries(entries: readonly MetaDirEntry[]): MetaDirEntry[] {

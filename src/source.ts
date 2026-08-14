@@ -7,12 +7,14 @@
  * virtual module or a JSON cache file without ceremony.
  */
 
-import { readdir, readFile, stat } from 'node:fs/promises';
+import type { Dirent, Stats } from 'node:fs';
+import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import matter from 'gray-matter';
 import { parseFrontmatter } from './frontmatter.js';
 import type { MetaDirEntry } from './meta.js';
 import { orderNavEntries, readDocsMeta } from './meta.js';
+import { foldSegments } from './plugins/remark-doc-links.js';
 import type {
   DocFile,
   DocFrontmatter,
@@ -23,6 +25,7 @@ import type {
   DocsMeta,
   ResolvedDocsConfig,
 } from './types.js';
+import { docsError } from './docs-error.js';
 
 /** Markdown only. MDX is deliberately out of scope for this package. */
 const PAGE_EXTENSION = '.md';
@@ -41,6 +44,17 @@ export interface DocsSource<
 > {
   /** Every page, drafts excluded unless `includeDrafts`. */
   all(): Promise<Array<DocFile<TFrontmatter>>>;
+  /**
+   * Every `draft: true` page, whatever `includeDrafts` says.
+   *
+   * A link to a draft resolves to a file plainly sitting on disk, so the
+   * renderer's generic "no such page exists" sends the author hunting for a
+   * typo in a link that is spelled correctly. `createDocsRoute` feeds this to
+   * `DocsRendererOptions.draftRoutes` so the build still fails, but names the
+   * reason. Unfiltered on purpose: under `includeDrafts` these routes are
+   * published too, and the renderer checks `knownRoutes` first.
+   */
+  drafts(): Promise<Array<DocFile<TFrontmatter>>>;
   /**
    * One page by route segments. Returns drafts regardless of config, so a
    * preview route can opt into them without a second source.
@@ -167,6 +181,19 @@ interface Scan<TFrontmatter extends DocFrontmatter> {
 }
 
 /**
+ * A page, plus the name that addresses it: the filename without its extension,
+ * NFC-normalised.
+ *
+ * Carried rather than re-derived from `filePath`, which deliberately keeps the
+ * raw on-disk bytes — a macOS zip yields NFD filenames, and a route segment
+ * spelled in NFD matches no link anyone types.
+ */
+interface ScannedPage<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
+  name: string;
+  doc: DocFile<TFrontmatter>;
+}
+
+/**
  * One directory, as read off disk.
  *
  * Generic only because it carries {@link DocFile}s: nothing that walks a
@@ -182,9 +209,9 @@ interface DirScan<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
   segments: string[];
   meta: DocsMeta | undefined;
   metaPath: string;
-  index: DocFile<TFrontmatter> | undefined;
+  index: ScannedPage<TFrontmatter> | undefined;
   /** Pages in this directory, `index.md` excluded. */
-  pages: Array<DocFile<TFrontmatter>>;
+  pages: Array<ScannedPage<TFrontmatter>>;
   dirs: Array<DirScan<TFrontmatter>>;
 }
 
@@ -197,7 +224,19 @@ function buildSource<TFrontmatter extends DocFrontmatter>(
   // filesystem scans for a 44-page build, versus 3 (one per worker) here.
   // Do not "simplify" this into a value cache.
   let cached: Promise<Scan<TFrontmatter>> | null = null;
-  const load = (): Promise<Scan<TFrontmatter>> => (cached ??= scan(config));
+  const load = (): Promise<Scan<TFrontmatter>> => {
+    // Evict on rejection. A cached REJECTED promise makes one transient
+    // failure — a file half-written by an editor, a `meta.json` mid-save —
+    // permanent for the life of the process: every later query replays the
+    // same error and the disk is never read again, so a dev server can only
+    // be fixed by restarting it. `next.ts` evicts its component cache for
+    // exactly this reason.
+    cached ??= scan(config).catch((err: unknown) => {
+      cached = null;
+      throw err;
+    });
+    return cached;
+  };
 
   const isVisible = (file: DocFile): boolean =>
     config.includeDrafts || file.frontmatter.draft !== true;
@@ -210,6 +249,10 @@ function buildSource<TFrontmatter extends DocFrontmatter>(
     async all() {
       const { files } = await load();
       return files.filter(isVisible);
+    },
+    async drafts() {
+      const { files } = await load();
+      return files.filter((file) => file.frontmatter.draft === true);
     },
     async find(segments) {
       const { bySlug } = await load();
@@ -231,7 +274,15 @@ async function scan<TFrontmatter extends DocFrontmatter>(
 ): Promise<Scan<TFrontmatter>> {
   await assertContentDir(config.contentDir);
 
-  const root = await scanDir(config.contentDir, [], '', config);
+  const root = await scanDir(
+    config.contentDir,
+    [],
+    '',
+    config,
+    // Seeded with the content root so a symlink pointing back at it is caught
+    // on the first descent rather than one level down.
+    new Set([await realpath(config.contentDir)]),
+  );
   const files: Array<DocFile<TFrontmatter>> = [];
   const bySlug = new Map<string, DocFile<TFrontmatter>>();
 
@@ -249,55 +300,86 @@ async function assertContentDir(contentDir: string): Promise<void> {
   } catch {
     // Fall through to the shared, actionable error below.
   }
-  throw new Error(
+  throw docsError(
+    'missing-content-dir',
     `Docs content directory not found: ${contentDir}\n` +
       'Set `contentDir` to a directory of markdown files; relative paths ' +
       `resolve against the working directory (${process.cwd()}).`,
   );
 }
 
+/**
+ * A directory entry, once its kind is known.
+ *
+ * `absPath` keeps the raw on-disk filename; `name` is the NFC form, which is
+ * the route segment and the name `meta.json` addresses the entry by.
+ */
+type ClassifiedEntry =
+  | { kind: 'skip' }
+  | { kind: 'page'; absPath: string; name: string }
+  | { kind: 'dir'; absPath: string; name: string; realPath: string };
+
+const SKIP: ClassifiedEntry = { kind: 'skip' };
+
 async function scanDir<TFrontmatter extends DocFrontmatter>(
   absPath: string,
   segments: string[],
   name: string,
   config: ResolvedDocsConfig<TFrontmatter>,
+  /** Resolved paths of this directory and every one above it. */
+  ancestors: ReadonlySet<string>,
 ): Promise<DirScan<TFrontmatter>> {
   const [meta, entries] = await Promise.all([
     readDocsMeta(absPath),
     readdir(absPath, { withFileTypes: true }),
   ]);
 
-  // readdir order is filesystem-dependent; sort so the build is reproducible.
-  const sorted = [...entries].sort((a, b) =>
-    a.name.localeCompare(b.name, 'en'),
+  const classified = await Promise.all(
+    entries
+      // Normalised here and nowhere else. `path.join(absPath, entry.name)`
+      // keeps the bytes the filesystem reported, so the file still opens.
+      .map((entry) => ({ entry, name: entry.name.normalize('NFC') }))
+      // readdir order is filesystem-dependent; sort so the build is
+      // reproducible.
+      .sort((a, b) => a.name.localeCompare(b.name, 'en'))
+      .map((listed) => classifyEntry(absPath, listed.entry, listed.name)),
   );
 
-  const pageEntries = sorted.filter(
-    (entry) => entry.isFile() && isPageFile(entry.name),
-  );
-  const dirEntries = sorted.filter(
-    (entry) => entry.isDirectory() && !isIgnoredDir(entry.name),
-  );
+  const pageEntries: Array<{ absPath: string; name: string }> = [];
+  const dirEntries: Array<{ absPath: string; name: string; realPath: string }> =
+    [];
+  for (const entry of classified) {
+    if (entry.kind === 'page') {
+      pageEntries.push(entry);
+    } else if (entry.kind === 'dir' && !ancestors.has(entry.realPath)) {
+      // Ancestors only, never siblings: two symlinks to one directory are two
+      // legitimate sections, while a link to a directory that contains it is a
+      // walk that never ends. It is skipped rather than reported — the pages
+      // under it are already published at their real routes.
+      dirEntries.push(entry);
+    }
+  }
 
   const [pages, dirs] = await Promise.all([
     Promise.all(
       pageEntries.map((entry) =>
-        readPage(path.join(absPath, entry.name), segments, config),
+        readPage(entry.absPath, entry.name, segments, config),
       ),
     ),
     Promise.all(
       dirEntries.map((entry) =>
         scanDir(
-          path.join(absPath, entry.name),
+          entry.absPath,
           [...segments, entry.name],
           entry.name,
           config,
+          new Set(ancestors).add(entry.realPath),
         ),
       ),
     ),
   ]);
 
-  const index = pages.find((page) => baseName(page.filePath) === INDEX_NAME);
+  const index = pages.find((page) => page.name === INDEX_NAME);
 
   return {
     name,
@@ -311,11 +393,71 @@ async function scanDir<TFrontmatter extends DocFrontmatter>(
   };
 }
 
+/**
+ * What kind of content is this directory entry?
+ *
+ * ⚠️ `isFile()` AND `isDirectory()` ARE BOTH FALSE FOR A SYMBOLIC LINK, and
+ * `readdir` has no follow option — so a symlinked page, or a whole symlinked
+ * section, was absent from `all()`, `nav()`, the sitemap and the search index
+ * without a word. The cascade is worse than the omission: the first link to
+ * the missing page fails the build with `no such page exists`, which sends the
+ * author after a link that is perfectly correct.
+ *
+ * `stat` follows the link, so the target's kind decides — and the name filters
+ * still apply to the link's own name, which is what the URL is built from.
+ */
+async function classifyEntry(
+  dirPath: string,
+  entry: Dirent,
+  name: string,
+): Promise<ClassifiedEntry> {
+  const absPath = path.join(dirPath, entry.name);
+  let isFile = entry.isFile();
+  let isDir = entry.isDirectory();
+
+  if (!isFile && !isDir) {
+    if (!entry.isSymbolicLink()) {
+      // A socket, a FIFO or a device file is not content.
+      return SKIP;
+    }
+    let target: Stats;
+    try {
+      target = await stat(absPath);
+    } catch {
+      if (!isPageFile(name)) {
+        return SKIP;
+      }
+      throw docsError(
+        'broken-symlink',
+        `@waveso/docs: ${absPath} is a broken symbolic link, and it names a ` +
+          'markdown page — so skipping it would delete a route nobody asked ' +
+          'to delete. Point it at an existing file, or remove the link.',
+      );
+    }
+    isFile = target.isFile();
+    isDir = target.isDirectory();
+  }
+
+  if (isFile) {
+    return isPageFile(name)
+      ? { kind: 'page', absPath, name: stripExtension(name) }
+      : SKIP;
+  }
+  if (isDir && !isIgnoredDir(name)) {
+    // Resolved, not joined: only a symlink can put a directory inside itself,
+    // and `ancestors` can only catch that if both sides are resolved.
+    return { kind: 'dir', absPath, name, realPath: await realpath(absPath) };
+  }
+  return SKIP;
+}
+
 async function readPage<TFrontmatter extends DocFrontmatter>(
   filePath: string,
+  /** Filename without its extension, NFC-normalised. */
+  name: string,
   dirSegments: string[],
   config: ResolvedDocsConfig<TFrontmatter>,
-): Promise<DocFile<TFrontmatter>> {
+): Promise<ScannedPage<TFrontmatter>> {
   const raw = await readFile(filePath, 'utf8');
   const relativePath = toPosix(path.relative(config.contentDir, filePath));
 
@@ -331,29 +473,45 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
     content = parsed.content;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    throw new Error(
+    throw docsError(
+      'invalid-frontmatter',
       `Could not parse the frontmatter block in ${relativePath}: ${reason}`,
+      // js-yaml's own error carries the line and column inside the block, which
+      // `reason` flattens away; the cause keeps it for anyone who unwraps.
+      { cause: err },
     );
   }
 
-  const name = baseName(filePath);
   const segments =
     name === INDEX_NAME ? [...dirSegments] : [...dirSegments, name];
 
-  return {
-    segments,
-    slug: segments.join('/'),
-    href: toHref(config.basePath, segments),
-    filePath,
+  // The type argument is explicit: inference from an absent optional argument
+  // would pick the default rather than the caller's type.
+  const frontmatter = await parseFrontmatter<TFrontmatter>(
+    data,
     relativePath,
-    // The type argument is explicit: inference from an absent optional argument
-    // would pick the default rather than the caller's type.
-    frontmatter: await parseFrontmatter<TFrontmatter>(
-      data,
+    config.frontmatterSchema,
+  );
+
+  // Aliases are validated here, with the file that declares them in hand.
+  // Their only other caller is the adapter that installs the redirects, long
+  // after the scan: an alias Next reads as a pattern would fail there naming a
+  // string nobody wrote, or install a wildcard and name nothing at all.
+  for (const alias of frontmatter.aliases ?? []) {
+    toAliasRoute(alias, config.basePath, relativePath);
+  }
+
+  return {
+    name,
+    doc: {
+      segments,
+      slug: segments.join('/'),
+      href: toHref(config.basePath, segments),
+      filePath,
       relativePath,
-      config.frontmatterSchema,
-    ),
-    content,
+      frontmatter,
+      content,
+    },
   };
 }
 
@@ -363,10 +521,11 @@ function collect<TFrontmatter extends DocFrontmatter>(
   bySlug: Map<string, DocFile<TFrontmatter>>,
 ): void {
   const own = dir.index ? [dir.index, ...dir.pages] : dir.pages;
-  for (const file of own) {
+  for (const { doc: file } of own) {
     const clash = bySlug.get(file.slug);
     if (clash) {
-      throw new Error(
+      throw docsError(
+        'route-collision',
         `Two files claim the route "${file.href}": ${clash.relativePath} ` +
           `and ${file.relativePath}. Rename one, or delete the other — ` +
           'a directory index and a same-named sibling file collide.',
@@ -402,12 +561,11 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
       .filter((child) => child.index === undefined)
       .map((child) => child.name),
   );
-  const dirPages = new Map<string, DocFile>();
+  const dirPages = new Map<string, ScannedPage>();
 
   for (const page of dir.pages) {
-    const name = baseName(page.filePath);
-    if (mergeable.has(name)) {
-      dirPages.set(name, page);
+    if (mergeable.has(page.name)) {
+      dirPages.set(page.name, page);
       continue;
     }
     entries.push(toPageEntry(page, config));
@@ -420,8 +578,18 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
   for (const child of dir.dirs) {
     const children = buildNav(child, config);
     const index = child.index ?? dirPages.get(child.name);
-    const title = groupTitle(child, index);
-    const href = index && isVisibleIn(index, config) ? index.href : undefined;
+    /**
+     * ⚠️ A DRAFT INDEX IS NOT A PUBLIC PAGE, AND ITS TITLE IS NOT EITHER.
+     *
+     * Only `href` used to be gated on visibility, so `secret/index.md` with
+     * `draft: true` still supplied the group heading — an unreleased codename
+     * rendered into the sidebar of a production build, with no link on it, so
+     * no click reveals it and only view-source shows it at all. Its `order`
+     * also still positioned the group among published ones.
+     */
+    const visible = index && isVisibleIn(index.doc, config) ? index : undefined;
+    const title = groupTitle(child, visible?.doc);
+    const href = visible?.doc.href;
 
     const group: DocNavGroup = {
       type: 'group',
@@ -436,23 +604,23 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
     // empty list. (With no page of its own either, `dropEmptyGroups` removes
     // it entirely.)
     const node: DocNavNode =
-      children.length === 0 && index !== undefined && href !== undefined
-        ? { type: 'page', title, href, slug: index.slug }
+      children.length === 0 && visible !== undefined && href !== undefined
+        ? { type: 'page', title, href, slug: visible.doc.slug }
         : group;
 
-    const order = index?.frontmatter.order;
+    const order = visible?.doc.frontmatter.order;
     entries.push({
       name: child.name,
       title,
       node,
       inlineChildren: children,
-      ...(index !== undefined && href !== undefined
+      ...(visible !== undefined && href !== undefined
         ? {
             indexNode: {
               type: 'page',
-              title: navTitle(index),
+              title: navTitle(visible.doc),
               href,
-              slug: index.slug,
+              slug: visible.doc.slug,
             } satisfies DocNavPage,
           }
         : {}),
@@ -460,18 +628,21 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
     });
   }
 
-  return orderNavEntries(entries, dir.meta, dir.metaPath);
+  return orderNavEntries(entries, dir.meta, dir.metaPath, dir.segments.length);
 }
 
-function toPageEntry(page: DocFile, config: ResolvedDocsConfig): MetaDirEntry {
-  const title = navTitle(page);
-  const { order } = page.frontmatter;
+function toPageEntry(
+  page: ScannedPage,
+  config: ResolvedDocsConfig,
+): MetaDirEntry {
+  const title = navTitle(page.doc);
+  const { order } = page.doc.frontmatter;
   return {
-    name: baseName(page.filePath),
+    name: page.name,
     title,
-    node: { type: 'page', title, href: page.href, slug: page.slug },
+    node: { type: 'page', title, href: page.doc.href, slug: page.doc.slug },
     ...(order !== undefined ? { order } : {}),
-    ...(isVisibleIn(page, config) ? {} : { hidden: true }),
+    ...(isVisibleIn(page.doc, config) ? {} : { hidden: true }),
   };
 }
 
@@ -505,6 +676,19 @@ function isVisibleIn(file: DocFile, config: ResolvedDocsConfig): boolean {
  * ---------------------------------------------------------------------- */
 
 /**
+ * ⚠️ CHARACTERS `path-to-regexp` READS AS PATTERN SYNTAX.
+ *
+ * Next compiles every `redirects()` source with it, so an alias is not the
+ * literal URL it looks like. `v1:beta` compiles to `/docs/v1([^/]+?)`, which
+ * `next build` accepts without a word and which then 308s the genuinely
+ * prerendered `/docs/v1-guide` away — config redirects run before filesystem
+ * routes, so the real page is unreachable in production and nothing reports
+ * it. `c++` is the loud sibling: the build aborts with `Unexpected MODIFIER at
+ * 7`, naming an offset into a string the author never wrote and no file.
+ */
+const ALIAS_PATTERN_CHARS = /[:()+*?{}]/;
+
+/**
  * A former URL from `aliases` frontmatter, as a route.
  *
  * `'quickstart'` on a site mounted at `/docs` becomes `/docs/quickstart`.
@@ -514,7 +698,8 @@ function isVisibleIn(file: DocFile, config: ResolvedDocsConfig): boolean {
  *
  * Shared by both adapters so they agree on which routes exist: an alias is a
  * redirect the host installs, so a link to one resolves, and a link that
- * builds under Next must build under Vite.
+ * builds under Next must build under Vite. The source scan calls it too, so
+ * every rejection below names the markdown file at the moment it is read.
  */
 export function toAliasRoute(
   alias: string,
@@ -528,15 +713,44 @@ export function toAliasRoute(
    */
   sourceLabel: string,
 ): string {
-  const trimmed = alias.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-  if (trimmed === '') {
-    throw new Error(
+  const trimmed = alias.trim();
+
+  if (trimmed.split('/').some((part) => part === '.' || part === '..')) {
+    throw docsError(
+      'invalid-alias',
+      `@waveso/docs: the alias '${alias}' in ${sourceLabel} has a '.' or ` +
+        "'..' segment. An alias is a former URL relative to the docs base " +
+        'path, not a path on disk: write `aliases: [legacy/old-name]`.',
+    );
+  }
+
+  const pattern = ALIAS_PATTERN_CHARS.exec(trimmed);
+  if (pattern !== null) {
+    throw docsError(
+      'invalid-alias',
+      `@waveso/docs: the alias '${alias}' in ${sourceLabel} contains ` +
+        `'${pattern[0]}', which Next compiles as redirect pattern syntax ` +
+        'rather than as part of the URL — the redirect then swallows every ' +
+        'page whose route the pattern happens to match, or fails the build. ' +
+        'Remove the character; an alias is a literal former URL.',
+    );
+  }
+
+  // The same fold the link resolver uses, so an alias and a link can never
+  // disagree about the route they spell. With `.`/`..` already rejected it
+  // collapses the repeated slashes of `old//name` — a redirect source Next
+  // accepts and no request can ever match.
+  const segments = foldSegments([], trimmed);
+  if (segments === undefined || segments.length === 0) {
+    throw docsError(
+      'invalid-alias',
       `@waveso/docs: ${sourceLabel} has an empty entry in its ` +
         '`aliases` frontmatter. Each alias is a former URL for this page, ' +
         'relative to the docs base path — e.g. `aliases: [quickstart]`.',
     );
   }
-  return `${basePath}/${trimmed}`;
+
+  return `${basePath}/${encodeSegments(segments)}`;
 }
 
 /* -------------------------------------------------------------------------
@@ -559,8 +773,12 @@ function isPageFile(name: string): boolean {
   return (
     !name.startsWith('.') &&
     !name.startsWith('_') &&
-    name.endsWith(PAGE_EXTENSION) &&
-    name.length > PAGE_EXTENSION.length
+    // Case-insensitively: a `README.MD` off a Windows checkout or a zip is a
+    // markdown page everywhere else in the toolchain, and skipping it puts the
+    // build's failure ("no such page exists", at the first link to it) two
+    // steps away from its cause. `path.extname('.md')` is `''`, so a file
+    // named only for the extension is still not a page.
+    path.extname(name).toLowerCase() === PAGE_EXTENSION
   );
 }
 
@@ -569,15 +787,30 @@ function isIgnoredDir(name: string): boolean {
   return name.startsWith('.') || name.startsWith('_');
 }
 
-function baseName(filePath: string): string {
-  return path.basename(filePath, PAGE_EXTENSION);
+/** `getting-started.MD` -> `getting-started`. */
+function stripExtension(name: string): string {
+  return name.slice(0, name.length - path.extname(name).length);
+}
+
+/**
+ * Percent-encode the segments, and only here.
+ *
+ * `segments` and `slug` stay raw on purpose: Next decodes route params before
+ * they reach `find()`, so an encoded slug would match nothing. Unencoded, a
+ * `#`, `?` or `%` in a filename stops being part of the path — the sitemap
+ * emitted `https://example.com/docs/c#%20guide`, and `alternates.canonical`
+ * and `og:url` are built by the same call — while a space produced a URL that
+ * only works until something re-encodes it.
+ */
+function encodeSegments(segments: readonly string[]): string {
+  return segments.map(encodeURIComponent).join('/');
 }
 
 function toHref(basePath: string, segments: readonly string[]): string {
   if (segments.length === 0) {
     return basePath === '' ? '/' : basePath;
   }
-  return `${basePath}/${segments.join('/')}`;
+  return `${basePath}/${encodeSegments(segments)}`;
 }
 
 function normalizeBasePath(basePath: string): string {
