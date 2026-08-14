@@ -10,11 +10,11 @@
  * reference pages. Reading the ids makes them match by construction.
  */
 
-import type { Element, ElementContent, Root } from 'hast';
+import type { Element, ElementContent, Root, RootContent } from 'hast';
 import { toString as toText } from 'hast-util-to-string';
 import type { Plugin } from 'unified';
-import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
+import { isFootnotes, isTransparentContainer } from '../section-boundary.js';
 import type { TocEntry } from '../types.js';
 
 declare module 'vfile' {
@@ -49,18 +49,6 @@ function isPermalink(child: ElementContent): boolean {
   );
 }
 
-/**
- * The GFM footnote block `mdast-util-to-hast` appends.
- *
- * It carries a generated `<h2 id="footnote-label">Footnotes</h2>` that is
- * machinery rather than a section of the page — and is visually hidden, so a
- * TOC entry for it points the reader at nothing they can see. `search-index.ts`
- * skips the same subtree; the two must agree about which sections exist.
- */
-function isFootnotes(node: Element): boolean {
-  return node.properties.dataFootnotes !== undefined;
-}
-
 function headingText(node: Element): string {
   return node.children
     .filter((child) => !isPermalink(child))
@@ -80,10 +68,7 @@ export const rehypeCaptureToc: Plugin<[], Root> = () => {
     /** Open ancestors, outermost first. */
     const stack: TocEntry[] = [];
 
-    visit(tree, 'element', (node) => {
-      if (isFootnotes(node)) {
-        return SKIP;
-      }
+    const capture = (node: Element): void => {
       const match = HEADING.exec(node.tagName);
       const level = match?.[1];
       if (level === undefined) {
@@ -120,7 +105,34 @@ export const rehypeCaptureToc: Plugin<[], Root> = () => {
         parent.children.push(entry);
       }
       stack.push(entry);
-    });
+    };
+
+    /**
+     * Block-level nodes in document order, stepping into wrappers a section may
+     * legitimately sit inside — and no further.
+     *
+     * ⚠️ THE BOUND IS THE POINT, AND IT IS SHARED WITH THE SEARCH INDEX. A
+     * whole-tree walk gave a TOC entry to any heading with an id however deeply
+     * wrapped, while `extractSearchRecords` opens a section only inside an
+     * {@link isTransparentContainer} — so a `## ` written inside a list item or
+     * a table cell got a TOC entry with no searchable section behind it, and its
+     * prose was folded into the section above under the wrong breadcrumb. One
+     * exported predicate is what stops the two drifting apart again.
+     */
+    const walk = (nodes: readonly RootContent[]): void => {
+      for (const node of nodes) {
+        if (node.type !== 'element' || isFootnotes(node)) {
+          continue;
+        }
+        if (isTransparentContainer(node)) {
+          walk(node.children);
+          continue;
+        }
+        capture(node);
+      }
+    };
+
+    walk(tree.children);
 
     file.data.toc = toc;
     return undefined;

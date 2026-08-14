@@ -13,6 +13,7 @@
 
 import { createHighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
+import { docsError } from './docs-error.js';
 
 /*
  * Shiki's own type entry (`@shikijs/types`) is only a transitive dependency, so
@@ -176,9 +177,9 @@ export interface DocsHighlighterOptions {
    * than a build-time throw. The runtime check below stays for JavaScript
    * callers and for values that arrive from JSON config.
    */
-  langs?: readonly DocsLang[];
+  langs?: readonly DocsLang[] | undefined;
   /** Theme pair. Defaults to {@link DEFAULT_DOCS_THEMES}. */
-  themes?: DocsThemes;
+  themes?: DocsThemes | undefined;
 }
 
 /**
@@ -217,7 +218,8 @@ export function createDocsHighlighter(
 
   for (const theme of [themes.light, themes.dark]) {
     if (!isDocsTheme(theme)) {
-      throw new Error(
+      throw docsError(
+        'unknown-theme',
         `@waveso/docs: unknown Shiki theme '${theme}'. ` +
           `Supported themes: ${Object.keys(THEME_LOADERS).sort().join(', ')}. ` +
           'To use another theme, pass your own highlighter to createDocsRenderer().',
@@ -233,7 +235,8 @@ export function createDocsHighlighter(
   const loaders = new Set<LanguageInput>();
   for (const lang of langs) {
     if (!isDocsLang(lang)) {
-      throw new Error(
+      throw docsError(
+        'unknown-language',
         `@waveso/docs: unknown code language '${lang}'. ` +
           `Supported languages: ${Object.keys(LANG_LOADERS).sort().join(', ')}. ` +
           'To use another grammar, pass your own highlighter to createDocsRenderer().',
