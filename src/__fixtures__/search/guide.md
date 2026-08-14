@@ -26,10 +26,10 @@ running against a local stack.
 Configuration is resolved in three passes: explicit options passed to
 `createClient` win over environment variables, environment variables win over
 the values found in `wave.config.json`, and anything still unset falls back to
-the documented defaults. This paragraph exists to be longer than the default
-excerpt budget so that truncation has something real to cut, and it keeps
-going for a while yet so that the cut lands somewhere in the middle of a
-sentence rather than politely at its end.
+the documented defaults. This paragraph runs well past three hundred characters
+on purpose: the prose that used to be cut off here is exactly what a reader
+searching for a phrase deep inside a long section has to be able to find, so
+the words after this point must reach the index intact.
 
 | Option    | Default              |
 | --------- | -------------------- |
@@ -39,3 +39,9 @@ sentence rather than politely at its end.
 ### Options
 
 A second heading named "Options" so `rehype-slug` has to disambiguate it.
+
+> [!NOTE]
+> ### Rate limits
+>
+> Sixty requests a minute, per token. A heading inside a callout is a section
+> like any other: the table of contents lists it, so search has to find it.

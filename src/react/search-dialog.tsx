@@ -12,6 +12,7 @@
  */
 
 import type MiniSearch from 'minisearch';
+import type { Options as MiniSearchOptions } from 'minisearch';
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
@@ -22,7 +23,7 @@ import { createPortal } from 'react-dom';
 // `../search-options.js`, not `../search-index.js`: the index builder is
 // Node-only (`"browser": null` in the exports map), while the field
 // configuration both halves must agree on carries no Node imports at all.
-import { SEARCH_INDEX_OPTIONS } from '../search-options.js';
+import { mergeSearchOptions } from '../search-options.js';
 import type { SearchRecord } from '../types.js';
 /*
  * ⚠️ ONE LINK CONTRACT FOR THE WHOLE PACKAGE. This file used to declare its own
@@ -35,6 +36,7 @@ import type { SearchRecord } from '../types.js';
  * client bundle.
  */
 import type { DocsLinkComponent } from './markdown-components.js';
+import { docsError } from '../docs-error.js';
 
 /**
  * Tab stops inside the dialog. Every clause excludes `tabindex="-1"`: the
@@ -69,17 +71,31 @@ export interface SearchDialogProps {
    * Optional link component for results, e.g. `next/link`, so hovering a hit
    * prefetches the page. Results fall back to a plain anchor.
    */
-  Link?: DocsLinkComponent;
+  Link?: DocsLinkComponent | undefined;
   /** Trigger button label. Defaults to `'Search'`. */
-  triggerLabel?: string;
+  triggerLabel?: string | undefined;
   /** Input placeholder. Defaults to `'Search documentation'`. */
-  placeholder?: string;
+  placeholder?: string | undefined;
   /** Accessible name for the dialog. Defaults to `'Search documentation'`. */
-  dialogLabel?: string;
+  dialogLabel?: string | undefined;
   /** Maximum results rendered. Defaults to 8. */
-  maxResults?: number;
+  maxResults?: number | undefined;
   /** Input debounce in milliseconds. Defaults to 120. */
-  debounceMs?: number;
+  debounceMs?: number | undefined;
+  /** Extra class names for the trigger button, e.g. a navbar's own layout. */
+  className?: string | undefined;
+  /**
+   * Overrides applied through `mergeSearchOptions` when the index is
+   * deserialised — the escape hatch for tokenisation, `processTerm` and the
+   * query defaults (`fuzzy`, `prefix`, `combineWith`, `boost`) without waiting
+   * on a release of this package.
+   *
+   * ⚠️ HAND THE IDENTICAL OVERRIDES TO `buildSearchIndex`. `tokenize` and
+   * `processTerm` decide how terms were written into the index; a client that
+   * splits differently from the build looks up terms that were never written
+   * and finds nothing, silently.
+   */
+  searchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
 }
 
 /** A search result, narrowed out of MiniSearch's untyped stored fields. */
@@ -109,6 +125,8 @@ export function SearchDialog({
   dialogLabel = 'Search documentation',
   maxResults = 8,
   debounceMs = 120,
+  className,
+  searchOptions,
 }: SearchDialogProps): ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -122,7 +140,25 @@ export function SearchDialog({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const indexRef = useRef<Promise<MiniSearch<SearchRecord>> | null>(null);
+  /*
+   * ⚠️ KEYED BY URL, NOT A SINGLE SLOT. `indexUrl` is a prop, and a locale or
+   * version switcher changes it while this component stays mounted inside a
+   * persistent layout. A one-slot cache went on serving the corpus the tab
+   * first loaded — old hits, old hrefs, no network request and no error state
+   * — for as long as that tab lived. Keying it also makes switching back free.
+   */
+  const indexCacheRef = useRef(
+    new Map<string, Promise<MiniSearch<SearchRecord>>>(),
+  );
+  /*
+   * Read through a ref rather than closed over: a consumer passes this as an
+   * object literal, so its identity changes on every render. In `ensureIndex`'s
+   * dependencies that would re-run the query effect below on every render —
+   * including the render `setHits` itself causes, which is a search every
+   * `debounceMs` forever. The options are consumed exactly once per URL
+   * anyway, when that URL's index is deserialised.
+   */
+  const searchOptionsRef = useRef(searchOptions);
   /** Whether the dialog has ever been open. See the focus effect below. */
   const hasOpenedRef = useRef(false);
 
@@ -130,27 +166,34 @@ export function SearchDialog({
   const listId = `${baseId}-results`;
   const optionId = (index: number): string => `${baseId}-option-${index}`;
 
-  /** Load the index at most once; a failure clears the cache so a retry can. */
+  useEffect(() => {
+    searchOptionsRef.current = searchOptions;
+  }, [searchOptions]);
+
+  /** Load each URL at most once; a failure evicts that key so a retry can. */
   const ensureIndex = useCallback((): Promise<MiniSearch<SearchRecord>> => {
-    let pending = indexRef.current;
-    if (pending === null) {
-      pending = loadIndex(indexUrl).catch((error: unknown) => {
-        indexRef.current = null;
-        throw error;
-      });
-      indexRef.current = pending;
+    const cache = indexCacheRef.current;
+    let pending = cache.get(indexUrl);
+    if (pending === undefined) {
+      pending = loadIndex(indexUrl, searchOptionsRef.current).catch(
+        (error: unknown) => {
+          cache.delete(indexUrl);
+          throw error;
+        },
+      );
+      cache.set(indexUrl, pending);
     }
     return pending;
   }, [indexUrl]);
 
   const warmIndex = useCallback((): void => {
-    if (indexRef.current !== null) return;
+    if (indexCacheRef.current.has(indexUrl)) return;
     setStatus('loading');
     ensureIndex().then(
       () => setStatus('ready'),
       () => setStatus('error'),
     );
-  }, [ensureIndex]);
+  }, [ensureIndex, indexUrl]);
 
   const openDialog = useCallback((): void => {
     returnFocusRef.current =
@@ -181,6 +224,33 @@ export function SearchDialog({
     document.addEventListener('keydown', handleShortcut);
     return () => document.removeEventListener('keydown', handleShortcut);
   }, [isOpen, openDialog, closeDialog]);
+
+  /*
+   * ⚠️ ESCAPE AND TAB BELONG TO THE DOCUMENT, NOT TO THE DIALOG ELEMENT.
+   * Bound to the dialog `<div>`, both died on one ordinary click: the status
+   * paragraph is not focusable and has no focusable ancestor, so focus fell to
+   * `<body>` — outside the subtree React was listening on. Escape stopped
+   * closing the dialog, and the next Tab walked the document from the top into
+   * the page that `aria-modal="true"` has hidden from assistive tech.
+   *
+   * Capture phase: at the document in the bubble phase every ancestor handler
+   * has already run, so `stopPropagation` below — which is what keeps an outer
+   * layout from also acting on Escape — would guarantee nothing.
+   */
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeDialog();
+        return;
+      }
+      if (event.key === 'Tab') trapFocus(dialogRef.current, event);
+    }
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, closeDialog]);
 
   // Resolved after mount: reading the platform during render would disagree
   // with the server-rendered markup and blow up hydration.
@@ -291,18 +361,25 @@ export function SearchDialog({
     [closeDialog, navigate],
   );
 
-  function handleDialogKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
-    if (event.key === 'Escape') {
-      // Stop here: an outer layout listening for Escape must not also act.
-      event.preventDefault();
-      event.stopPropagation();
-      closeDialog();
-      return;
-    }
-    if (event.key === 'Tab') {
-      trapFocus(dialogRef.current, event);
-      return;
-    }
+  /*
+   * ⚠️ ON THE INPUT, NOT ON THE DIALOG. At the dialog level these branches ran
+   * for every key pressed anywhere inside it, so Enter on the focused Close
+   * button navigated to whichever result happened to be selected — and the
+   * `preventDefault` below suppressed the button's own activation, leaving the
+   * dialog's one visible dismiss affordance unusable from the keyboard.
+   * Escape and Tab stay on the document listener above, so they still work
+   * from the Close button and from a stray click on the dialog's chrome.
+   */
+  function handleInputKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    /*
+     * An IME sends the composition-commit key as `keydown{key:'Enter',
+     * isComposing:true}` *before* `compositionend` — so without this guard the
+     * keystroke a CJK reader uses to accept 客户端 opened whichever result the
+     * partial romaji had already matched. `keyCode === 229` is the same event
+     * on engines that leave `isComposing` unset. Escape is deliberately not
+     * gated here: a reader mid-composition still has to be able to leave.
+     */
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (hits.length === 0) return;
       event.preventDefault();
@@ -334,7 +411,9 @@ export function SearchDialog({
       <button
         type="button"
         ref={triggerRef}
-        className="wave-docs-search-trigger"
+        className={['wave-docs-search-trigger', className]
+          .filter(Boolean)
+          .join(' ')}
         /*
          * The hint is a shortcut, not part of the button's name. Named from
          * content, this button announced as "Search Ctrl K" — and `⌘` reads as
@@ -370,7 +449,6 @@ export function SearchDialog({
                 role="dialog"
                 aria-modal="true"
                 aria-label={dialogLabel}
-                onKeyDown={handleDialogKeyDown}
               >
                 <div className="wave-docs-search-input-row">
                   <input
@@ -388,6 +466,7 @@ export function SearchDialog({
                     placeholder={placeholder}
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={handleInputKeyDown}
                     autoComplete="off"
                     autoCorrect="off"
                     spellCheck={false}
@@ -600,19 +679,25 @@ function SearchStatus({
  * `loadJSONAsync` yields between chunks so deserialising a large index does
  * not freeze the frame the dialog just opened in.
  */
-async function loadIndex(url: string): Promise<MiniSearch<SearchRecord>> {
+async function loadIndex(
+  url: string,
+  overrides: Partial<MiniSearchOptions<SearchRecord>> | undefined,
+): Promise<MiniSearch<SearchRecord>> {
   const [{ default: MiniSearchClass }, response] = await Promise.all([
     import('minisearch'),
     fetch(url),
   ]);
   if (!response.ok) {
-    throw new Error(
+    throw docsError(
+      'search-index-unavailable',
       `Failed to load the search index from ${url} (HTTP ${response.status}).`,
     );
   }
+  // The same merge `buildSearchIndex` applies, from the same module: an index
+  // built with one `tokenize` and queried with another matches nothing at all.
   return MiniSearchClass.loadJSONAsync<SearchRecord>(
     await response.text(),
-    SEARCH_INDEX_OPTIONS,
+    mergeSearchOptions(overrides),
   );
 }
 
@@ -663,10 +748,7 @@ function toBreadcrumbs(hit: SearchHit): Array<{ key: string; text: string }> {
   });
 }
 
-function trapFocus(
-  root: HTMLElement | null,
-  event: ReactKeyboardEvent<HTMLDivElement>,
-): void {
+function trapFocus(root: HTMLElement | null, event: KeyboardEvent): void {
   if (root === null) return;
   const focusable = root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
   const first = focusable[0];
@@ -675,10 +757,22 @@ function trapFocus(
     event.preventDefault();
     return;
   }
-  if (event.shiftKey && document.activeElement === first) {
+  const active = document.activeElement;
+  /*
+   * Focus is not in the dialog at all — clicking its status paragraph, which
+   * nothing focusable contains, leaves it on `<body>`. Wrapping only at the
+   * two edges would let this Tab walk the document from the top, i.e. onto the
+   * trigger behind the modal. Pull it back to the near end instead.
+   */
+  if (!(active instanceof HTMLElement) || !root.contains(active)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+    return;
+  }
+  if (event.shiftKey && active === first) {
     event.preventDefault();
     last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
+  } else if (!event.shiftKey && active === last) {
     event.preventDefault();
     first.focus();
   }

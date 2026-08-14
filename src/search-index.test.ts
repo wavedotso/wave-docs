@@ -1,11 +1,15 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Element, Root } from 'hast';
+import type { Element, ElementContent, Root, RootContent } from 'hast';
 import MiniSearch from 'minisearch';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { renderFixtureDoc } from './__fixtures__/search/render-fixture.js';
-import { SEARCH_INDEX_OPTIONS } from './search-options.js';
+import {
+  SEARCH_INDEX_OPTIONS,
+  mergeSearchOptions,
+  tokenizeSearchText,
+} from './search-options.js';
 import {
   buildSearchIndex,
   extractSearchRecords,
@@ -21,16 +25,66 @@ beforeAll(async () => {
   records = extractSearchRecords(doc);
 });
 
-/** Every heading id `rehype-slug` actually put on the fixture tree. */
+/**
+ * Every heading id `rehype-slug` actually put on the fixture tree.
+ *
+ * Recursive on purpose: the `> [!NOTE]` heading lives inside a `<callout>`, and
+ * a top-level-only walk would have quietly agreed with the bug that skipped it.
+ */
 function headingIds(tree: Root): string[] {
   const ids: string[] = [];
-  for (const node of tree.children) {
-    if (node.type !== 'element') continue;
-    if (!/^h[1-6]$/.test(node.tagName)) continue;
-    const id = node.properties?.id;
-    if (typeof id === 'string') ids.push(id);
-  }
+  const walk = (nodes: RootContent[] | ElementContent[]): void => {
+    for (const node of nodes) {
+      if (node.type !== 'element') continue;
+      const id = node.properties?.id;
+      if (/^h[1-6]$/.test(node.tagName) && typeof id === 'string') {
+        ids.push(id);
+      }
+      walk(node.children);
+    }
+  };
+  walk(tree.children);
   return ids;
+}
+
+/** A section of a synthetic page: one `h2` and one paragraph under it. */
+interface FixtureSection {
+  heading: string;
+  text: string;
+}
+
+/** A `RenderedDoc` built straight from hast, for cases `guide.md` cannot show. */
+function docOf(
+  title: string,
+  segments: string[],
+  sections: FixtureSection[],
+): RenderedDoc {
+  const children: Element[] = sections.flatMap(({ heading, text }) => [
+    {
+      type: 'element' as const,
+      tagName: 'h2',
+      properties: { id: heading.toLowerCase().replace(/[^a-z0-9]+/g, '-') },
+      children: [{ type: 'text' as const, value: heading }],
+    },
+    {
+      type: 'element' as const,
+      tagName: 'p',
+      properties: {},
+      children: [{ type: 'text' as const, value: text }],
+    },
+  ]);
+
+  return {
+    frontmatter: { title },
+    hast: { type: 'root', children },
+    toc: [],
+    segments,
+    href: `/docs/${segments.join('/')}`,
+  };
+}
+
+function loadIndex(json: string): MiniSearch<SearchRecord> {
+  return MiniSearch.loadJSON<SearchRecord>(json, SEARCH_INDEX_OPTIONS);
 }
 
 describe('extractSearchRecords', () => {
@@ -43,6 +97,7 @@ describe('extractSearchRecords', () => {
       ['Options', '/docs/api/auth#options'],
       ['Configuration', '/docs/api/auth#configuration'],
       ['Options', '/docs/api/auth#options-1'],
+      ['Rate limits', '/docs/api/auth#rate-limits'],
     ]);
   });
 
@@ -100,32 +155,31 @@ describe('extractSearchRecords', () => {
   });
 
   it('keeps table text, which is prose people search for', () => {
-    // Read it untruncated — the fixture's long paragraph precedes the table.
-    expect(collapsedSectionText(doc)).toContain('timeout');
+    expect(records[3]?.text).toContain('timeout');
   });
 
-  it('truncates the excerpt on a word boundary', () => {
-    const configuration = records[3];
-    expect(configuration).toBeDefined();
-    const text = configuration?.text ?? '';
-    expect(text.length).toBeLessThanOrEqual(301); // 300 + the ellipsis
-    expect(text.endsWith('…')).toBe(true);
-
-    const withoutEllipsis = text.slice(0, -1);
-    const source = configuration?.text ?? '';
-    expect(source.length).toBeGreaterThan(0);
-    // The kept prefix must end where a word ends, not mid-word.
-    const original = collapsedSectionText(doc);
-    expect(original.startsWith(withoutEllipsis)).toBe(true);
-    expect(original.charAt(withoutEllipsis.length)).toBe(' ');
+  it('indexes the whole section rather than a leading excerpt', () => {
+    const configuration = records[3]?.text ?? '';
+    // The 300-character cap this replaced dropped ~82% of a normal corpus, and
+    // bought nothing back: `storeFields` never carried `text`, so not one
+    // character of the kept prefix was ever rendered anywhere.
+    expect(configuration.length).toBeGreaterThan(300);
+    expect(configuration).not.toContain('…');
+    // The last words of the section, ~600 characters in.
+    expect(configuration).toContain('10000');
   });
 
-  it('honours a custom excerpt length', () => {
-    const short = extractSearchRecords(doc, { excerptLength: 40 });
-    for (const record of short) {
-      expect(record.text.length).toBeLessThanOrEqual(41);
-    }
-    expect(short[3]?.text.endsWith('…')).toBe(true);
+  it('opens a section for a heading inside a callout', () => {
+    // `> [!NOTE]` renders to `<callout>`, which `rehypeCaptureToc` walks into
+    // and this extractor did not: the TOC listed the heading, no record
+    // existed, and its prose folded into the section above — so the one hit
+    // that mentioned rate limits deep-linked to the wrong anchor.
+    const callout = records[5];
+    expect(callout?.heading).toBe('Rate limits');
+    expect(callout?.id).toBe('api/auth#rate-limits');
+    expect(callout?.ancestors).toStrictEqual(['Configuration']);
+    expect(callout?.text).toContain('Sixty requests a minute');
+    expect(records[4]?.text).not.toContain('Sixty requests a minute');
   });
 
   it('folds a heading with no usable id into the enclosing section', () => {
@@ -157,21 +211,62 @@ describe('extractSearchRecords', () => {
   });
 });
 
-/** The raw (untruncated) prose of the Configuration section. */
-function collapsedSectionText(rendered: RenderedDoc): string {
-  const long = extractSearchRecords(rendered, { excerptLength: 100_000 });
-  return long[3]?.text ?? '';
-}
+describe('tokenizeSearchText', () => {
+  it('segments CJK prose that carries no spaces', () => {
+    // The whole clause was one term before, so no query could ever spell it.
+    const tokens = tokenizeSearchText('安装客户端软件包。');
+    expect(tokens.length).toBeGreaterThan(1);
+    expect(tokens.join('')).toBe('安装客户端软件包');
+  });
+
+  it('tokenises a query exactly as it tokenised the document', () => {
+    // The seam that fails silently: identical tokens on both sides, or an
+    // index full of terms no query can spell.
+    const inContext = tokenizeSearchText(
+      '然后安装客户端软件包，再创建客户端。',
+    );
+    const asQuery = tokenizeSearchText('客户端');
+    expect(asQuery.length).toBeGreaterThan(0);
+    for (const token of asQuery) expect(inContext).toContain(token);
+  });
+
+  it('splits dotted identifiers, which UAX #29 keeps whole', () => {
+    expect(tokenizeSearchText('wave.config.json')).toStrictEqual([
+      'wave',
+      'config',
+      'json',
+    ]);
+    expect(tokenizeSearchText('baseUrl overrides the host')).toStrictEqual([
+      'baseUrl',
+      'overrides',
+      'the',
+      'host',
+    ]);
+  });
+
+  it('drops punctuation instead of emitting it as a term', () => {
+    expect(tokenizeSearchText('—  … ,')).toStrictEqual([]);
+  });
+});
+
+describe('mergeSearchOptions', () => {
+  it('defaults to the shared constant', () => {
+    expect(mergeSearchOptions()).toStrictEqual(SEARCH_INDEX_OPTIONS);
+  });
+
+  it('keeps combineWith when only part of searchOptions is overridden', () => {
+    // A shallow spread would drop AND and silently revert to MiniSearch's OR,
+    // which returned 68–131 hits on real queries.
+    const merged = mergeSearchOptions({ searchOptions: { fuzzy: 0 } });
+    expect(merged.searchOptions?.fuzzy).toBe(0);
+    expect(merged.searchOptions?.combineWith).toBe('AND');
+    expect(merged.tokenize).toBe(SEARCH_INDEX_OPTIONS.tokenize);
+  });
+});
 
 describe('buildSearchIndex', () => {
   it('serialises an index whose results carry title, heading and href', () => {
-    const json = buildSearchIndex(records);
-    const loaded = MiniSearch.loadJSON<SearchRecord>(
-      json,
-      SEARCH_INDEX_OPTIONS,
-    );
-
-    const [top] = loaded.search('baseUrl');
+    const [top] = loadIndex(buildSearchIndex(records)).search('baseUrl');
     expect(top).toBeDefined();
     // The storeFields trap: without them at build time these are undefined
     // and the dialog renders empty rows.
@@ -182,20 +277,112 @@ describe('buildSearchIndex', () => {
   });
 
   it('combines terms with AND', () => {
-    const loaded = MiniSearch.loadJSON<SearchRecord>(
-      buildSearchIndex(records),
-      SEARCH_INDEX_OPTIONS,
-    );
-    // `token` appears only in the lead, `disambiguate` only in the last
+    const loaded = loadIndex(buildSearchIndex(records));
+    // `token` appears only in the lead, `disambiguate` only in the fifth
     // section: under the default OR both would match, under AND neither does.
     expect(loaded.search('token disambiguate')).toStrictEqual([]);
     expect(loaded.search('token').length).toBeGreaterThan(0);
+  });
+
+  it('finds two terms far apart in one long section', () => {
+    // `configuration` opens the section and `timeout` closes it, ~600
+    // characters later. Capping the indexed text at 300 dropped the second,
+    // and AND then returned nothing at all for the pair.
+    const loaded = loadIndex(buildSearchIndex(records));
+    const hits = loaded.search('configuration timeout');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0]?.id).toBe('api/auth#configuration');
+  });
+
+  it('finds CJK prose, which whitespace splitting could not', () => {
+    const cjk = extractSearchRecords(
+      docOf(
+        'Client',
+        ['zh', 'client'],
+        [
+          {
+            heading: 'Install',
+            text: '安装客户端软件包，然后创建客户端。软件包会在后台刷新令牌。',
+          },
+        ],
+      ),
+    );
+    const loaded = loadIndex(buildSearchIndex(cjk));
+
+    for (const query of ['客户端', '安装', '软件包']) {
+      expect(loaded.search(query).length, query).toBeGreaterThan(0);
+    }
+  });
+
+  it('does not let one page fill the result list', () => {
+    /*
+     * Every section record carries its page's title, so indexing `title`
+     * scored all 12 sections of the Configuration page on one title match:
+     * seven of the dialog's eight rows were the same page and the page that
+     * actually discussed configuration fell off the list. The title is still
+     * findable — the lead record's `heading` IS the title.
+     */
+    const configuration = docOf(
+      'Configuration',
+      ['configuration'],
+      Array.from({ length: 12 }, (_, index) => ({
+        heading: `Step ${index + 1}`,
+        text: `Nothing of interest in step number ${index + 1}.`,
+      })),
+    );
+    const deployment = docOf(
+      'Deployment',
+      ['deployment'],
+      [
+        {
+          heading: 'Environment',
+          text: 'Copy the configuration file onto it.',
+        },
+      ],
+    );
+
+    const loaded = loadIndex(
+      buildSearchIndex([
+        ...extractSearchRecords(configuration),
+        ...extractSearchRecords(deployment),
+      ]),
+    );
+    const hits = loaded.search('configuration');
+    const fromConfigurationPage = hits.filter(
+      (hit) => hit.id.split('#')[0] === 'configuration',
+    );
+
+    expect(fromConfigurationPage.map((hit) => hit.id)).toStrictEqual([
+      'configuration',
+    ]);
+    // The dialog renders a flat `.slice(0, 8)`, so ranking below that is the
+    // same as not existing.
+    expect(hits.slice(0, 8).map((hit) => hit.id)).toContain(
+      'deployment#environment',
+    );
+  });
+
+  it('applies overrides over the shared constant', () => {
+    const json = buildSearchIndex(records, { fields: ['heading'] });
+    const loaded = MiniSearch.loadJSON<SearchRecord>(
+      json,
+      mergeSearchOptions({ fields: ['heading'] }),
+    );
+    expect(loaded.search('Installation').length).toBeGreaterThan(0);
+    // `text` was not indexed, so its vocabulary is gone.
+    expect(loaded.search('createClient')).toStrictEqual([]);
   });
 
   it('produces stable, unique document ids', () => {
     const ids = records.map((record) => record.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(() => buildSearchIndex(records)).not.toThrow();
+  });
+
+  it('serialises byte-identically for identical input', () => {
+    // A non-deterministic index dirties the diff on every build, and defeats
+    // every cache between here and the reader.
+    expect(buildSearchIndex(records)).toBe(buildSearchIndex(records));
   });
 });
 
@@ -210,6 +397,49 @@ describe('writeSearchIndex', () => {
       expect(size).toBe(Buffer.byteLength(written, 'utf8'));
       expect((await stat(outFile)).size).toBe(size);
       expect(() => JSON.parse(written) as unknown).not.toThrow();
+      // No stray `.tmp-<pid>` beside it.
+      expect(await readdir(path.dirname(outFile))).toStrictEqual([
+        'search-index.json',
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces the served file instead of truncating it in place', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-search-'));
+    try {
+      const outFile = path.join(dir, 'search-index.json');
+      await writeSearchIndex(records, outFile);
+      const before = await stat(outFile);
+
+      await writeSearchIndex(records, outFile);
+      const after = await stat(outFile);
+
+      /*
+       * A NEW INODE IS THE PROOF, and the whole point of the fix. Writing into
+       * the live path truncates it to zero and grows it back in 1 MiB chunks;
+       * a fetch landing in that window gets a 200 with a half-written body,
+       * `response.ok` passes, the parse throws, and the dialog is stuck on
+       * "Try reloading the page" for every visitor until someone redeploys.
+       * `rename` swaps the whole file atomically, so the number changes.
+       */
+      expect(after.ino).not.toBe(before.ino);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves no temp file behind when the write fails', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-search-'));
+    try {
+      // A directory where the file belongs: the temp write succeeds and the
+      // rename cannot, which is the only path that can strand an artifact.
+      const outFile = path.join(dir, 'search-index.json');
+      await mkdir(outFile);
+
+      await expect(writeSearchIndex(records, outFile)).rejects.toThrow();
+      expect(await readdir(dir)).toStrictEqual(['search-index.json']);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
