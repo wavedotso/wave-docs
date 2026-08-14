@@ -41,11 +41,19 @@ Three things follow from that shape, and they are the reasons to choose this ove
 pnpm add @waveso/docs
 ```
 
-`react`, `react-dom` and `zod` are required peers; `next` and `tailwindcss` are optional — install only what you use.
+`react` and `react-dom` are required peers. `next` and `zod` are optional — install only what you use.
 
-The `zod` floor is `4.4.3`, not `^4.0.0`: the built-in frontmatter schema calls `.exactOptional()` at module scope, so an earlier 4.x throws on import of `@waveso/docs/frontmatter` with nothing in the message naming zod.
+**`zod` is needed by three entry points, not by the package as a whole**: `@waveso/docs/frontmatter`, `@waveso/docs/source` and `@waveso/docs/next`, because `docFrontmatterSchema` is a Zod schema. `@waveso/docs/react/*`, `/render`, `/search-index`, `/search-options`, `/markdown-links` and `/types` all load without it. If you import any of the first three, install it:
 
-There is no `image-size` peer. An `imageResolver` you write is welcome to read dimensions with it — but it is your dependency, in your own `package.json`. It was declared here as an optional peer, which installs nothing and therefore does not make `await import('image-size')` resolve for you; the declaration only looked like it helped.
+```sh
+pnpm add zod
+```
+
+The floor is `4.4.3`, not `^4.0.0`: the built-in frontmatter schema calls `.exactOptional()` at module scope, so an earlier 4.x throws on import with nothing in the message naming zod.
+
+**There is no `tailwindcss` peer and no Tailwind involved.** The stylesheet is plain CSS with `wave-docs-*` class names. It was declared as an optional peer once, which blocked `npm install` outright for any project on Tailwind 3 — npm still range-checks an optional peer that happens to be installed.
+
+There is no `image-size` peer either. An `imageResolver` you write is welcome to read dimensions with it — but it is your dependency, in your own `package.json`. Declaring it here installed nothing and did not make `await import('image-size')` resolve for you; it only looked like it helped.
 
 ## Quick start
 
@@ -90,7 +98,7 @@ content/docs/
 That is a working documentation site.
 
 > [!IMPORTANT]
-> `dynamicParams` must be written out as `false`. Route segment config is parsed statically before the module runs, so `export const dynamicParams = docs.dynamicParams` fails `next build`. Without it, Next renders unlisted URLs on demand — `/docs/typo` reaches the filesystem, `readFile` throws, and Next answers **500** where it should answer 404.
+> `dynamicParams` must be written out as `false`. Route segment config is parsed statically before the module runs, so `export const dynamicParams = docs.dynamicParams` fails `next build`. Without it, Next invokes the route on a server at request time for every unlisted URL, to produce a 404 that was already knowable at build time — and `output: 'export'` refuses to build at all.
 
 ## Entry points
 
@@ -227,7 +235,7 @@ doc?.frontmatter.audience; // 'user' | 'operator' | undefined
 doc?.frontmatter.title; //    string
 ```
 
-Any [Standard Schema](https://standardschema.dev) validator works — Zod, Valibot, ArkType. The field is typed `StandardSchemaV1<unknown, TFrontmatter>` rather than as a Zod type, so the package does not dictate your validator. `zod` stays a required peer because `docFrontmatterSchema` is a Zod schema and extending it is the shortest path to a valid one.
+Any [Standard Schema](https://standardschema.dev) validator works — Zod, Valibot, ArkType. The field is typed `StandardSchemaV1<unknown, TFrontmatter>` rather than as a Zod type, so the package does not dictate your validator. Reach for `zod` only if you extend `docFrontmatterSchema`, which is itself a Zod schema — see [Installation](#installation).
 
 Four things are worth knowing before you write one.
 
@@ -240,7 +248,9 @@ const docs = createDocsRoute<MyFrontmatter>({ contentDir: 'content/docs' });
 
 **Unknown keys are stripped**, by Zod and by every other validator worth using. Declare every field you intend to read — under the base schema, a page with `audience: operator` parses fine and silently loses the value. `docFrontmatterSchema.extend(…)` keeps the built-ins; a `z.object({ … })` written from scratch does not.
 
-**The output must still satisfy `DocFrontmatter`.** `title` drives the `<h1>` fallback and `<title>`, `draft` the visibility filter, `aliases` the redirects, `order` and `label` the sidebar. A schema that drops them is a compile error where you pass it, not a mystery at render time.
+**The package's own fields survive a schema that forgets them.** `title` drives the `<h1>` fallback and `<title>`, `draft` the visibility filter, `aliases` the redirects, `order` and `label` the sidebar. These are parsed from the raw YAML and merged over your schema's output, so a custom schema can only ever *add* fields — it cannot drop or corrupt the ones the package reads itself.
+
+That is a runtime guarantee, not a compile-time one, and the difference matters: `TFrontmatter extends DocFrontmatter` constrains only `title`, because the rest are optional. A `z.object({ title, audience })` type-checks perfectly and used to strip `draft` and `aliases` on the way through — publishing every draft, submitting them to Google, and silently returning no redirects at all. Prefer `docFrontmatterSchema.extend(…)` anyway: you then get the built-in fields in *your* inferred type, rather than merely at runtime.
 
 **Export the schema from one module.** The filesystem scan is memoised per resolved config, and two schema objects count as the same schema only when they are the same object. Build one inline in each route file and each file pays for its own scan.
 
@@ -301,7 +311,33 @@ A ```` ```cfg ```` fence (or ```` ```conf ````) uses the `ini` grammar, because
 the fence an author types follows the filename — nobody writes ```` ```ini ````
 above a file called `server.cfg`.
 
-Anything outside that set falls back to plain text rather than throwing. Pass `langs` to change the set, or `highlighter` to supply your own.
+Anything outside that set falls back to plain text rather than throwing. Pass `langs` to change the set, or `highlighter` to supply your own. Fence languages are matched case-insensitively, so ```` ```JSON ```` and ```` ```Bash ```` highlight like their lowercase spellings rather than silently shipping monochrome.
+
+### Images
+
+**Absolute and external sources just work.** Put the file in `public/` and write `![](/diagram.png)`.
+
+```md
+![Architecture](/diagram.png)          ✅ served from public/
+![Logo](https://example.com/logo.png)  ✅ external
+![Architecture](./diagram.png)         ⛔️ needs an imageResolver
+```
+
+A **relative** source is a different thing. Nothing in `public/` corresponds to it, and the browser would resolve it against the *route* — so `/docs/guide` and `/docs/guide/setup` request two different files from byte-identical markdown. Rather than ship that, a relative source with no `imageResolver` fails the build, naming the file and offering both fixes.
+
+An `imageResolver` receives the source already folded against the markdown file's directory (`./diagram.png` in `guides/deploying.md` arrives as `guides/diagram.png`) and returns a public URL plus intrinsic dimensions — which `next/image` requires and markdown does not carry:
+
+```ts
+createDocsRoute({
+  contentDir: 'content/docs',
+  imageResolver: async (src) => {
+    const { width, height } = await imageSize(path.join('content/docs', src));
+    return { src: `/docs-assets/${src}`, width, height };
+  },
+});
+```
+
+A source that climbs above the content root fails the build whether or not a resolver is configured.
 
 ## Theming
 
@@ -318,19 +354,40 @@ your own `:root`, after the import:
 ```
 
 That works because **everything this stylesheet declares lives in a `@layer`** —
-`theme` for the tokens, `base` for element resets, `components` for the classes —
-and unlayered CSS outranks every layer regardless of specificity.
+`theme` for the tokens, `base` for element resets, `components` for the classes
+— and unlayered CSS outranks every layer regardless of specificity.
 
 The distinction matters. The dark tokens are declared as
-`:root:not([data-theme='light'])`, which is specificity (0,2,0). Before the
-layers, an unlayered `:root` at (0,1,0) lost *no matter where it was loaded* —
-the cascade never reached source order, and overriding meant writing
-`:root:root:root`. Now source order and layering settle it, and a plain `:root`
-is enough.
+`:root[data-theme='dark']`, which is specificity (0,2,0). Outside a layer, an
+unlayered `:root` at (0,1,0) would lose *no matter where it was loaded* — the
+cascade never reaches source order — and overriding would mean writing
+`:root:root:root`. Layered, source order settles it and a plain `:root` is
+enough.
 
-Dark mode follows the OS by default and `data-theme` overrides it in both
-directions: `[data-theme='light']` opts out of a dark system,
-`[data-theme='dark']` opts into dark on a light one.
+### Dark mode is opt-in
+
+| On `<html>` | Result |
+| --- | --- |
+| nothing | Light |
+| `class="dark"` | Dark |
+| `data-theme="dark"` | Dark |
+| `data-theme="system"` | Follows `prefers-color-scheme` |
+
+`.dark` is honoured because [next-themes](https://github.com/pacocoursey/next-themes)
+defaults to `attribute="class"` and never sets `data-theme`.
+
+**This is deliberate, and it is a change.** The tokens used to switch on
+`prefers-color-scheme` alone. But the stylesheet styles the docs subtree, not
+the page — so on a light-only site with a `/docs` section, a visitor whose OS
+was in dark mode got the near-white foreground ramp on the host's white
+background: **1.23:1**, i.e. invisible. A stylesheet cannot assume it owns the
+page it is dropped into, so it now switches only when the host says to.
+
+If your site really does follow the OS and has no theme toggle, say so once:
+
+```tsx
+<html lang="en" data-theme="system">
+```
 
 To restyle rather than retheme, override the classes — `.wave-docs-prose`,
 `.wave-docs-skip-link`, and the rest — from your own unlayered CSS.
@@ -372,6 +429,24 @@ export function Search() {
 
 MiniSearch is `import()`ed and the index fetched on hover, focus or first open — never on page load.
 
+### What gets indexed
+
+**The whole section**, not a preview of it. `extractSearchRecords` once truncated `text` to 300 characters *before* indexing, which dropped roughly 80% of a normal corpus — and because the default `combineWith: 'AND'` requires every term to land in the same record, a two-word query against a page that plainly contained both words returned nothing. Indexing and display are now separate concerns: the full text is searchable, and `storeFields` carries only what the dialog renders.
+
+### CJK and other scripts
+
+Tokenisation uses `Intl.Segmenter` where available, so Chinese, Japanese and Thai — which do not delimit words with spaces — index and query as words rather than as whole clauses. Without it, `search('安装')` matched nothing on a page that was entirely about 安装.
+
+Both halves of the seam take the same overrides, and they must agree — an index built with one `tokenize` and queried with another matches nothing at all:
+
+```ts
+buildSearchIndex(records, { fuzzy: 0.1, prefix: true });
+```
+
+```tsx
+<SearchDialog indexUrl="/search-index.json" searchOptions={{ fuzzy: 0.1, prefix: true }} />
+```
+
 ## Configuration
 
 ```ts
@@ -388,7 +463,7 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `langs` | 16 grammars | Typed `readonly DocsLang[]`, so a typo is a compile error |
+| `langs` | 18 grammars | Typed `readonly DocsLang[]`, so a typo is a compile error |
 | `themes` | `github-light` / `github-dark` | Shiki theme pair |
 | `highlighter` | built-in | Supply your own for grammars outside the set |
 | `titleHeading` | `true` | Build an `<h1>` from `frontmatter.title` when the markdown has none |
@@ -415,9 +490,24 @@ export default () =>
   createDocsSitemap({ contentDir: 'content/docs', siteUrl: 'https://example.com' });
 ```
 
+`siteUrl` must be a bare origin. A path component (`https://example.com/product-docs`) is rejected, because `new URL(href, siteUrl)` discards it — every canonical and every sitemap entry would point somewhere that 404s. Put the path in `basePath`, which does take multiple segments.
+
+**An alias is a redirect, not a page.** It is never prerendered, so linking one from your markdown fails the build and names the page to link instead. Aliases are also validated when the page is read:
+
+| Alias | |
+| --- | --- |
+| `quickstart`, `guides/old-name` | ✅ |
+| `v1:beta`, `c++`, `docs/(old)` | ⛔️ path-to-regexp metacharacters |
+| `../escape`, `./here` | ⛔️ relative segments |
+| `''` | ⛔️ empty |
+
+The rejected spellings are not pedantry. Next compiles a redirect `source` as a path pattern, so `aliases: ['v1:beta']` installed a **wildcard** — it built green and then permanently 308'd `/docs/v1-guide`, a real prerendered page, away to somewhere else.
+
 ### Development
 
-Markdown files are not in Next's module graph, so nothing recompiles a route module when one changes. `createDocsRoute` re-scans the content directory on every request outside `NODE_ENV=production`: edits appear on reload, new files are found without a restart. A rescan of a few hundred small files is single-digit milliseconds — it is the render that costs.
+Markdown files are not in Next's module graph, so nothing recompiles a route module when one changes. `createDocsRoute` re-scans the content directory on every request outside `NODE_ENV=production`: edits appear on reload, new files are found without a restart, and the sidebar from `docs.source.nav()` agrees with the page body on the *same* request.
+
+The rescan is shared. Next runs `generateMetadata` and your page concurrently, and a layout calling `nav()` is a third reader; invalidation is wrapped in `React.cache`, so the first of them re-reads the disk and the rest see that scan. Without it each invalidated the others' work in flight — measured at 22 `readdir` + 824 `readFile` per request on a 401-file tree, against 11 + 412 for one scan.
 
 ## Requirements
 
