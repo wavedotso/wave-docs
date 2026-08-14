@@ -126,6 +126,27 @@ describe('YouTube', () => {
     expect(document.activeElement).toBe(getFrame());
   });
 
+  it('leaves focus alone once the reader has moved it on', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<YouTube id={VIDEO_ID} />);
+    await user.click(screen.getByRole('button'));
+    expect(document.activeElement).toBe(getFrame());
+
+    const elsewhere = document.createElement('input');
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    // Any unrelated parent state change re-renders the playing branch — a theme
+    // toggle, a version switcher, `router.refresh()`. Moving focus from an
+    // inline `ref` callback made every one of them steal the keyboard back:
+    // the callback's identity changes each render, so React detaches it and
+    // calls the new one, mid-sentence into whatever the reader was typing.
+    rerender(<YouTube id={VIDEO_ID} title="Deploying to Vercel" />);
+
+    expect(document.activeElement).toBe(elsewhere);
+    elsewhere.remove();
+  });
+
   it('keeps a crafted id inside the embed path', async () => {
     const user = userEvent.setup();
     render(<YouTube id="../../watch?v=x&autoplay=0" />);

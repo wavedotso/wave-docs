@@ -80,6 +80,78 @@ export interface MarkdownComponentsOptions {
 const HTTP_SCHEME = /^https?:\/\//i;
 /** Any URL with a scheme, or protocol-relative. */
 const ABSOLUTE_URL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
+/**
+ * The schemes a markdown link may carry.
+ *
+ * GitHub's own allowlist, which is the bar to match: documentation links to
+ * `sms:`, `ftp:` and `irc:` are ordinary, and an allowlist of three silently
+ * deleted them. The point of the check is to stop `javascript:`, `data:` and
+ * `vbscript:` reaching an `href`, not to have an opinion about protocols.
+ *
+ * A scheme not listed here — `vscode:`, `obsidian:`, `slack:` — is dropped
+ * rather than rendered. That is deliberate: an allowlist that grows on request
+ * is safe, one that guesses is not. {@link warnDroppedHref} makes it visible.
+ */
+const SAFE_SCHEME =
+  /^(https?|mailto|tel|sms|ftp|ftps|irc|ircs|xmpp|news|nntp|feed|git|matrix):/i;
+
+/** Hrefs already reported, so a re-render does not repeat the warning. */
+const warnedHrefs = new Set<string>();
+
+/**
+ * Say something when a link is dropped.
+ *
+ * A destination that vanishes with the text left behind is the quietest
+ * possible failure — the page looks fine and the link is simply gone. Every
+ * other rejection in this package names a file and a fix; this one cannot see
+ * the file, so it names the href and stays out of production noise.
+ */
+function warnDroppedHref(href: string): void {
+  if (process.env.NODE_ENV === 'production' || warnedHrefs.has(href)) {
+    return;
+  }
+  warnedHrefs.add(href);
+  console.warn(
+    `@waveso/docs: dropped a link to '${href}' — its URL scheme is not in ` +
+      'the allowlist, so the text was kept and the destination removed. Use ' +
+      'http, https, mailto, tel, sms, ftp, irc, xmpp or matrix, or render ' +
+      'the link yourself with a custom `a` component.',
+  );
+}
+/**
+ * A copy of `href` as a browser will parse it.
+ *
+ * ASCII control characters and spaces are stripped before parsing, so
+ * ` javascript:` and `java<TAB>script:` both navigate where the raw string
+ * matches no scheme at all — which is how a scheme check gets walked around.
+ */
+function normaliseUrl(href: string): string {
+  return [...href].filter((char) => (char.codePointAt(0) ?? 0) > 0x20).join('');
+}
+
+/**
+ * Would this href navigate somewhere we are willing to send a reader?
+ *
+ * Nothing upstream filters it: `remarkDocLinks` skips every href with a scheme
+ * (`isRelativeLink` is false for it), so `assertLinks` never sees one either,
+ * and `remarkRehype` runs with `allowDangerousHtml` off but passes a link's own
+ * url through untouched. Verified against React 19: it neutralises
+ * `javascript:` in every obfuscated form, silently — but it lets `vbscript:`
+ * and `data:text/html;base64,…` reach the DOM verbatim. So the allowlist is
+ * ours to keep.
+ *
+ * Tested against {@link normaliseUrl}, not the raw string.
+ */
+function isSafeHref(href: string): boolean {
+  const normalised = normaliseUrl(href);
+  // No scheme at all — a route, a relative path, `#anchor`, `?query`.
+  if (!ABSOLUTE_URL.test(normalised)) {
+    return true;
+  }
+  // Protocol-relative inherits the page's own scheme, which is http(s).
+  return normalised.startsWith('//') || SAFE_SCHEME.test(normalised);
+}
+
 /*
  * `parseYouTubeId`, `getPlainText` and `isBareUrl` MOVED TO
  * `plugins/remark-youtube.ts`. They were the render-path half of a
@@ -113,6 +185,14 @@ function createAnchor(Link: DocsLinkComponent | undefined) {
   }: ComponentProps<'a'>): ReactNode {
     if (href === undefined) {
       return <a {...rest}>{children}</a>;
+    }
+
+    // The text survives, the destination does not: the reader still sees what
+    // the author wrote, and a `<span>` carries none of an anchor's attributes
+    // into a place they would mean something.
+    if (!isSafeHref(href)) {
+      warnDroppedHref(href);
+      return <span>{children}</span>;
     }
 
     /*
@@ -162,10 +242,23 @@ function createImage(Image: DocsImageComponent | undefined) {
     height,
     title,
     className,
+    sizes,
+    loading,
     ...rest
   }: ComponentProps<'img'>): ReactNode {
     const resolvedWidth = toDimension(width);
     const resolvedHeight = toDimension(height);
+    /*
+     * Lazy by default, never over the author's own choice. `remarkUnwrapImages`
+     * lifts a leading image out of its paragraph to a top-level block precisely
+     * because it is usually the page's LCP element, and `loading="lazy"` on the
+     * LCP element costs it a round trip. Resolve it here rather than writing
+     * the default after the spread, where it wins every time and
+     * `loading="eager"` — declared on `DocsImageProps`, faithfully forwarded by
+     * `next.ts` — is a prop no tree can actually reach.
+     */
+    const resolvedLoading = loading ?? 'lazy';
+    const resolvedClassName = joinClassNames('wave-docs-image', className);
 
     // `next/image` throws without intrinsic dimensions, and the build-time
     // image resolver is optional (`image-size` is an optional peer). Degrade to
@@ -177,14 +270,19 @@ function createImage(Image: DocsImageComponent | undefined) {
       resolvedHeight !== undefined
     ) {
       return (
+        // `rest` first, so nothing below can be overwritten by the tree, and
+        // so an attribute the plain branch honours — `decoding`,
+        // `fetchPriority` — is not silently dropped by the optimising one.
         <Image
+          {...rest}
           src={src}
           alt={alt ?? ''}
           width={resolvedWidth}
           height={resolvedHeight}
           title={title}
-          className={joinClassNames('wave-docs-image', className)}
-          loading="lazy"
+          className={resolvedClassName}
+          sizes={sizes}
+          loading={resolvedLoading}
         />
       );
     }
@@ -192,15 +290,19 @@ function createImage(Image: DocsImageComponent | undefined) {
     return (
       // biome-ignore lint/performance/noImgElement: cannot import `next/image` — this layer stays host-agnostic, and the caller injects an optimising component when it has one.
       <img
+        // Before the spread, so a tree that sets `decoding` itself keeps it.
+        // The optimising branch needs no equivalent: `next/image` applies
+        // `decoding="async"` on its own.
+        decoding="async"
         {...rest}
         src={src}
         alt={alt ?? ''}
         width={width}
         height={height}
         title={title}
-        className={joinClassNames('wave-docs-image', className)}
-        loading="lazy"
-        decoding="async"
+        className={resolvedClassName}
+        sizes={sizes}
+        loading={resolvedLoading}
       />
     );
   };
