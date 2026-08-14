@@ -30,17 +30,25 @@
  * export const generateMetadata = docs.generateMetadata;
  * ```
  *
- * `next` is an *optional* peer dependency, so its modules are imported lazily
- * and only from the code paths that render. That is what lets
+ * `next` is an *optional* peer dependency, so **Next's own modules** are
+ * imported lazily and only from the code paths that render. That is what lets
  * {@link createDocsSitemap} and {@link createDocsRedirects} be called from
  * `next.config.ts` — which Node loads outside the Next runtime — without
- * dragging React and Next's client runtime into the config load.
+ * dragging Next's client runtime into the config load.
+ *
+ * React itself is *not* excluded: this module statically imports `react` and
+ * the package's own React layer, so importing it from `next.config.ts` costs
+ * around 210 ms and ~870 modules (measured against 24 ms for an empty config).
+ * That is a startup cost, not a correctness problem, and it is stated here
+ * rather than claimed away — an earlier version of this note said React stayed
+ * out of the config load, which was never true.
  */
 
 import { stat } from 'node:fs/promises';
 import type { ComponentProps, ComponentType, ReactNode } from 'react';
-import { createElement } from 'react';
+import { cache, createElement } from 'react';
 
+import { mapPooled } from './map-pooled.js';
 import type {
   DocsHighlighter,
   DocsLang,
@@ -69,12 +77,25 @@ import type {
   LinkResolver,
   RenderedDoc,
 } from './types.js';
+import { docsError } from './docs-error.js';
 
 /**
  * Re-exported so a consumer can name the accepted grammar and theme sets
  * without importing the Node-only highlighter entry point.
  */
 export type { DocsLang, DocsTheme, DocsThemes };
+
+/**
+ * Pages rendered at once by {@link DocsRoute.renderAll}.
+ *
+ * High enough that the pipeline — CPU-bound and effectively synchronous — never
+ * idles, low enough that an async `imageResolver` cannot put an entire site's
+ * worth of trees and network calls in flight simultaneously.
+ */
+const RENDER_CONCURRENCY = 16;
+
+/** Google's per-sitemap URL cap. */
+const SITEMAP_URL_LIMIT = 50_000;
 
 /* -------------------------------------------------------------------------
  * Lazily-loaded `next` modules
@@ -111,6 +132,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * A React component type: a function, or an object tagged with `$$typeof`
+ * (`forwardRef`, `memo`, lazy…). Anything else that reaches `createElement`
+ * throws four frames inside React.
+ */
+function isComponentLike(value: unknown): boolean {
+  return (
+    typeof value === 'function' || (isRecord(value) && '$$typeof' in value)
+  );
+}
+
+/**
  * Pull the default export out of a lazily-imported module.
  *
  * This is the one place a cast is unavoidable — the import crosses a boundary
@@ -119,9 +151,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * than as `undefined is not a function` four frames inside React.
  */
 function readDefaultExport<T>(mod: unknown, specifier: string): T {
-  const value = isRecord(mod) && 'default' in mod ? mod.default : mod;
+  let value = isRecord(mod) && 'default' in mod ? mod.default : mod;
+
+  /*
+   * CJS interop can leave the namespace nested one level deeper. Verified
+   * against Next 16.3.0 under Node ESM: `next/image`'s default is the plain
+   * object `{ default, getImageProps }` with no `$$typeof`, so the real
+   * component is at `.default.default` — while `next/link`'s default IS the
+   * component (`$$typeof: Symbol(react.forward_ref)`) and must not be
+   * unwrapped. Testing for the component shape rather than counting levels
+   * handles both, and any future interop that changes the nesting again.
+   */
+  if (!isComponentLike(value) && isRecord(value) && 'default' in value) {
+    value = value.default;
+  }
+
   if (typeof value !== 'function' && !isRecord(value)) {
-    throw new Error(
+    throw docsError(
+      'missing-peer',
       `@waveso/docs: '${specifier}' has no usable default export. ` +
         'The `@waveso/docs/next` entry point requires Next.js 16 — install ' +
         '`next`, or build your pages from `@waveso/docs/react/*` instead.',
@@ -145,7 +192,8 @@ async function importNext(
   try {
     return await load();
   } catch (error) {
-    throw new Error(
+    throw docsError(
+      'missing-peer',
       `@waveso/docs: could not load '${specifier}'. The ` +
         '`@waveso/docs/next` entry point needs Next.js 16, which is an ' +
         'optional peer dependency — install `next`. Outside Next, build your ' +
@@ -166,7 +214,8 @@ async function loadNotFound(): Promise<() => never> {
   );
   const value = isRecord(mod) ? mod.notFound : undefined;
   if (typeof value !== 'function') {
-    throw new Error(
+    throw docsError(
+      'missing-peer',
       "@waveso/docs: 'next/navigation' has no `notFound` export. The " +
         '`@waveso/docs/next` entry point requires Next.js 16.',
     );
@@ -281,24 +330,32 @@ export interface DocsRouteOptions<
   TFrontmatter extends DocFrontmatter = DocFrontmatter,
 > extends DocsConfig<TFrontmatter> {
   /** Overrides merged over the Next-flavoured defaults (`next/link` + `next/image`). */
-  components?: MarkdownComponents;
+  components?: MarkdownComponents | undefined;
   /** Reuse an existing Shiki highlighter. */
-  highlighter?: DocsHighlighter | Promise<DocsHighlighter>;
+  highlighter?: DocsHighlighter | Promise<DocsHighlighter> | undefined;
   /** Grammars to load, when building the default highlighter. */
-  langs?: readonly DocsLang[];
+  langs?: readonly DocsLang[] | undefined;
   /** Theme pair. */
-  themes?: DocsThemes;
+  themes?: DocsThemes | undefined;
+  /**
+   * Fence languages Shiki must not touch, e.g. `['mermaid']`.
+   *
+   * The `<pre><code class="language-mermaid">` then reaches your `pre`/`code`
+   * component untouched, which is what lets you render a diagram instead of a
+   * monochrome block of DSL.
+   */
+  excludeLangs?: readonly string[] | undefined;
   /**
    * Prepend an `<h1>` from `frontmatter.title` when the markdown has none.
    * Defaults to `true`; turn it off if your layout renders the title itself.
    */
-  titleHeading?: boolean;
+  titleHeading?: boolean | undefined;
   /**
    * `id` of the rendered `<article>`, which is also what
    * `@waveso/docs/react/skip-link` targets by default. Defaults to
    * `'docs-content'`. Pass `false` to render no id at all.
    */
-  contentId?: string | false;
+  contentId?: string | false | undefined;
   /**
    * Re-read the content directory on every request.
    *
@@ -309,15 +366,15 @@ export interface DocsRouteOptions<
    * found. A rescan of a few hundred small files costs single-digit
    * milliseconds; a production build reads the tree once, as it should.
    */
-  rescanPerRequest?: boolean;
+  rescanPerRequest?: boolean | undefined;
   /** Replaces the built-in markdown-link resolution. */
-  linkResolver?: LinkResolver;
+  linkResolver?: LinkResolver | undefined;
   /**
    * Resolves image `src` to a public URL and intrinsic dimensions. Without one,
    * markdown images render as a plain `<img>`: `next/image` refuses to render
    * without dimensions, and markdown carries none.
    */
-  imageResolver?: ImageResolver;
+  imageResolver?: ImageResolver | undefined;
   /**
    * Absolute site origin, e.g. `'https://example.com'`.
    *
@@ -325,7 +382,7 @@ export interface DocsRouteOptions<
    * root-relative path, which Next resolves against `metadataBase` — so if you
    * set neither, you ship pages with no usable canonical.
    */
-  siteUrl?: string;
+  siteUrl?: string | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -416,13 +473,17 @@ export interface DocsRoute<
    * is documented in one place and typed as `false`, not so it can be
    * forwarded.
    *
-   * Declaring it is not optional. Next defaults `dynamicParams` to `true`,
-   * which means a URL that `generateStaticParams` never listed is still
-   * rendered on demand — so `/docs/typo` reaches the source layer,
-   * `fs.readFile` throws `ENOENT`, and Next answers **HTTP 500**. Google
-   * treats a 5xx as a crawl failure and retries it; it treats a 404 as an
-   * answer. With the full page set known at build time there is nothing to
-   * render on demand anyway.
+   * Declaring it is not optional. Next defaults `dynamicParams` to `true`, so
+   * a URL `generateStaticParams` never listed is still invoked on demand: the
+   * route runs on a server at request time to produce a 404 that was already
+   * knowable at build time. `output: 'export'` refuses to build without it at
+   * all. With the full page set known ahead of time there is nothing to render
+   * on demand anyway, and a prerendered 404 is both faster and cacheable.
+   *
+   * (An earlier version of this note claimed an unlisted URL reached
+   * `fs.readFile` and returned HTTP 500. It does not: `find()` is a lookup in
+   * the map built by the directory walk, so a miss is just `undefined`. The
+   * export is still required, for the reasons above.)
    */
   dynamicParams: false;
   /**
@@ -469,10 +530,29 @@ export function createDocsRoute<
   // Populated from the source walk; `createDocsRenderer` reads it at render
   // time, which is what lets one live set serve every page.
   const knownRoutes = new Set<string>();
+  // The routes `knownRoutes` deliberately omits. Diagnostic only: the renderer
+  // reads it after `knownRoutes` has already missed, purely to tell an author
+  // linking a draft from an author linking a typo.
+  const draftRoutes = new Set<string>();
+  // Alias route → the href it redirects to. Also diagnostic, and also
+  // deliberately not merged into `knownRoutes`: see `collectRoutes`.
+  const aliasRoutes = new Map<string, string>();
   let routesLoaded: Promise<void> | null = null;
 
   /**
-   * Drop the cached scan so the next query reads the disk again.
+   * Drop the cached scan so the next query reads the disk again — at most once
+   * per request.
+   *
+   * `React.cache` is doing real work here, not memoising for speed. Next runs
+   * `generateMetadata` and `Page` concurrently, and a layout calling
+   * `source.nav()` is a third caller; each used to invalidate independently,
+   * so each discarded the others' in-flight scan. Measured on a 401-file tree:
+   * 22 readdir + 824 readFile per request, against 11 + 412 for a single scan,
+   * at 39 ms — which is also why the old docstring's "single-digit
+   * milliseconds" was wrong. Inside a request the first caller invalidates and
+   * the rest see the memo; outside one (a sitemap built from `next.config.ts`,
+   * a script) `cache` does not memoise at all, so those callers keep the old
+   * invalidate-every-time behaviour, which is what they want.
    *
    * `knownRoutes` is added to, never cleared: it is shared with the renderer,
    * and emptying it while a concurrent render is asserting links would fail
@@ -480,35 +560,61 @@ export function createDocsRoute<
    * deleted page only makes dev *more* permissive than the production build,
    * which is the right direction to be wrong in.
    */
-  const invalidate = (): void => {
+  const invalidate = cache((): void => {
     source.invalidate();
     routesLoaded = null;
+  });
+
+  /**
+   * Record each page's own route in `into`, and each of its aliases in
+   * `aliasRoutes`.
+   *
+   * The two are kept apart on purpose. An alias used to be added to
+   * `knownRoutes` on the reasoning that a permanent redirect resolves — but it
+   * only resolves once `createDocsRedirects` is wired into `next.config.ts`,
+   * which the quick start never does, and `generateStaticParams` does not emit
+   * it either. So a page linking a sibling's alias built green and 404'd for
+   * every reader, with `dynamicParams = false` making it a hard 404. The
+   * renderer now names the alias's target instead, which is better advice than
+   * the acceptance ever was: the author gets told where the page actually is.
+   */
+  const collectRoutes = (
+    into: Set<string>,
+    files: ReadonlyArray<DocFile<TFrontmatter>>,
+  ): void => {
+    for (const file of files) {
+      into.add(file.href);
+      for (const alias of file.frontmatter.aliases ?? []) {
+        aliasRoutes.set(
+          toAliasRoute(alias, config.basePath, file.relativePath),
+          file.href,
+        );
+      }
+    }
   };
 
   const loadRoutes = (): Promise<void> =>
-    (routesLoaded ??= source.all().then((files) => {
-      for (const file of files) {
-        knownRoutes.add(file.href);
-        // An alias is a permanent redirect, so a link to one resolves. Without
-        // this, moving a page would fail the build on every link that still
-        // points at its old name — the exact case `aliases` exists to survive.
-        for (const alias of file.frontmatter.aliases ?? []) {
-          knownRoutes.add(
-            toAliasRoute(alias, config.basePath, file.relativePath),
-          );
-        }
-      }
-    }));
+    (routesLoaded ??= Promise.all([source.all(), source.drafts()]).then(
+      ([published, drafts]) => {
+        collectRoutes(knownRoutes, published);
+        collectRoutes(draftRoutes, drafts);
+      },
+    ));
 
   const loadRenderer = (): DocsRenderer =>
     (renderer ??= createDocsRenderer({
       config,
       knownRoutes,
+      draftRoutes,
+      aliasRoutes,
       ...(options.highlighter === undefined
         ? {}
         : { highlighter: options.highlighter }),
       ...(options.langs === undefined ? {} : { langs: options.langs }),
       ...(options.themes === undefined ? {} : { themes: options.themes }),
+      ...(options.excludeLangs === undefined
+        ? {}
+        : { excludeLangs: options.excludeLangs }),
       ...(options.titleHeading === undefined
         ? {}
         : { titleHeading: options.titleHeading }),
@@ -519,6 +625,40 @@ export function createDocsRoute<
         ? {}
         : { imageResolver: options.imageResolver }),
     }));
+
+  /** Re-read the disk on the route's schedule before delegating. */
+  const rescanned = <TArgs extends unknown[], TResult>(
+    read: (...args: TArgs) => Promise<TResult>,
+  ): ((...args: TArgs) => Promise<TResult>) => {
+    return (...args: TArgs) => {
+      if (rescanPerRequest) {
+        invalidate();
+      }
+      return read(...args);
+    };
+  };
+
+  /**
+   * The source handed to layouts.
+   *
+   * `docs.source.nav()` is the documented way to feed `DocsSidebar`, and it was
+   * the one reader that never invalidated — so in dev, the request after adding
+   * or renaming a page rendered the *new* body beside the *old* sidebar, and
+   * only the request after that agreed with itself. Everything else on the
+   * route already rescanned; this closes the last hole.
+   */
+  const requestScopedSource: DocsSource<TFrontmatter> = {
+    config: source.config,
+    all: rescanned(() => source.all()),
+    drafts: rescanned(() => source.drafts()),
+    find: rescanned((segments: string[]) => source.find(segments)),
+    nav: rescanned(() => source.nav()),
+    slugs: rescanned(() => source.slugs()),
+    invalidate: () => {
+      source.invalidate();
+      routesLoaded = null;
+    },
+  };
 
   /**
    * `find` returns drafts regardless of config so a preview route can opt in;
@@ -558,7 +698,9 @@ export function createDocsRoute<
     const files = await source.all();
     await loadRoutes();
     const renderer = loadRenderer();
-    return Promise.all(files.map((file) => renderer.render(file)));
+    return mapPooled(files, RENDER_CONCURRENCY, (file) =>
+      renderer.render(file),
+    );
   };
 
   async function renderRoute(segments: string[]): Promise<ReactNode> {
@@ -587,7 +729,7 @@ export function createDocsRoute<
   }
 
   return {
-    source,
+    source: requestScopedSource,
     getPage,
     renderAll,
     dynamicParams: false,
@@ -667,9 +809,9 @@ export interface DocsSitemapOptions<
    */
   siteUrl: string;
   /** Applied to every entry. Omitted by default — Google ignores it anyway. */
-  changeFrequency?: DocsSitemapEntry['changeFrequency'];
+  changeFrequency?: DocsSitemapEntry['changeFrequency'] | undefined;
   /** Applied to every entry. Omitted by default. */
-  priority?: number;
+  priority?: number | undefined;
   /**
    * Override the last-modified date per page.
    *
@@ -680,6 +822,16 @@ export interface DocsSitemapOptions<
   lastModified?: (
     file: DocFile<TFrontmatter>,
   ) => Date | undefined | Promise<Date | undefined>;
+  /**
+   * Re-read the content directory before building the sitemap.
+   *
+   * Defaults to `true` outside `NODE_ENV=production`, matching
+   * {@link DocsRouteOptions.rescanPerRequest}. `createDocsSource` memoises by
+   * config, so without this the first scan of the process is the only one —
+   * and `app/sitemap.ts` in `next dev` would keep serving the page set as it
+   * stood when the server booted.
+   */
+  rescanPerRequest?: boolean | undefined;
 }
 
 /**
@@ -704,7 +856,23 @@ export async function createDocsSitemap<
   TFrontmatter extends DocFrontmatter = DocFrontmatter,
 >(options: DocsSitemapOptions<TFrontmatter>): Promise<DocsSitemapEntry[]> {
   const siteUrl = requireSiteUrl(options.siteUrl);
-  const files = await createDocsSource(options).all();
+  const source = createDocsSource(options);
+  if (options.rescanPerRequest ?? process.env.NODE_ENV !== 'production') {
+    source.invalidate();
+  }
+  const files = await source.all();
+
+  // Google rejects a sitemap above 50,000 URLs or 50 MB uncompressed, and Next
+  // neither chunks nor warns. Splitting belongs to the caller — `generateSitemaps`
+  // plus a slice of this array is three lines — but silently emitting a file
+  // no crawler will read is not something to discover from Search Console.
+  if (files.length > SITEMAP_URL_LIMIT) {
+    console.warn(
+      `@waveso/docs: this sitemap has ${files.length} URLs, above Google's ` +
+        `limit of ${SITEMAP_URL_LIMIT}. Split it with Next's ` +
+        '`generateSitemaps` and slice the array this returns.',
+    );
+  }
   // Annotated because the two branches have different parameter types, and a
   // union of signatures is not callable: `readMtime` reads nothing outside
   // `DocFrontmatter`, so it accepts the narrower file too.
@@ -789,7 +957,8 @@ export async function createDocsRedirects(
 
       const page = routes.get(route);
       if (page !== undefined) {
-        throw new Error(
+        throw docsError(
+          'alias-collision',
           `@waveso/docs: the alias '${alias}' in ${file.relativePath} ` +
             `redirects '${route}', which is already the route of ` +
             `${page.relativePath}. Remove the alias, or rename the page it ` +
@@ -799,7 +968,8 @@ export async function createDocsRedirects(
 
       const other = claimed.get(route);
       if (other !== undefined) {
-        throw new Error(
+        throw docsError(
+          'alias-collision',
           `@waveso/docs: '${route}' is claimed as an alias by both ` +
             `${other.relativePath} and ${file.relativePath}. An alias can ` +
             'only redirect to one page.',
@@ -828,12 +998,33 @@ function normalizeSiteUrl(siteUrl: string | undefined): string | undefined {
 
 /** Fail at config time, not with a malformed `<link rel="canonical">`. */
 function requireSiteUrl(siteUrl: string): string {
+  let parsed: URL;
   try {
-    return new URL(siteUrl).toString();
+    parsed = new URL(siteUrl);
   } catch {
-    throw new Error(
+    throw docsError(
+      'invalid-config',
       `@waveso/docs: '${siteUrl}' is not an absolute URL. Pass an origin ` +
         "such as 'https://example.com'.",
     );
   }
+
+  // Every canonical and every sitemap entry is built with `new URL(href,
+  // siteUrl)`, and that throws a base *path* away: resolving '/docs/x' against
+  // 'https://example.com/product-docs' yields 'https://example.com/docs/x'. The
+  // whole site would then publish canonicals and a sitemap pointing at URLs
+  // that 404 — and Google reads a canonical aimed at a 404 as a reason to drop
+  // the page. Rejecting here is the only place the mistake is still visible.
+  if (parsed.pathname !== '/') {
+    throw docsError(
+      'invalid-config',
+      `@waveso/docs: '${siteUrl}' has a path ('${parsed.pathname}'), and a ` +
+        'site URL must be a bare origin — canonical and sitemap URLs are ' +
+        'resolved against it, which discards the path. Pass ' +
+        `'${parsed.origin}' and move '${parsed.pathname}' into \`basePath\`, ` +
+        'which does accept multiple segments.',
+    );
+  }
+
+  return parsed.toString();
 }
