@@ -1,6 +1,6 @@
 {
   "name": "@waveso/docs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Markdown documentation for Next.js — parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
   "type": "module",
   "sideEffects": [
