@@ -103,6 +103,13 @@ jobs:
       - name: Smoke build (a real Next app, both output modes)
         run: pnpm run test:smoke
 
+      # Must follow the build: the examples import `@waveso/docs/*` by name,
+      # which Node self-references through the real `exports` map into dist/.
+      # Two README examples shipped not compiling because nothing had ever
+      # compiled them; this is what stops the third.
+      - name: Type-check the README examples
+        run: pnpm run check:readme
+
       # Must follow the build: `attw --pack .` packs the real tarball and
       # resolves every export subpath against dist/.
       - name: Check package (publint + are-the-types-wrong)

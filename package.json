@@ -1,7 +1,7 @@
 {
   "name": "@waveso/docs",
   "version": "0.2.0",
-  "description": "Markdown documentation for Next.js — parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "description": "Markdown documentation for Next.js \u2014 parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -122,8 +122,9 @@
     "test": "vitest run --project node --project dom",
     "test:watch": "vitest",
     "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
+    "check:readme": "node scripts/check-readme.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run check:package",
+    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run check:readme && pnpm run check:package",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish",
@@ -184,7 +185,6 @@
     "react-dom": "^19.2.3",
     "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
-    "unrun": "^0.3.1",
     "vitest": "^4.1.10"
   },
   "devEngines": {

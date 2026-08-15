@@ -18,3 +18,6 @@ src/__screenshots__
 # Static export output from the smoke app.
 smoke/out
 next-env.d.ts
+
+# Scratch project the README example type-check assembles.
+.readme-check-*

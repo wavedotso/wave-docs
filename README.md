@@ -110,8 +110,8 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/source` | Node | `createDocsSource`, `resolveDocsConfig` |
 | `@waveso/docs/render` | Node | `createDocsRenderer`, `resolveMarkdownLink` |
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS` |
-| `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex`, `writeSearchIndex` |
-| `@waveso/docs/react/<name>` | Browser + RSC | Eight components, one per subpath — see [Components](#components) |
+| `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex` |
+| `@waveso/docs/react/<name>` | Browser + RSC | Nine components, one per subpath — see [Components](#components) |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
 | `@waveso/docs/styles.css` | — | The stylesheet |
@@ -138,14 +138,15 @@ Every subpath is enumerated in `exports` — there is no wildcard. A name that i
 
 ## Components
 
-Every component takes data as props and imports nothing from `next/*` — the adapter injects `next/link` and `next/image`. That keeps the renderer host-agnostic and testable without a router.
+Every component takes data as props and imports nothing from `next/*` — the adapter injects `next/link` and `next/image`. That keeps the renderer host-agnostic and testable without a router. `DocsSearch` is the one exception, and it exists precisely so that the exception is ours rather than yours: it is the fifteen-line wrapper you would otherwise write around `SearchDialog`.
 
 | Component | Subpath | Notes |
 | --- | --- | --- |
 | `DocContent` | `react/doc-content` | Renders a hast tree. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation` |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver` |
-| `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap |
+| `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
+| `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap. Host-agnostic |
 | `Callout` | `react/callout` | Note · tip · important · warning · caution |
 | `YouTube` | `react/youtube` | Click-to-load facade |
 | `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<article>` |
@@ -173,6 +174,7 @@ export function DocsNav({ nav }: { nav: DocNavNode[] }) {
 // app/docs/layout.tsx
 import type { ReactNode } from 'react';
 import { SkipLink } from '@waveso/docs/react/skip-link';
+import { DocsSearch } from '@waveso/docs/react/next-search';
 import { DocsNav } from '@/components/docs-nav';
 import { docs } from '@/lib/docs';
 import '@waveso/docs/styles.css';
@@ -182,6 +184,7 @@ export default async function DocsLayout({ children }: { children: ReactNode }) 
   return (
     <>
       <SkipLink />
+      <DocsSearch indexUrl={docs.searchIndexUrl} />
       <DocsNav nav={nav} />
       {children}
     </>
@@ -244,6 +247,9 @@ export const frontmatterSchema = docFrontmatterSchema.extend({
 ```
 
 ```ts
+import { createDocsRoute } from '@waveso/docs/next';
+import { frontmatterSchema } from '@/content/docs-schema';
+
 const docs = createDocsRoute({ contentDir: 'content/docs', frontmatterSchema });
 
 const doc = await docs.getPage(['api', 'auth']);
@@ -257,6 +263,7 @@ Four things are worth knowing before you write one.
 
 **Let the type be inferred — never name it.** Naming it explicitly *and* omitting the schema type-checks and then lies, because nothing validates the type you named:
 
+<!-- typecheck: skip — the two lines are the point; imports would bury them -->
 ```ts
 // ⚠️ Compiles. Every extra field is `undefined` at runtime, typed as present.
 const docs = createDocsRoute<MyFrontmatter>({ contentDir: 'content/docs' });
@@ -344,10 +351,17 @@ A **relative** source is a different thing. Nothing in `public/` corresponds to 
 An `imageResolver` receives the source already folded against the markdown file's directory (`./diagram.png` in `guides/deploying.md` arrives as `guides/diagram.png`) and returns a public URL plus intrinsic dimensions — which `next/image` requires and markdown does not carry:
 
 ```ts
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { imageSize } from 'image-size';
+import { createDocsRoute } from '@waveso/docs/next';
+
 createDocsRoute({
   contentDir: 'content/docs',
   imageResolver: async (src) => {
-    const { width, height } = await imageSize(path.join('content/docs', src));
+    const { width, height } = imageSize(
+      await readFile(path.join('content/docs', src)),
+    );
     return { src: `/docs-assets/${src}`, width, height };
   },
 });
@@ -401,6 +415,7 @@ page it is dropped into, so it now switches only when the host says to.
 
 If your site really does follow the OS and has no theme toggle, say so once:
 
+<!-- typecheck: skip — one tag, shown as markup rather than as a module -->
 ```tsx
 <html lang="en" data-theme="system">
 ```
@@ -418,53 +433,89 @@ To restyle rather than retheme, override the classes — `.wave-docs-prose`,
 
 Build-time index, client-side dialog, MiniSearch. Records are section-scoped — one per `h2`–`h6` — so a hit deep-links to the right heading instead of dropping the reader at the top of a 2,000-word page.
 
-Nothing builds the index for you. `docs.renderAll()` exists for exactly this, and shares the scan, the highlighter and the render cache with your routes:
+Two files. The index is a route, so it is rebuilt by the same `next build` that builds your pages, and in `next dev` it re-reads the disk per request — a page you add is searchable on the next keystroke, with no restart and no script to remember.
 
 ```ts
-// scripts/build-search-index.ts — run before `next build`
-import { extractSearchRecords, writeSearchIndex } from '@waveso/docs/search-index';
-import { docs } from '../lib/docs';
+// app/docs/search-index.json/route.ts
+import { docs } from '@/lib/docs';
 
-const rendered = await docs.renderAll();
-const records = rendered.flatMap((doc) => extractSearchRecords(doc));
-await writeSearchIndex(records, 'public/search-index.json');
+export const GET = docs.searchIndex;
+export const dynamic = 'force-static'; // a literal, see below
 ```
 
-```tsx
-'use client';
+And `<DocsSearch indexUrl={docs.searchIndexUrl} />` wherever the trigger belongs — it is in the [layout above](#layout). `DocsSearch` carries its own `'use client'` boundary, so the layout stays a Server Component.
 
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { SearchDialog } from '@waveso/docs/react/search-dialog';
-
-export function Search() {
-  const router = useRouter();
-  return <SearchDialog indexUrl="/search-index.json" navigate={router.push} Link={Link} />;
-}
-```
+`docs.searchIndexUrl` is derived from your `basePath`, so it is right whether the docs are mounted at `/`, at `/docs` or under a nested prefix. Pass it rather than a literal.
 
 MiniSearch is `import()`ed and the index fetched on hover, focus or first open — never on page load.
+
+> [!WARNING]
+> **`export const dynamic = 'force-static'` is not optional, and it has to be a literal** — route segment config is parsed out of the module before any of it runs, exactly like `dynamicParams`. Without it Next marks the route `ƒ` (Dynamic) and re-renders your whole corpus on every request, from markdown that output tracing did not put in the deployment bundle. On a serverless host that does not degrade, it throws — at the reader, inside the dialog. The build prints no warning, so the handler detects it and throws with `code: 'search-index-dynamic'`, naming the file to fix.
+
+Under `output: 'export'` the same route is written out as a plain `docs/search-index.json`. Both modes are asserted by a real `next build` in this repository's CI.
+
+### Caching
+
+The response carries `cache-control: public, max-age=0, must-revalidate` and a strong `ETag`, replacing Next's default of a year of `s-maxage` with no validator — which, on a URL that never changes, is a CDN serving a stale index until someone purges it by hand. `next start` does not honour `If-None-Match` itself (it answers 200 with the full body); a CDN or reverse proxy in front of it does.
+
+If your site sets Next's own `basePath` config, prefix `indexUrl` yourself: Next applies it to `<Link>` and to navigation, but never to a client `fetch()`.
 
 ### What gets indexed
 
 **The whole section**, not a preview of it. `extractSearchRecords` once truncated `text` to 300 characters *before* indexing, which dropped roughly 80% of a normal corpus — and because the default `combineWith: 'AND'` requires every term to land in the same record, a two-word query against a page that plainly contained both words returned nothing. Indexing and display are now separate concerns: the full text is searchable, and `storeFields` carries only what the dialog renders.
 
+Drafts are excluded, and code blocks are skipped — after Shiki a fence is hundreds of token spans that index as a bag of punctuation. Inline `code` is kept, because `useMemo` is exactly the sort of thing people search for.
+
 ### CJK and other scripts
 
 Tokenisation uses `Intl.Segmenter` where available, so Chinese, Japanese and Thai — which do not delimit words with spaces — index and query as words rather than as whole clauses. Without it, `search('安装')` matched nothing on a page that was entirely about 安装.
 
-Both halves of the seam take the same overrides, and they must agree — an index built with one `tokenize` and queried with another matches nothing at all:
+### Tuning
+
+Both halves of the seam take the same overrides and **they must agree** — an index built with one `tokenize` and queried with another matches nothing at all, silently. So the option has one name on both sides:
 
 ```ts
-buildSearchIndex(records, { fuzzy: 0.1, prefix: true });
+import { createDocsRoute } from '@waveso/docs/next';
+
+export const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  miniSearchOptions: { searchOptions: { fuzzy: 0.1, prefix: true } },
+});
 ```
 
 ```tsx
-<SearchDialog indexUrl="/search-index.json" searchOptions={{ fuzzy: 0.1, prefix: true }} />
+import { DocsSearch } from '@waveso/docs/react/next-search';
+import { docs } from '@/lib/docs';
+
+export function Search() {
+  return (
+    <DocsSearch
+      indexUrl={docs.searchIndexUrl}
+      miniSearchOptions={{ searchOptions: { fuzzy: 0.1, prefix: true } }}
+    />
+  );
+}
 ```
+
+`fuzzy`, `prefix`, `combineWith` and `boost` are MiniSearch *query* defaults, so they nest under `searchOptions`; `fields`, `storeFields`, `tokenize` and `processTerm` sit at the top level. The nesting is easy to get wrong and wrong is silent — a stray `fuzzy` at the top level is simply never read — so both examples above are type-checked in CI.
+
+### Building the index yourself
+
+Only if the route cannot express what you need — a second index per locale, say, or an artifact consumed by something other than the dialog:
+
+```ts
+import { buildSearchIndex, extractSearchRecords } from '@waveso/docs/search-index';
+import { docs } from '@/lib/docs';
+
+const rendered = await docs.renderAll();
+const json = buildSearchIndex(rendered.flatMap((doc) => extractSearchRecords(doc)));
+```
+
+`docs.searchIndex` is exactly this, served — asserted byte-for-byte by a test, so the escape hatch cannot drift from the route.
 
 ## Configuration
 
+<!-- typecheck: skip — a reference listing of the type, not a module -->
 ```ts
 interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
   contentDir: string;        // relative paths resolve against process.cwd()
@@ -496,12 +547,16 @@ The `<article>` always carries `id="docs-content"`, which is what `SkipLink` tar
 Separate calls, usable from `next.config.ts` and `app/sitemap.ts` — neither loads the Next runtime:
 
 ```ts
-import { createDocsRedirects, createDocsSitemap } from '@waveso/docs/next';
-
 // next.config.ts
-export default { redirects: () => createDocsRedirects({ contentDir: 'content/docs' }) };
+import { createDocsRedirects } from '@waveso/docs/next';
 
+export default { redirects: () => createDocsRedirects({ contentDir: 'content/docs' }) };
+```
+
+```ts
 // app/sitemap.ts
+import { createDocsSitemap } from '@waveso/docs/next';
+
 export default () =>
   createDocsSitemap({ contentDir: 'content/docs', siteUrl: 'https://example.com' });
 ```
@@ -541,10 +596,17 @@ If you extend the frontmatter schema, use `.exactOptional()` rather than `.optio
 
 > [!NOTE]
 > Under `exactOptionalPropertyTypes: true`, passing `next/link` straight into
-> `DocsSidebar` or `SearchDialog` does not type-check — `next/link` types
-> `prefetch` as `boolean | null | undefined` where `DocsLinkProps` says
-> `boolean | undefined`. `docs.Page` is unaffected, because the adapter wraps
-> `next/link` internally. Without that flag, `Link={Link}` compiles as shown.
+> `DocsSidebar` does not type-check. Next's `LinkProps` re-declares `onClick?`,
+> `onMouseEnter?` and `onTouchStart?` *without* `| undefined`, and React's
+> anchor props include it, so the two declaration files disagree — about props
+> `next/link` accepts perfectly well at runtime. It is true of every
+> `next/link` call site in a project with that flag on, not just this one.
+> Cast at the call site (`Link={Link as DocsLinkComponent}`) until the
+> Next-wired navigation component ships.
+>
+> `docs.Page` and `DocsSearch` are both unaffected — each wraps `next/link`
+> inside the package, which is where that cast belongs. Without the flag,
+> `Link={Link}` compiles exactly as shown above.
 
 ## Design notes
 
