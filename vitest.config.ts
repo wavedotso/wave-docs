@@ -49,6 +49,23 @@ export default defineConfig({
         },
       },
       {
+        /*
+         * React has to be pre-bundled alongside the testing library, or Vite
+         * optimises `@testing-library/react` with a React of its own and the
+         * components under test get a second copy — which surfaces as
+         * `Cannot read properties of null (reading 'useCallback')`, four frames
+         * inside React, with nothing pointing at dependency optimisation.
+         */
+        optimizeDeps: {
+          include: [
+            'react',
+            'react/jsx-runtime',
+            'react/jsx-dev-runtime',
+            'react-dom',
+            'react-dom/client',
+            '@testing-library/react',
+          ],
+        },
         test: {
           name: 'browser',
           include: ['src/**/*.browser.test.{ts,tsx}'],

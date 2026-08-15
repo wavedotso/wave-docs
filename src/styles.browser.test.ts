@@ -304,11 +304,19 @@ describe('the responsive shell', () => {
     mountShell();
 
     await resize(390);
-    expect(
-      getComputedStyle(
-        document.querySelector('.wave-docs-layout__sidebar') as HTMLElement,
-      ).display,
-    ).toBe('none');
+    /*
+     * MEASURED AS GEOMETRY, NOT AS A KEYWORD. This asserted
+     * `display: none` on the sidebar wrapper until the drawer landed, and
+     * `none` is now wrong: the drawer `<dialog>` lives inside this wrapper so
+     * that one nav DOM can serve both breakpoints, and an element inside a
+     * `display: none` subtree generates no boxes at all — including one
+     * promoted to the top layer. `showModal()` would open a drawer that
+     * painted nothing, on exactly the viewports the drawer exists for.
+     *
+     * `contents` is what makes that work, and the thing worth asserting was
+     * never the keyword: it is that the column takes up no space.
+     */
+    expect(box('.wave-docs-layout__sidebar').width).toBe(0);
     expect(
       getComputedStyle(
         document.querySelector('.wave-docs-layout__toc') as HTMLElement,

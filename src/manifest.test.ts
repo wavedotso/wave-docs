@@ -164,6 +164,14 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   // results). Private on purpose: it exists to stop those two answering the
   // same question differently, not to be a third answer.
   'next-link',
+  // The shell. `docs.Layout` is the public name for all three, and it has to
+  // be, because two of them only work when the route wires them together: the
+  // drawer's trigger lives in the header and binds to the dialog by a fixed
+  // `id`, and the nav reads a `pathname` the layout never sees. Exporting the
+  // pieces would publish a way to render half a shell.
+  'layout',
+  'nav',
+  'next-nav',
 ]);
 
 describe('exports map', () => {

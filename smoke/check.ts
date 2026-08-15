@@ -189,6 +189,64 @@ async function checkSearchIndex(): Promise<void> {
   checkIndexContents(body);
 }
 
+/**
+ * The shell, in HTML a browser would actually receive.
+ *
+ * `docs.Layout` is an async Server Component used as a Next layout's default
+ * export, and the two facts that makes true — that Next accepts it, and that
+ * its client children keep the layout itself on the server — are only
+ * observable from a real build. A jsdom test renders the component; it cannot
+ * tell you Next was willing to route to it.
+ */
+async function checkShell(): Promise<void> {
+  const html = await readFile(
+    path.join(SMOKE, '.next', 'server', 'app', 'docs', 'installation.html'),
+    'utf8',
+  ).catch(() => undefined);
+
+  check(
+    'the docs layout prerendered',
+    html !== undefined,
+    '`export default docs.Layout` produced no HTML',
+  );
+  if (html === undefined) return;
+
+  for (const [label, pattern] of [
+    ['a skip link, before anything else', /class="wave-docs-skip-link"/],
+    ['the header', /wave-docs-layout__header/],
+    ['the grid', /class="wave-docs-layout"/],
+    ['the drawer', /<dialog[^>]*id="wave-docs-nav"/],
+    ['light dismiss on the drawer', /closedby="any"/],
+    ['a declarative trigger', /command="show-modal"/],
+    ['the article in the main track', /wave-docs-layout__main/],
+    ['the search trigger', /wave-docs-search-trigger/],
+  ] as Array<[string, RegExp]>) {
+    check(`the shell rendered ${label}`, pattern.test(html));
+  }
+
+  /*
+   * Two landmarks, and they must not be two of the same thing. The sidebar
+   * and the TOC are both `<nav>`, which is right — a screen-reader user picks
+   * between them by name. What would be wrong is a second copy of the sidebar
+   * for the mobile breakpoint, which is what `display: contents` on the
+   * drawer exists to avoid, and which would show up here as two navs with the
+   * same label.
+   */
+  const labels = [...html.matchAll(/<nav [^>]*aria-label="([^"]+)"/g)].map(
+    (match) => match[1],
+  );
+  check(
+    'every nav landmark has a distinct name',
+    labels.length === new Set(labels).size,
+    `duplicate landmark names: ${labels.join(', ')}`,
+  );
+  check(
+    'the drawer is not a second copy of the sidebar',
+    (html.match(/class="wave-docs-sidebar"/g) ?? []).length === 1,
+    'the nav is in the payload twice',
+  );
+}
+
 async function checkDefaultOutput(): Promise<void> {
   const app = path.join(SMOKE, '.next', 'server', 'app', 'docs');
 
@@ -204,6 +262,7 @@ async function checkDefaultOutput(): Promise<void> {
   );
 
   await checkNothingSwept();
+  await checkShell();
   await checkSearchIndex();
 }
 

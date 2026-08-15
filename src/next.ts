@@ -341,6 +341,34 @@ export interface DocsRouteOptions<
   miniSearchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
 }
 
+/**
+ * Props for {@link DocsRoute.Layout}.
+ *
+ * Four, and the fourth is a boolean. Everything else a docs shell is asked for
+ * turned out to be reachable already: an announcement banner renders *above*
+ * `<docs.Layout>` in your own `layout.tsx`, because this does not own `<body>`;
+ * a content footer goes inside `children`; and sidebar links, social icons and
+ * separators are `DocNavNode`s authored in `meta.json`. The header bar is the
+ * one region nothing else can reach, which is what `actions` is for.
+ *
+ * A `slots` map was the alternative, and it can still be added later — two node
+ * props can become a slots map, a slots map cannot become two props.
+ */
+export interface DocsLayoutProps {
+  children: ReactNode;
+  /**
+   * Brand at the header start. A string, or your own logo component.
+   *
+   * `ReactNode`, so it cannot also serve as the `<title>` or as the header's
+   * accessible name; the landmark carries a fixed label instead.
+   */
+  title?: ReactNode;
+  /** Header end, after search: a theme toggle, a version switcher, a link. */
+  actions?: ReactNode;
+  /** Render the search trigger. Defaults to `true`; the URL is derived. */
+  search?: boolean | undefined;
+}
+
 /** Props Next hands a page in the App Router. */
 export interface DocsPageProps {
   /**
@@ -491,6 +519,44 @@ export interface DocsRoute<
    * stable URL means a CDN serving last year's index until someone purges it.
    */
   searchIndex: () => Promise<Response>;
+  /**
+   * Default export for `app/<basePath>/layout.tsx` — the entire docs shell.
+   *
+   * ```tsx
+   * // app/docs/layout.tsx — the whole file
+   * import '@waveso/docs/styles.css';
+   * import { docs } from '@/lib/docs';
+   *
+   * export default docs.Layout;
+   * ```
+   *
+   * Or, with your own chrome in the header:
+   *
+   * ```tsx
+   * export default function DocsLayout({ children }: { children: ReactNode }) {
+   *   return (
+   *     <docs.Layout title={<Logo />} actions={<ThemeToggle />}>
+   *       {children}
+   *     </docs.Layout>
+   *   );
+   * }
+   * ```
+   *
+   * It owns the skip link, the header, the sidebar column, the mobile drawer
+   * and the grid, and it reads `source.nav()` and `searchIndexUrl` itself — so
+   * there is no nav to fetch and no URL to pass. It does **not** own the table
+   * of contents: a Next layout receives `{children, params}` and cannot know
+   * which page is rendering, so `docs.Page` emits the TOC as its second child
+   * and the grid places it.
+   *
+   * Your `layout.tsx` stays a Server Component. The two pieces that need a
+   * client — the nav's `usePathname`, the search dialog — carry their own
+   * `'use client'` boundaries inside the package.
+   *
+   * Next passes `{ children, params }`; the extra `params` is ignored, which is
+   * why `export default docs.Layout` type-checks as a layout.
+   */
+  Layout: (props: DocsLayoutProps) => Promise<ReactNode>;
   /**
    * `${basePath}/search-index.json` — hand it to `DocsSearch`'s `indexUrl`.
    *
@@ -847,6 +913,37 @@ export function createDocsRoute<
 
     async IndexPage(): Promise<ReactNode> {
       return renderRoute([]);
+    },
+
+    async Layout({
+      children,
+      title,
+      actions,
+      search,
+    }: DocsLayoutProps): Promise<ReactNode> {
+      /*
+       * Lazy, and load-bearing. The shell reaches `next/navigation` and
+       * `next/link` through its client components, and a static import here
+       * would put both on the module graph of `next.config.ts` — which loads
+       * this entry point for `createDocsSitemap` and `createDocsRedirects`,
+       * outside the Next runtime entirely.
+       */
+      const { DocsLayoutShell } = await import('./react/layout.js');
+
+      /*
+       * `requestScopedSource`, not `source`: outside a production build this
+       * rescans, so adding a page in `next dev` shows up in the drawer. Next
+       * does not re-run a layout on every client navigation, so a stale read
+       * here survives longer than a stale read anywhere else on the route.
+       */
+      return createElement(DocsLayoutShell, {
+        children,
+        nav: await requestScopedSource.nav(),
+        searchIndexUrl,
+        ...(title === undefined ? {} : { title }),
+        ...(actions === undefined ? {} : { actions }),
+        ...(search === undefined ? {} : { search }),
+      });
     },
 
     async generateStaticParams(): Promise<Array<{ slug: string[] }>> {

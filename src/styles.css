@@ -1145,7 +1145,24 @@
     }
   }
 
-  .wave-docs-layout__sidebar,
+  /*
+   * ⚠️ `contents`, NOT `none`, AND THAT IS NOT A STYLE PREFERENCE.
+   *
+   * The drawer `<dialog>` lives inside this wrapper, so that one nav DOM can
+   * serve both breakpoints. An element inside a `display: none` subtree
+   * generates no boxes at all — including a dialog promoted to the top layer —
+   * so `showModal()` would open a drawer that paints nothing, on every
+   * viewport narrower than 64rem. Which is to say: on the phones this drawer
+   * exists for.
+   *
+   * `contents` makes the wrapper generate no box of its own, so it reserves no
+   * grid track, while the closed dialog inside stays hidden by the UA's own
+   * `dialog:not([open]) { display: none }`.
+   */
+  .wave-docs-layout__sidebar {
+    display: contents;
+  }
+
   .wave-docs-layout__toc {
     display: none;
   }
@@ -1182,6 +1199,26 @@
   @media (min-width: 64rem) {
     .wave-docs-layout {
       grid-template-columns: var(--wave-docs-sidebar-width) minmax(0, 1fr);
+    }
+
+    /*
+     * ⚠️ THE MOST DELETABLE-LOOKING LINE IN THIS FILE. IT IS NOT DELETABLE.
+     *
+     * `display: contents` makes the dialog box vanish from layout **and from
+     * the accessibility tree**, so the `<DocsSidebar>` inside it becomes the
+     * sticky column directly. That is what lets one nav serve both breakpoints:
+     * one landmark, one copy of the links in the payload, nothing to keep in
+     * step. Remove it and the desktop sidebar disappears entirely — or, if
+     * someone "fixes" that by rendering a second sidebar outside the dialog,
+     * every page ships its nav twice and a screen-reader user gets two
+     * identical navigation landmarks.
+     *
+     * `:not(:modal)` so the drawer still opens as a real modal at any width;
+     * it is the same element, and a 64rem viewport with a 200% zoom is a
+     * narrow one.
+     */
+    dialog.wave-docs-layout__drawer:not(:modal) {
+      display: contents;
     }
 
     .wave-docs-layout__sidebar {
@@ -1239,6 +1276,162 @@
     .wave-docs-layout {
       max-width: var(--wave-docs-shell-width);
       margin-inline: auto;
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+   * Header
+   * ---------------------------------------------------------------------- */
+
+  .wave-docs-layout__header {
+    position: sticky;
+    top: 0;
+    /* Above the sticky sidebar and TOC, which establish their own stacking
+     * contexts; below the search dialog, which portals to `<body>`. */
+    z-index: 20;
+    height: var(--wave-docs-header-height);
+    background-color: var(--wave-docs-bg);
+    border-block-end: 1px solid var(--wave-docs-border);
+  }
+
+  .wave-docs-layout__header-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 100%;
+    /* Matches the grid's own cap and gutters, so the brand lines up with the
+     * sidebar and the actions with the TOC rather than floating past both. */
+    max-width: var(--wave-docs-shell-width);
+    margin-inline: auto;
+    padding-inline: 1rem;
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 30rem) {
+    .wave-docs-layout__header-inner {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  .wave-docs-layout__title {
+    font-weight: 600;
+    /* The brand is not a link target here and must not swallow the row: a long
+     * product name would otherwise push search off the right edge. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Pushes search and actions to the end, and stays correct when `title` is
+   * absent — which is why it is on the search wrapper rather than a margin on
+   * the title that would not exist. */
+  .wave-docs-layout__search {
+    margin-inline-start: auto;
+  }
+
+  .wave-docs-layout__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    /* When `search={false}` there is no auto margin ahead of this, so it
+     * carries its own. Both set, only one ever has room to apply. */
+    margin-inline-start: auto;
+  }
+
+  .wave-docs-layout__nav-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* 44px: the smallest target iOS and WCAG 2.5.8 both accept, and this is
+     * the only control on a phone that reaches the rest of the site. */
+    width: 2.75rem;
+    height: 2.75rem;
+    /* Optical alignment: the icon's own padding already insets it from the
+     * screen edge, so the button hangs left of the text below it without this. */
+    margin-inline-start: -0.75rem;
+    border: 0;
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-muted);
+    cursor: pointer;
+  }
+
+  .wave-docs-layout__nav-trigger:hover {
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /* -------------------------------------------------------------------------
+   * Drawer
+   * ---------------------------------------------------------------------- */
+
+  dialog.wave-docs-layout__drawer {
+    /* A full-height panel against the inline start edge, not a centred box.
+     * `margin` rather than `inset`, because a dialog is centred by `margin:
+     * auto` in the UA sheet and only a margin overrides that. */
+    margin: 0 auto 0 0;
+    box-sizing: border-box;
+    width: min(20rem, 85vw);
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    padding: 1.5rem 1rem;
+    border: 0;
+    border-inline-end: 1px solid var(--wave-docs-border);
+    background-color: var(--wave-docs-bg);
+    color: var(--wave-docs-fg);
+    overflow-y: auto;
+    /* Reaching the end of the nav must not start scrolling the page behind. */
+    overscroll-behavior: contain;
+  }
+
+  dialog.wave-docs-layout__drawer::backdrop {
+    background-color: oklch(0.2 0.02 262 / 0.55);
+  }
+
+  .wave-docs-layout__drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-block-end: 0.5rem;
+    margin-inline-start: auto;
+    border: 0;
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-muted);
+    cursor: pointer;
+  }
+
+  .wave-docs-layout__drawer-close:hover {
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /*
+   * ⚠️ SCOPED TO OUR DRAWER, DELIBERATELY. `html:has(dialog:modal)` would lock
+   * the page for a consumer's own modal too — and unlock it again the moment
+   * ours closed underneath theirs.
+   */
+  html:has(dialog.wave-docs-layout__drawer:modal) {
+    overflow: hidden;
+  }
+
+  /*
+   * Drawer furniture, hidden once the drawer is a column.
+   *
+   * ⚠️ AFTER the rules it overrides, not up with the other 64rem block. Same
+   * specificity means source order decides, and declared earlier this lost to
+   * the `display: inline-flex` above at every width — leaving a menu button
+   * and a close button sitting in a desktop layout that has nothing to open or
+   * close. Measured at 1280px: `flex`, not `none`.
+   */
+  @media (min-width: 64rem) {
+    .wave-docs-layout__nav-trigger,
+    .wave-docs-layout__drawer-close {
+      display: none;
     }
   }
 }

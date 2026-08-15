@@ -39,9 +39,16 @@ drawer   dialog.wave-docs-layout__drawer
 ```
 
 `__toc` is rendered by `docs.Page` rather than by `Layout`, because a Next layout
-receives `{children, params}` and cannot see `doc.toc`. The grid still owns its
-placement — the element arrives as a child of `__main`'s sibling slot and is
-positioned by `grid-area`, not by document order.
+receives `{children, params}` and cannot see `doc.toc`.
+
+**`__main` is emitted by `docs.Page` too, on the `<article>` itself** — `Layout`
+renders `{children}` straight into the grid with no wrapper of its own. An
+earlier draft of this table said "wraps `{children}`", which is not
+implementable: a wrapper would make the TOC a child of the main column instead
+of a sibling track, and the third `grid-template-columns` track would sit empty
+at every width above 80rem. Next inserts nothing around a page's output, so the
+two elements `docs.Page` returns arrive as direct grid children.
+`src/react/layout.test.tsx` and `src/next.test.ts` both pin it.
 
 The wrappers exist so `DocsSidebar` and `DocsToc` stay layout-agnostic. A
 consumer composing the primitives by hand gets the same components with none of

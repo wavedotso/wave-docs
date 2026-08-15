@@ -86,6 +86,14 @@ export default docs.IndexPage;
 export const generateMetadata = docs.generateMetadata;
 ```
 
+```tsx
+// app/docs/layout.tsx
+import '@waveso/docs/styles.css';
+import { docs } from '@/lib/docs';
+
+export default docs.Layout;
+```
+
 ```
 content/docs/
   index.md
@@ -95,7 +103,7 @@ content/docs/
     authentication.md
 ```
 
-That is a working documentation site.
+That is a working documentation site: routing, a navigation sidebar, a table of contents, syntax highlighting, a mobile drawer and a skip link. [Add search](#search) with one more file.
 
 > [!IMPORTANT]
 > `dynamicParams` must be written out as `false`. Route segment config is parsed statically before the module runs, so `export const dynamicParams = docs.dynamicParams` fails `next build`. Without it, Next invokes the route on a server at request time for every unlisted URL, to produce a 404 that was already knowable at build time — and `output: 'export'` refuses to build at all.
@@ -149,52 +157,54 @@ Every component takes data as props and imports nothing from `next/*` — the ad
 | `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap. Host-agnostic |
 | `Callout` | `react/callout` | Note · tip · important · warning · caution |
 | `YouTube` | `react/youtube` | Click-to-load facade |
-| `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<article>` |
+| `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<article>`. `docs.Layout` renders one |
 | `createMarkdownComponents` | `react/markdown-components` | The element → component map |
 
 ### Layout
 
-App Router layouts are Server Components and `usePathname` is client-only, so the one client boundary in a docs layout is a wrapper around the sidebar:
+`export default docs.Layout` — the one line from the [quick start](#quick-start) — is a Server Component that renders the whole shell: skip link, sticky header, sidebar column, mobile drawer, and the grid that arranges them. It reads the navigation tree and the search index URL itself, so there is nothing to fetch and nothing to pass.
+
+Your layout stays a Server Component. The two pieces that need a client — the navigation's `usePathname`, the search dialog — carry their own `'use client'` boundaries inside the package.
+
+To put your own chrome in the header, call it instead of re-exporting it:
 
 ```tsx
-// components/docs-nav.tsx
-'use client';
-
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { DocsSidebar } from '@waveso/docs/react/sidebar';
-import type { DocNavNode } from '@waveso/docs/types';
-
-export function DocsNav({ nav }: { nav: DocNavNode[] }) {
-  return <DocsSidebar nav={nav} pathname={usePathname()} Link={Link} />;
-}
-```
-
-```tsx
-// app/docs/layout.tsx
 import type { ReactNode } from 'react';
-import { SkipLink } from '@waveso/docs/react/skip-link';
-import { DocsSearch } from '@waveso/docs/react/next-search';
-import { DocsNav } from '@/components/docs-nav';
-import { docs } from '@/lib/docs';
 import '@waveso/docs/styles.css';
+import { docs } from '@/lib/docs';
 
-export default async function DocsLayout({ children }: { children: ReactNode }) {
-  const nav = await docs.source.nav();
+export default function DocsLayout({ children }: { children: ReactNode }) {
   return (
-    <>
-      <SkipLink />
-      <DocsSearch indexUrl={docs.searchIndexUrl} />
-      <DocsNav nav={nav} />
+    <docs.Layout
+      title="Wave"
+      actions={<a href="https://github.com/waveso/docs">GitHub</a>}
+    >
       {children}
-    </>
+    </docs.Layout>
   );
 }
 ```
 
-A page that needs the table of contents renders itself from `docs.getPage(segments)` instead of re-exporting `docs.Page`:
+| Prop | Type | Default | |
+| --- | --- | --- | --- |
+| `title` | `ReactNode` | — | Brand, at the header start |
+| `actions` | `ReactNode` | — | Header end, after search |
+| `search` | `boolean` | `true` | Render the search trigger |
+
+Four props, and one of them is a boolean. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. The header bar was the one region nothing else could reach — hence `actions`. Two node props can become a slots map later; a slots map cannot become two props.
+
+#### The mobile drawer
+
+Below 64rem the sidebar is a `<dialog>` opened by a server-rendered `<button command="show-modal">` — so it works on the first tap, before hydration, and with JavaScript disabled. Focus moves inside and Tab stays there, Escape closes it and returns focus to the trigger, a click on the backdrop dismisses it, and the page behind does not scroll. All of that is the browser's, not ours.
+
+At 64rem and above the same element becomes the sticky column, via `display: contents`. One navigation in the DOM at every width: one landmark, one copy of the links in the payload, nothing to keep in step.
+
+#### Composing it yourself
+
+`docs.Layout` is one opinion, not a tax. The components underneath are exported individually and take data as props, so a shell of your own is `DocsSidebar` + `DocsToc` + `SkipLink` + `DocsSearch` with your own CSS — and `docs.getPage(segments)` gives you the parts a custom page needs:
 
 ```tsx
+// The catch-all page, written out instead of re-exporting `docs.Page`.
 import { notFound } from 'next/navigation';
 import { DocContent } from '@waveso/docs/react/doc-content';
 import { DocsToc } from '@waveso/docs/react/toc';
@@ -215,6 +225,8 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
   );
 }
 ```
+
+`docs.Page` returns exactly this shape: the `<article>` and the table of contents as **two siblings**, not one wrapped element. They land as direct children of the grid, which is what puts them in separate columns — so if you compose your own page inside `docs.Layout`, return a fragment rather than a wrapper. A page with no headings emits no `<aside>` at all rather than an empty one, because the grid reserves the column with `:has()` and would otherwise give 15rem to nothing.
 
 ## Frontmatter
 

@@ -16,6 +16,7 @@ import {
 import { z } from 'zod';
 
 import { docFrontmatterSchema } from './frontmatter.js';
+import type { DocsLayoutProps } from './next.js';
 import {
   createDocsRedirects,
   createDocsRoute,
@@ -310,6 +311,53 @@ describe('createDocsRoute', () => {
     await expect(
       route.Page({ params: Promise.resolve({ slug: ['nope'] }) }),
     ).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+});
+
+describe('docs.Layout', () => {
+  const route = createDocsRoute({ contentDir: BASIC });
+
+  it('is callable with the props Next actually passes', async () => {
+    /*
+     * Next hands a layout `{ children, params }`. `DocsLayoutProps` declares
+     * only `children`, and the extra is ignored — which is the whole reason
+     * `export default docs.Layout` works as a one-liner. If this ever needed a
+     * wrapper, that one-liner stops being the headline of the README.
+     */
+    const element = await route.Layout({
+      children: null,
+      ...({ params: Promise.resolve({}) } as Record<string, unknown>),
+    });
+
+    expect(isValidElement(element)).toBe(true);
+  });
+
+  it('reads the nav itself, so a consumer never fetches one', async () => {
+    const element = await route.Layout({ children: null });
+
+    if (
+      !isValidElement<{ nav?: unknown[]; searchIndexUrl?: string }>(element)
+    ) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    // Both are derived rather than props on purpose: a nav passed in is a nav
+    // that can disagree with the routes, and a hand-written index URL is wrong
+    // under every non-default `basePath`.
+    expect(element.props.nav?.length).toBeGreaterThan(0);
+    expect(element.props.searchIndexUrl).toBe('/docs/search-index.json');
+  });
+
+  it('takes four props, and a fifth is a deliberate act', () => {
+    /*
+     * The count is the point. Fumadocs' layout takes eleven, which promotes
+     * its internal anatomy to semver-frozen API — two node props can become a
+     * slots map later, a slots map cannot become two props. This fails when
+     * someone adds the fifth, which is exactly when the conversation should
+     * happen.
+     */
+    expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
+      'children' | 'title' | 'actions' | 'search'
+    >();
   });
 });
 
