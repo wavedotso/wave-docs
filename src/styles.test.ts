@@ -357,8 +357,20 @@ describe('the cascade contract', () => {
     expect(shiki.length).toBeGreaterThan(0);
 
     for (const selector of shiki) {
-      expect(selector, `${selector} styles .shiki globally`).toContain(
-        '.wave-docs-prose .shiki',
+      /*
+       * The property is "`.wave-docs-prose` is an ancestor scope", not "the
+       * two class names are adjacent in the selector". This asserted the
+       * literal substring `.wave-docs-prose .shiki` until the code frame
+       * landed, at which point a correctly-scoped
+       * `.wave-docs-prose .wave-docs-code:has(…) .shiki` failed it — a rule
+       * that was doing exactly what this test exists to require.
+       *
+       * What must never appear is a `.shiki` selector that does not name our
+       * prose at all: unlayered or not, it would restyle the output of any
+       * other package rendering Shiki on the same page.
+       */
+      expect(selector, `${selector} styles .shiki globally`).toMatch(
+        /(^|[\s,])\.wave-docs-prose[\s.:[]/,
       );
     }
   });

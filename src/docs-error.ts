@@ -52,6 +52,8 @@ export type DocsErrorCode =
   | 'search-index-unavailable'
   /** The search-index route ran at request time instead of being prerendered. */
   | 'search-index-dynamic'
+  /** A code fence's meta string has a `title` that cannot be read. */
+  | 'invalid-code-meta'
   /** A plugin ran without the context this package always supplies. */
   | 'internal';
 

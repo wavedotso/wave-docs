@@ -746,6 +746,161 @@
  * ------------------------------------------------------------------------ */
 
 @layer components {
+  /* -------------------------------------------------------------------------
+   * Code frame
+   *
+   * The `<figure>` `rehypeCodeFrame` wraps every highlighted fence in: an
+   * optional title bar, a copy button, and the `<pre>` itself.
+   * ---------------------------------------------------------------------- */
+
+  .wave-docs-code {
+    position: relative;
+    /* The `<pre>` inside carries the border and background; the figure is only
+     * a positioning context, and a default `<figure>` margin would indent the
+     * whole block by 40px. */
+    margin: 0;
+  }
+
+  .wave-docs-code__title {
+    display: flex;
+    align-items: center;
+    /* Room for the button, which is absolutely positioned over this row. */
+    padding: 0.5rem 3rem 0.5rem 1.125rem;
+    border: 1px solid var(--wave-docs-border);
+    border-block-end: 0;
+    border-start-start-radius: var(--wave-docs-radius);
+    border-start-end-radius: var(--wave-docs-radius);
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg-muted);
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.8125rem;
+  }
+
+  /* Square off the top of a `<pre>` that sits under a title bar.
+   *
+   * `.wave-docs-prose` first, even though `.wave-docs-code` is our class and
+   * only ever appears inside it: `styles.test.ts` requires every `.shiki` rule
+   * to name the prose scope, so the package can never style a code block it
+   * did not render. One form for that invariant is worth the extra selector. */
+  .wave-docs-prose .wave-docs-code:has(.wave-docs-code__title) .shiki {
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+  }
+
+  .wave-docs-code__copy {
+    position: absolute;
+    top: 0.5rem;
+    inset-inline-end: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius-sm);
+    background-color: var(--wave-docs-bg);
+    color: var(--wave-docs-fg-muted);
+    font-size: 0.875rem;
+    cursor: pointer;
+    /*
+     * ⚠️ HIDDEN UNTIL THE RUNTIME SAYS OTHERWISE, AND THIS IS STRUCTURAL.
+     *
+     * The button is in the HTML whether or not any JavaScript runs — a reader
+     * with scripts off, a `renderToStaticMarkup` consumer, anyone rendering
+     * the hast by hand. `visibility: hidden` also takes it out of the tab
+     * order, which `opacity: 0` would not: without it a keyboard reader meets
+     * a control that is invisible, focusable, and does nothing.
+     */
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wave-docs-code__copy {
+      transition: none;
+    }
+  }
+
+  html[data-wave-docs-code-ready] .wave-docs-code__copy {
+    visibility: visible;
+  }
+
+  .wave-docs-code:hover .wave-docs-code__copy,
+  .wave-docs-code:focus-within .wave-docs-code__copy,
+  /* A title bar already reserves the space, so there is nothing to reveal. */
+  .wave-docs-code:has(.wave-docs-code__title) .wave-docs-code__copy {
+    opacity: 1;
+  }
+
+  /*
+   * A control that only appears on hover does not exist on a phone. This is
+   * the whole of the mobile story for copy, and it is one query.
+   */
+  @media (hover: none) {
+    .wave-docs-code__copy {
+      opacity: 1;
+    }
+  }
+
+  .wave-docs-code__copy:hover {
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /* The success state, swapped by CSS rather than by React: no component owns
+   * a button, so there is no state to re-render and nothing to hydrate. */
+  .wave-docs-code__copy[data-copied='true'] {
+    border-color: var(--wave-docs-callout-tip);
+    color: var(--wave-docs-callout-tip);
+  }
+
+  .wave-docs-code__copy[data-copied='true'] > * {
+    visibility: hidden;
+  }
+
+  .wave-docs-code__copy[data-copied='true']::after {
+    content: '\2713';
+    position: absolute;
+  }
+
+  /*
+   * The live region. Visually hidden rather than `display: none`, which most
+   * screen readers skip entirely — an announcement nobody hears is not one.
+   */
+  .wave-docs-code__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /*
+   * A fence whose language is in `excludeLangs` never reaches Shiki, so it has
+   * none of the rules below: no background, no border, no padding, no radius,
+   * no monospace sizing and no horizontal scroll. It rendered as a wall of UA
+   * default text bleeding out of the reading column — `excludeLangs` shipped
+   * as half a feature, and this is the other half. Everything a consumer then
+   * renders in its place (a Mermaid diagram, say) overrides it from their own
+   * unlayered CSS, which beats every layer here.
+   */
+  .wave-docs-prose pre:not(.shiki) {
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    background-color: var(--wave-docs-code-block-bg);
+    overflow-x: auto;
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    tab-size: 2;
+  }
+
   .wave-docs-prose .shiki {
     padding: 1rem 1.125rem;
     border: 1px solid var(--wave-docs-border);

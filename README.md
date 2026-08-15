@@ -348,6 +348,95 @@ above a file called `server.cfg`.
 
 Anything outside that set falls back to plain text rather than throwing. Pass `langs` to change the set, or `highlighter` to supply your own. Fence languages are matched case-insensitively, so ```` ```JSON ```` and ```` ```Bash ```` highlight like their lowercase spellings rather than silently shipping monochrome.
 
+### Code blocks
+
+Every highlighted fence is wrapped in a `<figure>` with a copy button. Add a title and it gets a bar:
+
+````md
+```ts title="app/page.tsx"
+export default function Page() {
+  return <h1>Hello</h1>;
+}
+```
+````
+
+The title lands in three places at once — the caption, the button's accessible name (`Copy code from app/page.tsx`, rather than eight controls all called "Copy code"), and the search index.
+
+Anything else in the meta string is left alone, so `{1,3-5}` and `showLineNumbers` pass through to Shiki untouched. A `title=` that is not double-quoted fails the build naming the document, because the alternative is a caption that silently truncates at the first space.
+
+The copy button is one delegated listener for the whole page, mounted by `DocContent` — not a client component per code block. A page with no fences ships none of it. And it is `visibility: hidden` until that listener attaches, so a reader with JavaScript disabled sees no button and finds no dead tab stop where a control should be.
+
+The `<figure>` carries `data-lang` (the folded language, so ```` ```JSON ```` gives `json`). No badge is rendered by default; one rule turns it on:
+
+```css
+.wave-docs-code[data-lang]::before {
+  content: attr(data-lang);
+}
+```
+
+Keeping it in CSS is deliberate — a real element would enter the search index and `textContent`, so every code block would pollute search results with its language name and the copy button would copy it.
+
+#### Fences you render yourself
+
+`excludeLangs` tells Shiki to leave a language alone, so the `<pre>` reaches your own component untouched — for diagrams, or anything that is not really code:
+
+```ts
+import { createDocsRoute } from '@waveso/docs/next';
+
+// In `lib/docs.ts`, beside the rest of your configuration.
+export const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  excludeLangs: ['mermaid'],
+});
+```
+
+Those fences are deliberately **not** framed: a copy button on a rendered diagram copies its source, which is not what the reader clicked. They still get the same background, border and horizontal scroll as a highlighted block, so `excludeLangs` on its own produces a page that looks deliberate rather than unstyled.
+
+To render them, map `pre`:
+
+```tsx
+import { isValidElement, type ReactNode } from 'react';
+
+/** Yours: a `'use client'` component wrapping whichever renderer you like. */
+declare function Mermaid(props: { children: string }): ReactNode;
+
+function textOf(node: ReactNode): string {
+  if (typeof node === 'string') return node;
+  if (Array.isArray(node)) return node.map(textOf).join('');
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return textOf(node.props.children);
+  }
+  return '';
+}
+
+export const components = {
+  pre: (props: { children?: ReactNode }) => {
+    const child = props.children;
+    const className = isValidElement<{ className?: string | string[] }>(child)
+      ? child.props.className
+      : undefined;
+
+    /*
+     * ⚠️ AN ARRAY, NOT A STRING. An excluded fence never reached Shiki, so its
+     * `<code>` still carries hast's `["language-mermaid"]` — Shiki's own
+     * output is a string. A `className === 'language-mermaid'` check compiles,
+     * reads correctly, and silently never matches, so every diagram renders as
+     * its own source.
+     */
+    const languages = Array.isArray(className) ? className : [className];
+
+    if (languages.includes('language-mermaid')) {
+      return <Mermaid>{textOf(props.children)}</Mermaid>;
+    }
+    return <pre {...props} />;
+  },
+};
+```
+
+Pass it as `components` to `createDocsRoute`, or to `DocContent` directly.
+
+`Mermaid` is yours — a `'use client'` component wrapping whichever renderer you like. This package deliberately does not ship one: several hundred kilobytes of client JavaScript with its own CVE history, behind an option most sites never set, in a package with three peer dependencies against Fumadocs' eighteen.
+
 ### Images
 
 **Absolute and external sources just work.** Put the file in `public/` and write `![](/diagram.png)`.

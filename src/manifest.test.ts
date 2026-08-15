@@ -172,6 +172,10 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   'layout',
   'nav',
   'next-nav',
+  // The copy runtime. `DocContent` mounts it, and only when the tree contains
+  // a code frame — exporting it would publish a second way to mount it, which
+  // is the way that double-announces to a screen reader.
+  'code-runtime',
 ]);
 
 describe('exports map', () => {

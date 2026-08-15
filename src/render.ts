@@ -23,6 +23,7 @@ import { VFile } from 'vfile';
 import type { DocsHighlighter, DocsLang, DocsThemes } from './highlighter.js';
 import { createDocsHighlighter, DEFAULT_DOCS_THEMES } from './highlighter.js';
 import { rehypeCaptureToc } from './plugins/rehype-capture-toc.js';
+import { rehypeCodeFrame } from './plugins/rehype-code-frame.js';
 import {
   rehypeNormalizeCodeLanguage,
   rehypeRestoreExcludedCode,
@@ -387,13 +388,21 @@ function stripPositions(tree: HastRoot): HastRoot {
  * 11. `rehypeAutolinkHeadings` — appends the permalink.
  * 12. `rehypeNormalizeCodeLanguage` — immediately before Shiki, which is the
  *                             last moment `class="language-JSON"` exists.
- * 13. `rehypeShikiFromHighlighter` — near-last: it replaces `<pre><code>`
+ * 13. `rehypeCodeFrame`    — the one step wide window: after 12, which folds
+ *                             the language and disguises excluded fences, and
+ *                             before Shiki, which destroys `code.data.meta`
+ *                             and with it the fence's `title="…"`.
+ * 14. `rehypeShikiFromHighlighter` — near-last: it replaces `<pre><code>`
  *                             wholesale, and anything walking code blocks
  *                             afterwards would be walking Shiki's token spans.
- * 14. `rehypeRestoreExcludedCode` — the other side of step 12's disguise.
- * 15. `rehypeFlattenRoots` — last of all, because Shiki is what splices a
+ * 15. `rehypeRestoreExcludedCode` — the other side of step 12's disguise.
+ * 16. `rehypeFlattenRoots` — last of all, because Shiki is what splices a
  *                             `root` into `root.children` and the published
  *                             `RenderedDoc.hast` type says that cannot happen.
+ *                             Step 13 is the first thing to put a `root`
+ *                             inside an *element* rather than at the top, so
+ *                             this recursing into element children is now
+ *                             load-bearing rather than defensive.
  */
 async function buildProcessor(
   options: DocsRendererOptions,
@@ -445,6 +454,7 @@ async function buildProcessor(
         ? {}
         : { exclude: options.excludeLangs }),
     })
+    .use(rehypeCodeFrame)
     .use(rehypeShikiFromHighlighter, highlighter as ShikiHighlighter, {
       themes,
       /*

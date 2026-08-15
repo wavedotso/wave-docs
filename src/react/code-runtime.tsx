@@ -1,0 +1,227 @@
+'use client';
+
+/**
+ * The nine hundred bytes that make every copy button on the page work.
+ *
+ * Private. `DocContent` mounts it, and only when the tree it was handed
+ * actually contains a code frame — so a page with no fences ships none of
+ * this rather than a component that mounts and finds nothing to do.
+ *
+ * ## One listener, not one component per block
+ *
+ * The buttons are plain server-rendered HTML with no React identity at all.
+ * This attaches a single delegated `click` listener to `document` and one live
+ * region to `<body>`, both behind a module-level ref count: the first instance
+ * installs them, later instances increment and return, and the last one out
+ * removes them. Two `DocContent`s on one page therefore copy once and announce
+ * once — a bug nothing else would catch, because the second announcement is
+ * only audible to a screen-reader user.
+ *
+ * The alternative every comparable package ships — mapping `pre` to a
+ * `'use client'` component — puts one client reference and one hydration root
+ * in the flight stream per fence, and drags the highlighted subtree across the
+ * client boundary as children.
+ */
+
+import { useEffect } from 'react';
+import type { ReactNode } from 'react';
+
+import {
+  CODE_COPY_ATTRIBUTE,
+  CODE_FRAME_ATTRIBUTE,
+  CODE_READY_ATTRIBUTE,
+} from '../code-frame.js';
+
+/** How long the button shows its copied state. */
+const COPIED_MS = 2000;
+
+/**
+ * Line classes whose text is not part of what the reader wanted.
+ *
+ * Empty today, and deliberately an array rather than an inline condition:
+ * `@shikijs/transformers` lands at 0.3, and `'remove'` — the class it puts on
+ * a deleted diff line — goes here. Copying deleted lines into somebody's
+ * editor is the kind of failure that is discovered at run time, in their
+ * project, days later.
+ */
+const SKIP_LINE_CLASSES: readonly string[] = [];
+
+/** Marker classes whose lines carry trailing whitespace worth trimming. */
+const TRIMMED_LINE_CLASSES: readonly string[] = [];
+
+let refCount = 0;
+let detach: (() => void) | undefined;
+
+/**
+ * Mount the copy runtime. Renders nothing.
+ *
+ * Every hook of state lives in the DOM rather than in React: the button's
+ * copied state is a `data-copied` attribute the stylesheet reads, and the
+ * announcement is a live region. React owns none of these nodes, so nothing
+ * re-renders and there is no state to get out of step with a page that was
+ * server-rendered.
+ */
+export function DocsCodeRuntime(): ReactNode {
+  useEffect(() => {
+    refCount += 1;
+    if (refCount === 1) detach = install();
+
+    return () => {
+      refCount -= 1;
+      if (refCount === 0) {
+        detach?.();
+        detach = undefined;
+      }
+    };
+  }, []);
+
+  return null;
+}
+
+function install(): () => void {
+  const status = document.createElement('div');
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  // Visually hidden rather than `display: none`, which most screen readers
+  // ignore entirely — an announcement nobody hears is not an announcement.
+  status.className = 'wave-docs-code__status';
+  document.body.append(status);
+
+  const onClick = (event: MouseEvent): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const button = target.closest(`[${CODE_COPY_ATTRIBUTE}]`);
+    if (!(button instanceof HTMLElement)) return;
+
+    const frame = button.closest(`[${CODE_FRAME_ATTRIBUTE}]`);
+    const pre = frame?.querySelector('pre');
+    if (pre === null || pre === undefined) return;
+
+    void copy(readCode(pre), button, status);
+  };
+
+  document.addEventListener('click', onClick);
+  /*
+   * The button is `visibility: hidden` until this attribute exists — which is
+   * also what keeps it out of the tab order. That is what stops a no-JS
+   * reader, or anyone rendering the hast to a string, from meeting a control
+   * that silently does nothing.
+   */
+  document.documentElement.setAttribute(CODE_READY_ATTRIBUTE, '');
+
+  return () => {
+    document.removeEventListener('click', onClick);
+    document.documentElement.removeAttribute(CODE_READY_ATTRIBUTE);
+    status.remove();
+  };
+}
+
+/**
+ * The text of a code block, as the author wrote it.
+ *
+ * ⚠️ NOT `pre.textContent`. Shiki emits one `<span class="line">` per line with
+ * a literal `"\n"` text node between them, so `textContent` happens to be
+ * right *today* — and stops being right the moment a transformer adds a line
+ * that should not be copied, or a gutter of line numbers that should not be
+ * either. Walking the lines is the same amount of code and survives both.
+ */
+function readCode(pre: Element): string {
+  const lines = pre.querySelectorAll('.line');
+  // No `.line` children is the excluded-fence shape: a bare `<pre>` Shiki
+  // never touched, whose text is exactly what the author typed.
+  if (lines.length === 0) return pre.textContent ?? '';
+
+  const out: string[] = [];
+  for (const line of lines) {
+    const classes = line.className.split(/\s+/);
+    if (classes.some((name) => SKIP_LINE_CLASSES.includes(name))) continue;
+
+    const text = line.textContent ?? '';
+    /*
+     * Trailing whitespace is trimmed only on marked lines. Trimming every line
+     * would eat the two trailing spaces that are a hard line break inside a
+     * fenced markdown sample — a documentation site is the one place that
+     * example gets written.
+     */
+    out.push(
+      classes.some((name) => TRIMMED_LINE_CLASSES.includes(name))
+        ? text.replace(/\s+$/, '')
+        : text,
+    );
+  }
+  return out.join('\n');
+}
+
+async function copy(
+  text: string,
+  button: HTMLElement,
+  status: HTMLElement,
+): Promise<void> {
+  const copied = (await writeClipboard(text)) ? 'true' : 'false';
+
+  /*
+   * The one place a non-React writer touches DOM inside a React tree. It is
+   * safe because React owns no state for these nodes and nothing re-renders
+   * them — but it is the only such place, which is why it is called out here.
+   */
+  button.dataset.copied = copied;
+  status.textContent =
+    copied === 'true'
+      ? 'Copied to the clipboard.'
+      : // What to do instead, not merely that it failed. The most common way
+        // to land here is `next dev` on a phone over `http://192.168.x.x`,
+        // where there is no secure context and no amount of retrying helps.
+        'Copy failed. Select the code and press Control or Command + C.';
+
+  window.setTimeout(() => {
+    button.removeAttribute('data-copied');
+  }, COPIED_MS);
+}
+
+async function writeClipboard(text: string): Promise<boolean> {
+  /*
+   * `navigator.clipboard` is `undefined` outside a secure context, and
+   * `next dev` served over `http://192.168.x.x:3000` — the standard way to
+   * check a docs site on a real phone — is not one. Reading `isSecureContext`
+   * first avoids a TypeError on the property access itself.
+   */
+  if (window.isSecureContext && navigator.clipboard !== undefined) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // A permissions policy can refuse even in a secure context; fall through
+      // rather than reporting failure while an option remains.
+    }
+  }
+  return legacyCopy(text);
+}
+
+/**
+ * `execCommand('copy')`, which is deprecated and still the only thing that
+ * works over plain HTTP.
+ *
+ * When it finally goes, this returns `false` and the reader gets the
+ * instruction — which is why that message is written as an instruction rather
+ * than as an apology.
+ */
+function legacyCopy(text: string): boolean {
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.setAttribute('aria-hidden', 'true');
+  // Off-screen rather than hidden: a `display: none` textarea cannot be
+  // selected, and selection is the whole mechanism.
+  area.style.cssText = 'position:fixed;top:-9999px;opacity:0;';
+  document.body.append(area);
+
+  try {
+    area.select();
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    area.remove();
+  }
+}

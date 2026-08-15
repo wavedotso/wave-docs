@@ -3,6 +3,8 @@ import { toJsxRuntime } from 'hast-util-to-jsx-runtime';
 import type { ReactNode } from 'react';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 
+import { hasCodeFrame } from '../code-frame.js';
+import { DocsCodeRuntime } from './code-runtime.js';
 import type { MarkdownComponents } from './markdown-components.js';
 import { defaultMarkdownComponents } from './markdown-components.js';
 
@@ -47,6 +49,19 @@ export interface DocContentProps {
  * `.wave-docs-prose > :is(h2…h6)`, and the tree's own children are this
  * element's direct children, so nothing moves.
  *
+ * ## The copy runtime is mounted here
+ *
+ * Because this is the component no consumer can avoid: `createDocsRoute.Page`
+ * renders it, and the documented hand-rolled route renders it directly. Wiring
+ * the listener from `docs.Layout` instead would ship dead buttons to everyone
+ * composing their own shell, and "what about someone not using the layout?"
+ * would be a caveat rather than a non-question.
+ *
+ * It renders only when the tree actually contains a code frame. The server has
+ * the tree in hand, the check is one pass, and the result is that a page
+ * without fences ships zero extra bytes rather than a runtime with nothing to
+ * do.
+ *
  * `passNode` is left off (the default). `react-markdown` hardcodes it *on* with
  * no opt-out, so any mapped component that spreads its props renders
  * `node="[object Object]"` into production HTML — with no type error to warn
@@ -66,6 +81,7 @@ export function DocContent({
           : `wave-docs-prose ${className}`
       }
     >
+      {hasCodeFrame(hast) ? <DocsCodeRuntime /> : null}
       {toJsxRuntime(hast, {
         Fragment,
         jsx,
