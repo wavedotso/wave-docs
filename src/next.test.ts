@@ -2,7 +2,8 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import MiniSearch from 'minisearch';
-import { isValidElement } from 'react';
+import type { ReactNode } from 'react';
+import { Fragment, isValidElement } from 'react';
 import {
   afterAll,
   afterEach,
@@ -62,6 +63,25 @@ afterAll(async () => {
     tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
+
+/**
+ * The children of the fragment `docs.Page` returns, with the `null` the TOC
+ * slot holds on a page with no headings already dropped.
+ *
+ * `Children.toArray` is deliberately not used: it discards nulls *and*
+ * flattens, so the "no empty aside" assertion could not tell an absent TOC
+ * from one nested somewhere unexpected.
+ */
+function pageChildren(page: ReactNode): ReactNode[] {
+  if (!isValidElement<{ children?: ReactNode }>(page)) {
+    throw new Error('expected `Page` to return an element');
+  }
+  expect(page.type).toBe(Fragment);
+  const children = page.props.children;
+  return (Array.isArray(children) ? children : [children]).filter(
+    (child) => child !== null && child !== undefined,
+  );
+}
 
 describe('createDocsRoute', () => {
   const route = createDocsRoute({ contentDir: BASIC });
@@ -225,16 +245,60 @@ describe('createDocsRoute', () => {
     // `tabIndex` matters as much as the id: a fragment link moves the scroll
     // position and not always the focus, so an unfocusable target leaves a
     // keyboard reader at the top of the sidebar they were trying to skip.
-    const page = await route.Page({
-      params: Promise.resolve({ slug: ['getting-started'] }),
-    });
+    const [article] = pageChildren(
+      await route.Page({
+        params: Promise.resolve({ slug: ['getting-started'] }),
+      }),
+    );
 
-    if (!isValidElement<{ id?: string; tabIndex?: number }>(page)) {
-      throw new Error('expected `Page` to return an element');
+    if (!isValidElement<{ id?: string; tabIndex?: number }>(article)) {
+      throw new Error('expected the first child to be an element');
     }
-    expect(page.type).toBe('article');
-    expect(page.props.id).toBe('docs-content');
-    expect(page.props.tabIndex).toBe(-1);
+    expect(article.type).toBe('article');
+    expect(article.props.id).toBe('docs-content');
+    expect(article.props.tabIndex).toBe(-1);
+  });
+
+  it('emits the article and the TOC as siblings, not as a nested pair', async () => {
+    /*
+     * Both have to be DIRECT children of `.wave-docs-layout`, or
+     * `grid-template-columns` cannot put them in separate tracks — the TOC
+     * would render inside the article's column while the third track sits
+     * empty above 80rem. `docs.Layout` renders `{children}` with no wrapper
+     * and Next adds none of its own, so the only thing that could break this
+     * is a wrapper added here.
+     */
+    const children = pageChildren(
+      await route.Page({
+        params: Promise.resolve({ slug: ['getting-started'] }),
+      }),
+    );
+
+    expect(children).toHaveLength(2);
+    const toc = children[1];
+    if (!isValidElement<{ className?: string }>(toc)) {
+      throw new Error('expected a TOC element');
+    }
+    expect(toc.type).toBe('aside');
+    expect(toc.props.className).toBe('wave-docs-layout__toc');
+  });
+
+  it('emits no aside at all for a page with no headings', async () => {
+    /*
+     * Not an empty one. The grid reserves its TOC track with
+     * `:has(.wave-docs-layout__toc)`, and `:has()` matches an empty aside just
+     * as happily — so a page without headings would give up 15rem to nothing.
+     * V-4 measured that exact defect with the sidebar.
+     */
+    const dir = await makeContentDir({
+      'index.md': '---\ntitle: Flat\n---\n\nProse, and not one heading.\n',
+    });
+    const flat = createDocsRoute({ contentDir: dir });
+
+    const children = pageChildren(await flat.IndexPage());
+
+    expect(children).toHaveLength(1);
+    expect(children.filter((child) => child !== null)).toHaveLength(1);
   });
 
   it('calls `notFound()` for an unknown slug', async () => {

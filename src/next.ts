@@ -48,7 +48,7 @@ import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import type { Options as MiniSearchOptions } from 'minisearch';
 import type { ComponentType, ReactNode } from 'react';
-import { cache, createElement } from 'react';
+import { Fragment, cache, createElement } from 'react';
 
 import { mapPooled } from './map-pooled.js';
 import type {
@@ -58,6 +58,7 @@ import type {
   DocsThemes,
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
+import { DocsToc } from './react/toc.js';
 import type {
   DocsImageComponent,
   DocsImageProps,
@@ -778,21 +779,56 @@ export function createDocsRoute<
     }
 
     const components = await loadNextComponents();
+
+    /*
+     * TWO CHILDREN, AND THEY MUST STAY DIRECT CHILDREN OF THE GRID.
+     *
+     * `docs.Layout` renders `{children}` straight into `.wave-docs-layout`
+     * without a wrapper, so the article and the TOC land in their own
+     * `grid-template-columns` tracks. Next inserts nothing around a page's
+     * output, which is what makes that hold — wrap these two in a `<div>` here
+     * and the TOC moves inside the article's column while the third track
+     * sits empty at every width above 80rem.
+     *
+     * The TOC is emitted here rather than by the layout because a Next layout
+     * receives `{children, params}` and has no way to know which page is
+     * rendering, and `doc.toc` comes from the render `getPage` just did.
+     * Recovering it client-side would mean a second slugging pass over the
+     * DOM, which is the thing `DocContent` refuses to do.
+     */
     return createElement(
-      'article',
-      {
-        className: 'wave-docs-prose',
-        // The target `SkipLink` points at by default. `tabIndex` with it: a
-        // fragment link moves the scroll position but not always the focus, so
-        // an unfocusable target leaves a keyboard user stranded at the top of
-        // the sidebar they were trying to skip.
-        id: DOCS_CONTENT_ID,
-        tabIndex: -1,
-      },
-      createElement(DocContent, {
-        hast: doc.hast,
-        components: { ...components, ...options.components },
-      }),
+      Fragment,
+      null,
+      createElement(
+        'article',
+        {
+          className: 'wave-docs-prose wave-docs-layout__main',
+          // The target `SkipLink` points at by default. `tabIndex` with it: a
+          // fragment link moves the scroll position but not always the focus,
+          // so an unfocusable target leaves a keyboard user stranded at the
+          // top of the sidebar they were trying to skip.
+          id: DOCS_CONTENT_ID,
+          tabIndex: -1,
+        },
+        createElement(DocContent, {
+          hast: doc.hast,
+          components: { ...components, ...options.components },
+        }),
+      ),
+      /*
+       * NO ELEMENT AT ALL when there are no headings, rather than an empty
+       * one. The grid reserves its TOC track with
+       * `.wave-docs-layout:has(.wave-docs-layout__toc)`, and `:has()` matches
+       * an empty aside exactly as well as a full one — so an untitled page
+       * would give up 15rem to nothing. The same defect V-4 measured.
+       */
+      doc.toc.length === 0
+        ? null
+        : createElement(
+            'aside',
+            { className: 'wave-docs-layout__toc' },
+            createElement(DocsToc, { entries: doc.toc }),
+          ),
     );
   }
 
