@@ -10,7 +10,8 @@
 import type { Dirent, Stats } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import matter from 'gray-matter';
+import { VFile } from 'vfile';
+import { matter } from 'vfile-matter';
 import { parseFrontmatter } from './frontmatter.js';
 import type { MetaDirEntry } from './meta.js';
 import { orderNavEntries, readDocsMeta } from './meta.js';
@@ -486,13 +487,33 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
   let data: unknown;
   let content: string;
   try {
-    // The options object is load-bearing: called with none, `gray-matter`
-    // memoises every distinct file body it has ever seen in a module-level
-    // cache that is never evicted, so a dev server rescanning on each save
-    // retains one full copy per revision for the life of the process.
-    const parsed = matter(raw, { language: 'yaml' });
-    data = parsed.data;
-    content = parsed.content;
+    /*
+     * `vfile-matter` mutates the file: it strips the block from `file.value`
+     * and puts the parsed object on `file.data.matter`. That is why this is
+     * two statements rather than a destructure, and it is also the whole
+     * reason for the swap — `gray-matter` reached for a bare `require('fs')`
+     * (for a `matter.read()` this package never calls), which was the only
+     * gratuitous Node requirement in the tree, and memoised every distinct
+     * file body it had ever seen in a module-level cache that is never
+     * evicted. A dev server rescanning on each save kept one full copy per
+     * revision for the life of the process; the eleven-line comment that used
+     * to sit here worked around it with an options object.
+     */
+    /*
+     * ⚠️ THE BOM IS OURS TO STRIP NOW. `gray-matter` did it; `vfile-matter`
+     * does not, and `readFile(…, 'utf8')` does not either. Left in place the
+     * parser sees `\uFEFF---`, which is not a delimiter, so the whole block
+     * becomes body text and the page has no title — a failure that reproduces
+     * only on files written by editors that emit one, which is most of them
+     * on Windows. Caught by the byte-level cases written green against the old
+     * parser before the swap, which is the only reason it is not shipped.
+     */
+    const file = new VFile({
+      value: raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw,
+    });
+    matter(file, { strip: true });
+    data = file.data.matter;
+    content = String(file);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw docsError(

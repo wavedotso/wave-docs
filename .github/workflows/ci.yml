@@ -110,6 +110,11 @@ jobs:
       - name: Type-check the README examples
         run: pnpm run check:readme
 
+      # Must follow the build: it bundles `dist/` to measure what each entry
+      # point requires, and an entry with no builtins is the claim being made.
+      - name: Check runtime requirements
+        run: pnpm exec vitest run --project node src/entry-runtime.test.ts
+
       # Must follow the build: `attw --pack .` packs the real tarball and
       # resolves every export subpath against dist/.
       - name: Check package (publint + are-the-types-wrong)

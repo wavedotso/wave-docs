@@ -713,6 +713,25 @@ Markdown files are not in Next's module graph, so nothing recompiles a route mod
 
 The rescan is shared. Next runs `generateMetadata` and your page concurrently, and a layout calling `nav()` is a third reader; invalidation is wrapped in `React.cache`, so the first of them re-reads the disk and the rest see that scan. Without it each invalidated the others' work in flight — measured at 22 `readdir` + 824 `readFile` per request on a 401-file tree, against 11 + 412 for one scan.
 
+## Runtimes
+
+What each entry point *requires*, measured by bundling it with no runtime assumed and asserted exactly — not approximately — by `src/entry-runtime.test.ts`:
+
+| Entry | Node builtins |
+| --- | --- |
+| `@waveso/docs/types` | none |
+| `@waveso/docs/frontmatter` | none |
+| `@waveso/docs/highlighter` | none |
+| `@waveso/docs/render` | none |
+| `@waveso/docs/search-index` | none |
+| `@waveso/docs/source` | `node:fs/promises`, `node:path` |
+| `@waveso/docs/next` | `node:crypto`, `node:fs/promises`, `node:path` |
+| `@waveso/docs/react/*` | none |
+
+The markdown pipeline needs no filesystem and no `.wasm` — Shiki is loaded through its JavaScript regex engine deliberately, not its WASM one. So parsing and highlighting run wherever JavaScript does; only reading a directory of `.md` files needs Node, which is what `source` is for.
+
+That is a statement about requirements and not a blessing. A bundle that resolves is not a runtime, and this package is tested on Node. If you run it elsewhere, note that `render` bundles to roughly 2.8 MB with all eighteen grammars inlined — narrow `langs` for anything with a size limit, since grammars are dynamic imports.
+
 ## Requirements
 
 | | |

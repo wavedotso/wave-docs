@@ -1,7 +1,7 @@
 {
   "name": "@waveso/docs",
   "version": "0.2.0",
-  "description": "Markdown documentation for Next.js \u2014 parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "description": "Markdown documentation for Next.js — parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -138,7 +138,6 @@
     "@standard-schema/spec": "^1.1.0",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
-    "gray-matter": "^4.0.3",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "hast-util-to-string": "^3.0.1",
     "minisearch": "^7.2.0",
@@ -152,6 +151,7 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "vfile": "^6.0.3",
+    "vfile-matter": "^5.0.1",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
@@ -183,6 +183,7 @@
     "publint": "^0.3.23",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "rolldown": "^1.2.4",
     "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
