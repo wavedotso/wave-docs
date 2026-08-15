@@ -47,6 +47,7 @@
 import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import type { Options as MiniSearchOptions } from 'minisearch';
+import type { PluggableList } from 'unified';
 import type { ComponentType, ReactNode } from 'react';
 import { Fragment, cache, createElement } from 'react';
 
@@ -313,6 +314,18 @@ export interface DocsRouteOptions<
    * Defaults to `true`; turn it off if your layout renders the title itself.
    */
   titleHeading?: boolean | undefined;
+  /**
+   * Extra remark plugins, attached after `remarkGfm` and before link
+   * resolution — so anything they emit is folded, contained and asserted like
+   * authored markdown.
+   */
+  remarkPlugins?: PluggableList | undefined;
+  /**
+   * Extra rehype plugins, attached after heading ids and permalinks exist and
+   * before the code steps — so a `<pre>` is still the author's text rather
+   * than Shiki's token spans.
+   */
+  rehypePlugins?: PluggableList | undefined;
   /** Replaces the built-in markdown-link resolution. */
   linkResolver?: LinkResolver | undefined;
   /**
@@ -684,6 +697,12 @@ export function createDocsRoute<
       ...(options.titleHeading === undefined
         ? {}
         : { titleHeading: options.titleHeading }),
+      ...(options.remarkPlugins === undefined
+        ? {}
+        : { remarkPlugins: options.remarkPlugins }),
+      ...(options.rehypePlugins === undefined
+        ? {}
+        : { rehypePlugins: options.rehypePlugins }),
       ...(options.linkResolver === undefined
         ? {}
         : { linkResolver: options.linkResolver }),

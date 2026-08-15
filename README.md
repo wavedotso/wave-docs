@@ -614,6 +614,38 @@ const json = buildSearchIndex(rendered.flatMap((doc) => extractSearchRecords(doc
 
 `docs.searchIndex` is exactly this, served — asserted byte-for-byte by a test, so the escape hatch cannot drift from the route.
 
+## Plugins
+
+Two slots, at the two positions that are actually useful:
+
+```ts
+import type { Plugin } from 'unified';
+import { createDocsRoute } from '@waveso/docs/next';
+
+// Whatever you install — `remark-math` and `rehype-katex` here.
+declare const remarkMath: Plugin;
+declare const rehypeKatex: Plugin;
+
+export const mathDocs = createDocsRoute({
+  contentDir: 'content/docs',
+  remarkPlugins: [remarkMath],
+  rehypePlugins: [rehypeKatex],
+});
+```
+
+`remarkPlugins` attach after GFM and **before link resolution**, so anything they emit is folded, contained and asserted exactly like authored markdown — a plugin writing `[x](../other/page.md)` gets the same resolution an author would, and one writing `![i](./x.png)` throws without an `imageResolver` for the same reason.
+
+`rehypePlugins` attach after heading ids and permalinks exist and **before Shiki**, so a code fence is still `<pre><code class="language-ts">` with the author's text in it rather than several hundred token spans. Fences named by `excludeLangs` are not disguised yet either, so a plugin sees every code block the same way.
+
+There is no after-Shiki slot. Code-block internals belong to Shiki's own `transformers`, and the honest documentation for an after-Shiki hook would be a list of things you must not do.
+
+The table of contents is captured **last**, after your plugins and after everything else, so it describes the same document the search index does. A plugin that adds or removes a heading changes both together; there is no validation pass because there is nothing to validate.
+
+> [!NOTE]
+> The pipeline is built and frozen once and shared by every file, so a plugin
+> holding state accumulates it across the whole build rather than per document.
+> Keep them pure, or key what they hold on the vfile.
+
 ## Configuration
 
 <!-- typecheck: skip — a reference listing of the type, not a module -->

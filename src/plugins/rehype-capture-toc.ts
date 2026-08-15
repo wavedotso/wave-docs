@@ -1,6 +1,17 @@
 /**
  * Collect the table of contents from the rendered tree.
  *
+ * ## Why this runs dead last
+ *
+ * Because `extractSearchRecords` walks the finished tree, and the TOC must
+ * describe the same document search does. Captured earlier, a consumer plugin
+ * attached through `rehypePlugins` could add or remove a heading and put the
+ * two out of step — silently, in both directions: a deleted heading id leaves
+ * a TOC entry pointing at nothing while search drops the section, and an added
+ * `<h2>` becomes a search record with no TOC entry. Reading last makes them
+ * agree by construction rather than by a validation pass that would have to
+ * exist and be maintained.
+ *
  * The ids are read off the tree rather than recomputed, which is the whole
  * point of doing this as a rehype pass instead of a second parse of the
  * markdown: `rehype-slug` seeds a `GithubSlugger` per document, so a second
@@ -30,9 +41,12 @@ const HEADING = /^h([2-6])$/;
 /**
  * Drop the permalink anchor `rehype-autolink-headings` appends.
  *
- * This plugin is ordered before that one, so in practice there is nothing to
- * drop — but the check costs nothing and the alternative, if the order ever
- * changes, is every TOC entry silently gaining a trailing `#`.
+ * ⚠️ LOAD-BEARING NOW. This used to run *before* autolinking, so there was
+ * nothing to drop and this was insurance against an order that might change.
+ * The order changed: the capture is dead last, after Shiki and after the
+ * consumer's own plugins, so every heading really does carry an appended
+ * anchor by the time this walks it. Delete this and every TOC entry gains a
+ * trailing `#`.
  */
 function isPermalink(child: ElementContent): boolean {
   if (child.type !== 'element' || child.tagName !== 'a') {
