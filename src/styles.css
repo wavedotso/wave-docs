@@ -118,6 +118,33 @@
     --wave-docs-scroll-padding: 4rem;
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
+
+    /* The body typeface.
+     *
+     * A default rather than an inheritance, because inheriting means a host
+     * that never set one renders documentation in the UA serif — which is what
+     * this package did until now, and which reads as broken rather than as
+     * unstyled.
+     *
+     * A host with its own typeface sets `--wave-docs-font-sans: inherit`, and
+     * the whole package follows `body` again. That is one line, and it is the
+     * documented opt-out; overriding the family on every element this sheet
+     * touches is not. */
+    --wave-docs-font-sans: ui-sans-serif, system-ui, -apple-system,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    /* Prose column width.
+     *
+     * 46rem is 736px at a 16px root, about 83 `ch` in the stack above — wider
+     * than a pure-prose measure wants, and deliberately: this column also
+     * carries code blocks, API tables and callouts, and narrowing it to suit
+     * paragraphs pushes those into horizontal scroll. Without any measure at
+     * all, a 1440px viewport produced a ~140-character line.
+     *
+     * `--wave-docs-measure: none` opts out entirely, for a host whose own
+     * shell already constrains the column. See `docs/adr/001-shell-contract.md`
+     * — this is one of the five settable layout tokens. */
+    --wave-docs-measure: 46rem;
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -221,6 +248,28 @@
   }
 
   /*
+   * The typeface, on every root this package owns.
+   *
+   * Separate from the grounding rule above because these six are not the same
+   * set: the dialog is portalled out of the prose and the trigger usually sits
+   * in the host's own header, so neither inherits from anything this sheet
+   * paints — while the skip link and the trigger have their own backgrounds and
+   * must not be handed the page one.
+   *
+   * Declared at all because inheriting means a host that never set a family
+   * renders its documentation in the UA serif. `--wave-docs-font-sans: inherit`
+   * gives the host's typeface back in one line.
+   */
+  .wave-docs-prose,
+  .wave-docs-sidebar,
+  .wave-docs-toc,
+  .wave-docs-skip-link,
+  .wave-docs-search-trigger,
+  .wave-docs-search-dialog {
+    font-family: var(--wave-docs-font-sans);
+  }
+
+  /*
    * No `scroll-behavior: smooth` anywhere, and not for the usual reason.
    * Next 16 only suppresses smooth scrolling across a route change when
    * `<html>` carries `data-scroll-behavior="smooth"` — an attribute only the
@@ -311,7 +360,10 @@
      * tests at. `break-word` and not `word-break: break-all`, which would also
      * chop ordinary prose mid-syllable. */
     overflow-wrap: break-word;
-    /* No `max-width` on purpose — the docs shell owns column width. */
+    /* The comment here used to say the docs shell owns column width. No shell
+     * shipped, so in practice every consumer's first override was the same
+     * container CSS — a default the package should have carried itself. */
+    max-width: var(--wave-docs-measure);
   }
 
   .wave-docs-prose > * + * {

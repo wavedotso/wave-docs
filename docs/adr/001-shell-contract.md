@@ -90,8 +90,16 @@ getting the middle one right — a worse escape hatch than a token. Gutter and
 drawer width each appear only in single-value declarations, where an ordinary CSS
 override is already the cleanest tool, so they stay literals.
 
-**46rem** is measured, not guessed: 75 characters at the shipped font stack and
-body size, which is the upper end of the 60–85 range that reads well.
+**46rem** is 736px at a 16px root, which is roughly 83 `ch` in the shipped
+stack. That is wider than the 45–75 characters a *prose* measure wants, and
+deliberately so: this column also carries code blocks, API tables and callouts,
+which need width more than a paragraph does, and narrowing it to 36rem pushes
+every six-column table into horizontal scroll to buy a line length nobody
+complained about. It is the measure Stripe, GitHub and most docs sites land on
+for the same reason.
+
+(An earlier draft of this ADR claimed 75 characters. It is ~83; the arithmetic
+is above. The browser tier measures the real figure once it exists.)
 
 ### Sticky
 

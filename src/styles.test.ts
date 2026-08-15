@@ -585,6 +585,74 @@ describe('focus indicators', () => {
   });
 });
 
+describe('the reading column', () => {
+  /** A non-colour token's raw value; `readTokens` parses only `oklch()`. */
+  function rawToken(name: string): string {
+    const at = sheet.indexOf(`${name}:`);
+    expect(at, `${name} not declared`).toBeGreaterThan(-1);
+    return sheet.slice(at + name.length + 1, sheet.indexOf(';', at)).trim();
+  }
+
+  /**
+   * `.wave-docs-prose` carried no `max-width` and a comment saying the docs
+   * shell owned column width. No shell shipped, so every consumer's first
+   * override was the same container CSS — and on a 1440px viewport the default
+   * was a ~140-character line.
+   */
+  it('constrains the measure, through a token', () => {
+    const prose = readBlock(sheet, sheet.indexOf('.wave-docs-prose {'));
+    expect(prose).toContain('max-width: var(--wave-docs-measure)');
+    expect(rawToken('--wave-docs-measure')).toBe('46rem');
+  });
+
+  /**
+   * Inheriting the family means a host that never set one renders its
+   * documentation in the UA serif, which reads as broken rather than as
+   * unstyled. The opt-out is the token, not a cascade accident.
+   */
+  it('ships a typeface on every root it owns', () => {
+    expect(rawToken('--wave-docs-font-sans')).toMatch(
+      /ui-sans-serif|system-ui/,
+    );
+
+    const declaration = 'font-family: var(--wave-docs-font-sans)';
+    const at = sheet.indexOf(declaration);
+    expect(at, 'nothing applies the sans token').toBeGreaterThan(-1);
+
+    // The prelude of the rule that applies it: back to the `{` that opens the
+    // block, then to the end of the comment or `}` before its selector list.
+    const open = sheet.lastIndexOf('{', at);
+    const prior = Math.max(
+      sheet.lastIndexOf('*/', open),
+      sheet.lastIndexOf('}', open),
+    );
+    const prelude = sheet.slice(prior + 2, open);
+
+    for (const root of [
+      '.wave-docs-prose',
+      '.wave-docs-sidebar',
+      '.wave-docs-toc',
+      '.wave-docs-skip-link',
+      '.wave-docs-search-trigger',
+      '.wave-docs-search-dialog',
+    ]) {
+      expect(prelude, `${root} does not get the typeface`).toContain(root);
+    }
+  });
+
+  /**
+   * Both are settable layout tokens from `docs/adr/001-shell-contract.md`, and
+   * they are layered — so a consumer's own unlayered `:root` still wins, which
+   * is the promise the README makes.
+   */
+  it('leaves both overridable from an unlayered :root', () => {
+    for (const token of ['--wave-docs-measure', '--wave-docs-font-sans']) {
+      const layer = sheet.lastIndexOf('@layer', sheet.indexOf(`${token}:`));
+      expect(sheet.slice(layer, layer + 13)).toBe('@layer theme ');
+    }
+  });
+});
+
 describe('reflow at 320px', () => {
   /** The declarations of a rule, by selector. */
   function readRule(selector: string): string {
