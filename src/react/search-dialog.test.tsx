@@ -14,9 +14,17 @@
  * `storeFields` changed.
  */
 
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MiniSearch from 'minisearch';
+import type { Options as MiniSearchOptions } from 'minisearch';
 import { StrictMode } from 'react';
 import {
   afterEach,
@@ -30,10 +38,17 @@ import {
 
 import { buildSearchIndex } from '../search-index.js';
 import type { SearchRecord } from '../types.js';
-import type { DocsLinkProps } from './markdown-components.js';
+import type {
+  DocsLinkComponent,
+  DocsLinkProps,
+} from './markdown-components.js';
 import { SearchDialog } from './search-dialog.js';
 
 const INDEX_URL = '/search-index.json';
+/** A second corpus at a second URL, as a locale or version switch produces. */
+const FR_INDEX_URL = '/fr/search-index.json';
+
+const HINT_TEXT = 'Start typing to search the documentation.';
 
 /**
  * Three sections across two pages. `install` is deliberately the prefix of a
@@ -55,7 +70,10 @@ const RECORDS: SearchRecord[] = [
     heading: 'Peer dependencies',
     ancestors: ['Requirements'],
     href: '/docs/guide/install#peer-dependencies',
-    text: 'React 19 and react-dom are peer dependencies of this package.',
+    // `installation` in the body, not only in the page title: `title` is
+    // stored but deliberately not indexed, so a shared title is not what makes
+    // two sections of one page answer the same query.
+    text: 'Installation needs React 19 and react-dom as peer dependencies.',
   },
   {
     id: 'guide/search#shortcuts',
@@ -67,7 +85,24 @@ const RECORDS: SearchRecord[] = [
   },
 ];
 
+/**
+ * The same page under a different locale: one record, matched by the same
+ * `install` query, living at a different href — so a stale cache is not a
+ * subtle ranking difference but a navigation to the wrong URL.
+ */
+const FR_RECORDS: SearchRecord[] = [
+  {
+    id: 'guide/install',
+    title: 'Installation',
+    heading: 'Installation',
+    ancestors: [],
+    href: '/fr/docs/guide/install',
+    text: 'Ajoutez le paquet à un projet Next.js.',
+  },
+];
+
 const INDEX_JSON = buildSearchIndex(RECORDS);
+const FR_INDEX_JSON = buildSearchIndex(FR_RECORDS);
 
 /**
  * jsdom implements no `scrollIntoView`, and the dialog calls it on every
@@ -256,6 +291,39 @@ describe('SearchDialog', () => {
       expect(close).toHaveFocus();
     });
 
+    it('keeps Escape working after a click on the dialog’s own chrome', async () => {
+      /*
+       * The hint paragraph is not focusable and has no focusable ancestor, so
+       * one ordinary click on it leaves focus on `<body>`. With the handler
+       * bound to the dialog `<div>` that put every subsequent keystroke
+       * outside the subtree React was listening on: the dialog stayed open and
+       * Escape was dead.
+       */
+      const { user, trigger } = renderDialog();
+      await user.click(trigger);
+
+      await user.click(screen.getByText(HINT_TEXT));
+      expect(document.activeElement).toBe(document.body);
+
+      await user.keyboard('{Escape}');
+
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('pulls Tab back in when focus has fallen out of the dialog', async () => {
+      // Tab from `<body>` walks the document from the top, i.e. straight onto
+      // the trigger — in a page `aria-modal="true"` has hidden from assistive
+      // tech. Wrapping only at the two edges never sees this case.
+      const { user, trigger } = renderDialog();
+      await user.click(trigger);
+      await user.click(screen.getByText(HINT_TEXT));
+
+      await user.tab();
+
+      expect(combobox()).toHaveFocus();
+      expect(trigger).not.toHaveFocus();
+    });
+
     it('does not make results tab stops', async () => {
       // The combobox pattern points at the active option with
       // `aria-activedescendant`; focus never leaves the input. A result that
@@ -359,6 +427,73 @@ describe('SearchDialog', () => {
 
       expect(navigate).not.toHaveBeenCalled();
       expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('closes on Enter from the Close button, rather than opening a hit', async () => {
+      /*
+       * Handled at the dialog level, the Enter branch read `hits[activeIndex]`
+       * for a keystroke aimed at a button and called `preventDefault()`, which
+       * also suppressed the button's own activation — so the dialog's one
+       * visible dismiss affordance navigated somewhere instead of dismissing,
+       * whenever a query had results.
+       */
+      const { user, navigate, trigger } = renderDialog();
+      await search(user, trigger, 'keyboard');
+      await user.tab();
+      expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
+
+      await user.keyboard('{Enter}');
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('leaves the arrow keys alone outside the input', async () => {
+      const { user, trigger } = renderDialog();
+      const input = await search(user, trigger, 'install');
+      const before = input.getAttribute('aria-activedescendant');
+      await user.tab();
+
+      await user.keyboard('{ArrowDown}');
+
+      expect(input.getAttribute('aria-activedescendant')).toBe(before);
+    });
+
+    it('ignores the Enter that commits an IME composition', async () => {
+      /*
+       * An IME sends `keydown{key:'Enter', isComposing:true}` before
+       * `compositionend`, so the keystroke that accepts a CJK word was read as
+       * "open the selected result" — but only when the partial romaji happened
+       * to match something, which is what made it hard to pin down.
+       */
+      const { user, navigate, trigger } = renderDialog();
+      const input = await search(user, trigger, 'keyboard');
+
+      fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('ignores the composition Enter on engines that only set keyCode 229', async () => {
+      const { user, navigate, trigger } = renderDialog();
+      const input = await search(user, trigger, 'keyboard');
+
+      fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+
+      expect(navigate).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('still closes on Escape mid-composition', async () => {
+      // The composition guard must not swallow the one key that lets a reader
+      // out of the dialog.
+      const { user, trigger } = renderDialog();
+      const input = await search(user, trigger, 'keyboard');
+
+      fireEvent.keyDown(input, { key: 'Escape', isComposing: true });
+
+      expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('navigates when a result is clicked', async () => {
@@ -656,6 +791,172 @@ describe('SearchDialog', () => {
 
       expect(searchSpy).toHaveBeenCalledTimes(1);
       expect(searchSpy).toHaveBeenLastCalledWith('install');
+    });
+  });
+
+  describe('index cache', () => {
+    /** Serve a different corpus per URL, as a locale switch would. */
+    function serveBothIndexes(): void {
+      fetchMock.mockImplementation((input) =>
+        Promise.resolve(
+          new Response(
+            String(input) === FR_INDEX_URL ? FR_INDEX_JSON : INDEX_JSON,
+            { status: 200 },
+          ),
+        ),
+      );
+    }
+
+    it('reloads when indexUrl changes', async () => {
+      /*
+       * `indexUrl` is a prop, and a locale or version switcher changes it
+       * while the dialog stays mounted in a persistent layout. Cached in a
+       * single ref, the first corpus was served for the life of the tab — with
+       * no second request and no error state, so the only symptom was results
+       * pointing at hrefs from the other locale.
+       */
+      serveBothIndexes();
+      const navigate = vi.fn<(href: string) => void>();
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <SearchDialog indexUrl={INDEX_URL} navigate={navigate} />,
+      );
+      const trigger = screen.getByRole('button', { name: 'Search' });
+      await search(user, trigger, 'install');
+      await user.keyboard('{Escape}');
+
+      rerender(<SearchDialog indexUrl={FR_INDEX_URL} navigate={navigate} />);
+      await search(user, trigger, 'install');
+
+      expect(fetchMock).toHaveBeenCalledWith(FR_INDEX_URL);
+      expect(screen.getAllByRole('option')).toHaveLength(1);
+      await user.keyboard('{Enter}');
+      expect(navigate).toHaveBeenCalledWith('/fr/docs/guide/install');
+    });
+
+    it('serves a URL it has already loaded without refetching', async () => {
+      // Keying by URL rather than replacing one slot is what makes switching
+      // back — the second half of every locale toggle — free.
+      serveBothIndexes();
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <SearchDialog indexUrl={INDEX_URL} navigate={() => undefined} />,
+      );
+      const trigger = screen.getByRole('button', { name: 'Search' });
+      await search(user, trigger, 'install');
+      await user.keyboard('{Escape}');
+
+      rerender(
+        <SearchDialog indexUrl={FR_INDEX_URL} navigate={() => undefined} />,
+      );
+      await search(user, trigger, 'install');
+      await user.keyboard('{Escape}');
+
+      rerender(
+        <SearchDialog indexUrl={INDEX_URL} navigate={() => undefined} />,
+      );
+      await search(user, trigger, 'install');
+
+      expect(screen.getAllByRole('option')).toHaveLength(2);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('configuration', () => {
+    it('merges consumer search options over the shared defaults', async () => {
+      /*
+       * Without a seam here a consumer cannot fix tokenisation for their own
+       * corpus — CJK above all, which the default splitter runs together into
+       * one term — or tune ranking, until this package ships a release.
+       *
+       * `combineWith` stands in for that: 'install keyboard' shares no record,
+       * so the packaged 'AND' finds nothing (the test below). That results
+       * render at all also proves the merge is *over* and not instead of —
+       * `fields` and `prefix` come only from the shared constant, and
+       * MiniSearch throws outright without the first.
+       */
+      const user = userEvent.setup();
+      render(
+        <SearchDialog
+          indexUrl={INDEX_URL}
+          navigate={() => undefined}
+          searchOptions={{ searchOptions: { combineWith: 'OR' } }}
+        />,
+      );
+
+      await search(
+        user,
+        screen.getByRole('button', { name: 'Search' }),
+        'install keyboard',
+      );
+
+      expect(screen.getAllByRole('option')).toHaveLength(3);
+      expect(
+        screen.getByRole('option', { name: /Keyboard shortcuts/ }),
+      ).toBeInTheDocument();
+    });
+
+    it('finds nothing for those terms on the packaged defaults', async () => {
+      // The control for the test above: 'AND' is what the package ships.
+      const { user, trigger } = renderDialog();
+      await user.click(trigger);
+      await user.type(combobox(), 'install keyboard');
+
+      await waitFor(() =>
+        expect(screen.getByText(/No results/)).toBeInTheDocument(),
+      );
+    });
+
+    it('joins className onto the trigger', async () => {
+      // Otherwise a navbar needs a wrapper `<div>` to place the button.
+      render(
+        <SearchDialog
+          indexUrl={INDEX_URL}
+          navigate={() => undefined}
+          className="navbar__search"
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: 'Search' })).toHaveClass(
+        'wave-docs-search-trigger',
+        'navbar__search',
+      );
+    });
+
+    it('accepts a possibly-undefined value for every optional prop', () => {
+      /*
+       * The assertion is that this file compiles. This repo — and any consumer
+       * copying its `tsconfig` — sets `exactOptionalPropertyTypes`, under which
+       * `prop?: string` rejects a `string | undefined` variable outright, so
+       * every one of these had to be spelled `| undefined`.
+       */
+      const link: DocsLinkComponent | undefined = undefined;
+      const label: string | undefined = undefined;
+      const count: number | undefined = undefined;
+      const options: Partial<MiniSearchOptions<SearchRecord>> | undefined =
+        undefined;
+
+      render(
+        <SearchDialog
+          indexUrl={INDEX_URL}
+          navigate={() => undefined}
+          Link={link}
+          triggerLabel={label}
+          placeholder={label}
+          dialogLabel={label}
+          maxResults={count}
+          debounceMs={count}
+          className={label}
+          searchOptions={options}
+        />,
+      );
+
+      // Every default still applies, and the empty `className` leaves no
+      // stray separator behind.
+      expect(screen.getByRole('button', { name: 'Search' })).toHaveAttribute(
+        'class',
+        'wave-docs-search-trigger',
+      );
     });
   });
 });

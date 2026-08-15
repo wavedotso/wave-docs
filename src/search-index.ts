@@ -12,19 +12,17 @@
  * misapplied to full text.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Element, ElementContent, RootContent } from 'hast';
-import MiniSearch from 'minisearch';
-import { SEARCH_INDEX_OPTIONS } from './search-options.js';
+import MiniSearch, { type Options as MiniSearchOptions } from 'minisearch';
+import { mergeSearchOptions } from './search-options.js';
+import { isFootnotes, isTransparentContainer } from './section-boundary.js';
 import type { RenderedDoc, SearchRecord } from './types.js';
 
 /* -------------------------------------------------------------------------
  * Record extraction
  * ---------------------------------------------------------------------- */
-
-/** Default excerpt length, in characters, of {@link SearchRecord.text}. */
-const DEFAULT_EXCERPT_LENGTH = 300;
 
 /** `<h1>`…`<h6>` to their numeric depth. */
 const HEADING_DEPTHS = new Map<string, number>([
@@ -46,29 +44,6 @@ const HEADING_DEPTHS = new Map<string, number>([
  * people search for.
  */
 const SKIPPED_TAGS = new Set(['pre', 'script', 'style', 'svg', 'template']);
-
-/**
- * Containers that merely wrap content rather than nesting it semantically.
- *
- * Walking through them keeps heading detection working when a rehype plugin
- * (or a consumer's own) wraps the document body, without descending into
- * blockquotes or list items where a heading is not a section boundary.
- */
-const TRANSPARENT_TAGS = new Set(['div', 'section', 'article', 'main']);
-
-/**
- * The GFM footnote block `mdast-util-to-hast` appends, and everything in it.
- *
- * It is a `section` — so {@link TRANSPARENT_TAGS} would otherwise walk straight
- * into it — carrying a generated `<h2 id="footnote-label">Footnotes</h2>`. That
- * heading is machinery, not a section of the page: indexing it puts a
- * `Footnotes` hit in the dialog for every footnoted page, and the footnote text
- * itself is already indexed where it was written. `rehypeCaptureToc` skips the
- * same subtree, so the TOC and the index agree.
- */
-function isFootnotes(node: Element): boolean {
-  return node.properties.dataFootnotes !== undefined;
-}
 
 /** Tags after which extracted text needs a separator. */
 const BLOCK_TAGS = new Set([
@@ -103,16 +78,6 @@ const BLOCK_TAGS = new Set([
   'ul',
 ]);
 
-/** Options for {@link extractSearchRecords}. */
-export interface ExtractSearchRecordsOptions {
-  /**
-   * Maximum length of {@link SearchRecord.text}, in characters. Defaults to
-   * 300 — long enough to carry a section's vocabulary into the index, short
-   * enough that a 300-page corpus stays under a megabyte.
-   */
-  excerptLength?: number;
-}
-
 /** A section under construction while walking the tree. */
 interface PendingSection {
   heading: string;
@@ -139,16 +104,20 @@ interface PendingSection {
  * does with the same heading — the two must not disagree about which sections
  * exist.
  *
+ * `text` is the section's PROSE IN FULL. It used to be cut to 300 characters
+ * before indexing, which on a normal corpus (200 pages × 6 sections, ~1,686
+ * characters of prose each) dropped 82% of the words from the index — and
+ * `combineWith: 'AND'` compounds it, since every term of a query then has to
+ * land inside the surviving prefix of the same section. The cap bought nothing
+ * back: `storeFields` does not carry `text`, so not one character of the kept
+ * prefix was ever rendered. Truncate for display, in the layer that displays.
+ *
  * Not generic over the frontmatter type, deliberately: `frontmatter.title` is
  * the only field read, and a `RenderedDoc` carrying a project's own fields is
  * assignable to this signature already. A type parameter here would appear in
  * every call site and constrain nothing.
  */
-export function extractSearchRecords(
-  doc: RenderedDoc,
-  options: ExtractSearchRecordsOptions = {},
-): SearchRecord[] {
-  const excerptLength = options.excerptLength ?? DEFAULT_EXCERPT_LENGTH;
+export function extractSearchRecords(doc: RenderedDoc): SearchRecord[] {
   const title = doc.frontmatter.title;
   const records: SearchRecord[] = [];
   // `RenderedDoc` carries segments, not a slug; they are the same thing joined.
@@ -182,10 +151,7 @@ export function extractSearchRecords(
       heading: section.heading,
       ancestors: section.ancestors,
       href,
-      text: truncateAtWordBoundary(
-        collapseWhitespace(section.parts.join(' ')),
-        excerptLength,
-      ),
+      text: collapseWhitespace(section.parts.join(' ')),
     });
   };
 
@@ -244,7 +210,7 @@ function* iterateBlocks(nodes: RootContent[]): Generator<RootContent> {
     if (node.type === 'element' && isFootnotes(node)) {
       continue;
     }
-    if (node.type === 'element' && TRANSPARENT_TAGS.has(node.tagName)) {
+    if (node.type === 'element' && isTransparentContainer(node)) {
       yield* iterateBlocks(node.children);
     } else {
       yield node;
@@ -307,22 +273,6 @@ function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Cut `text` to at most `limit` characters, on a word boundary where one is
- * near enough to the cut to be worth honouring.
- */
-function truncateAtWordBoundary(text: string, limit: number): string {
-  if (limit <= 0) return '';
-  if (text.length <= limit) return text;
-
-  const slice = text.slice(0, limit);
-  const lastSpace = slice.lastIndexOf(' ');
-  // A single token longer than half the budget (a URL, a hash) has no useful
-  // boundary; a hard cut beats returning almost nothing.
-  const cut = lastSpace > limit / 2 ? slice.slice(0, lastSpace) : slice;
-  return `${cut.trimEnd()}…`;
-}
-
 /* -------------------------------------------------------------------------
  * Index construction
  * ---------------------------------------------------------------------- */
@@ -331,10 +281,21 @@ function truncateAtWordBoundary(text: string, limit: number): string {
  * Build a serialised MiniSearch index from extracted records.
  *
  * The return value is JSON, ready for `MiniSearch.loadJSON` on the client or
- * for {@link writeSearchIndex} to put on disk.
+ * for {@link writeSearchIndex} to put on disk. The output is byte-stable for a
+ * given record list, so an index committed to the repository does not dirty
+ * the diff on every build.
+ *
+ * ⚠️ `options` MUST ALSO REACH THE DIALOG — pass the identical object to
+ * `SearchDialog`'s `searchOptions`. Both sides feed it through
+ * `mergeSearchOptions`, and a `tokenize` or `processTerm` applied to the
+ * documents but not to the query produces an index whose terms no query can
+ * spell: zero results, no error, nothing in the console.
  */
-export function buildSearchIndex(records: SearchRecord[]): string {
-  const index = new MiniSearch<SearchRecord>(SEARCH_INDEX_OPTIONS);
+export function buildSearchIndex(
+  records: SearchRecord[],
+  options: Partial<MiniSearchOptions<SearchRecord>> = {},
+): string {
+  const index = new MiniSearch<SearchRecord>(mergeSearchOptions(options));
   index.addAll(records);
   return JSON.stringify(index);
 }
@@ -345,14 +306,35 @@ export function buildSearchIndex(records: SearchRecord[]): string {
  * Returns the byte size written, so a build step can log it or assert a
  * budget — a docs index that quietly crosses a megabyte is a regression
  * nobody notices until the dialog takes a second to open.
+ *
+ * ⚠️ WRITTEN BESIDE THE TARGET AND RENAMED OVER IT, NEVER INTO IT. The target
+ * is normally `public/search-index.json`, a live static asset: writing in
+ * place truncates it to zero and grows it back in 1 MiB chunks, and a fetch
+ * landing in that window gets a 200 with a half-written body. `response.ok`
+ * passes, the parse throws, and the dialog is stuck in its error state —
+ * *"Try reloading the page"* — for every visitor, reloading forever, until
+ * someone redeploys content that did not change. `rename` is atomic within a
+ * filesystem, so a reader sees either the whole old file or the whole new one;
+ * it also makes two concurrent builds safe.
  */
 export async function writeSearchIndex(
   records: SearchRecord[],
   outFile: string,
+  options: Partial<MiniSearchOptions<SearchRecord>> = {},
 ): Promise<number> {
-  const json = buildSearchIndex(records);
+  const json = buildSearchIndex(records, options);
   const absolute = path.resolve(outFile);
+  // The pid keeps two concurrent builds from renaming each other's half-file.
+  const temporary = `${absolute}.tmp-${process.pid}`;
   await mkdir(path.dirname(absolute), { recursive: true });
-  await writeFile(absolute, json, 'utf8');
+  try {
+    await writeFile(temporary, json, 'utf8');
+    await rename(temporary, absolute);
+  } catch (error) {
+    // Otherwise a failed build leaves a stray artifact in `public/`, which the
+    // next successful one happily serves.
+    await rm(temporary, { force: true });
+    throw error;
+  }
   return Buffer.byteLength(json, 'utf8');
 }

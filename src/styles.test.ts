@@ -1,8 +1,9 @@
 /**
- * Guards on the shipped stylesheet: the contrast of its tokens, and the two
- * declarations that decide whether the skip link can be seen at all.
+ * Guards on the shipped stylesheet: the contrast of its tokens, the cascade
+ * contract it promises in its own header, and the handful of declarations that
+ * decide whether an indicator can be seen at all.
  *
- * The skip-link rules are asserted here rather than from a mounted component
+ * These are asserted against the CSS text rather than from a mounted component
  * because jsdom's CSSOM drops `@layer` blocks outright — `getComputedStyle`
  * reports `position: static; transform: none` for the sheet as shipped, so a
  * computed-style assertion in a DOM test would pass no matter what the CSS said.
@@ -30,12 +31,27 @@ import { describe, expect, it } from 'vitest';
 
 const STYLESHEET = path.join(import.meta.dirname, 'styles.css');
 
-/** The three token blocks: `:root`, the media query, the attribute override. */
+/**
+ * The three token blocks: the light ramp, the OS-following opt-in, the explicit
+ * one. Every block that installs a foreground token appears here, which is what
+ * `the theme is opt-in` below asserts.
+ */
 const BLOCK_SELECTORS = [
   ':root {',
-  ":root:not([data-theme='light'])",
+  ":root[data-theme='system']",
   ":root[data-theme='dark']",
 ] as const;
+
+/**
+ * The preludes allowed to define a `--wave-docs-fg*` token, whitespace
+ * collapsed. Anything else — `:root:not([data-theme='light'])` above all —
+ * installs the dark ramp on a page whose background this sheet never painted.
+ */
+const THEME_PRELUDES: ReadonlySet<string> = new Set([
+  ':root',
+  ":root[data-theme='system']",
+  ":root[data-theme='dark'], :root.dark",
+]);
 
 type Oklch = readonly [number, number, number];
 
@@ -119,21 +135,34 @@ function contrast(foreground: Oklch, background: Oklch): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/** Every background a `--wave-docs-fg*` token is ever painted on. */
+const SURFACES = [
+  ['bg', 'the page'],
+  ['bg-subtle', 'table headers, sidebar hover, kbd, the search trigger'],
+  ['accent-subtle', 'the active sidebar link and the highlighted result'],
+  ['callout-note-bg', 'a note callout'],
+  ['callout-tip-bg', 'a tip callout'],
+  ['callout-important-bg', 'an important callout'],
+  ['callout-warning-bg', 'a warning callout'],
+  ['callout-caution-bg', 'a caution callout'],
+] as const;
+
 /**
  * Every foreground/background pair the stylesheet actually composes.
  *
  * Each one names the rule that puts them together, because the list is only
  * trustworthy if it can be re-derived from the CSS.
+ *
+ * The three foregrounds are crossed with every surface rather than enumerated
+ * pair by pair: `fg-subtle` paints `li::marker` and `.heading-anchor`, both of
+ * which appear *inside* a callout as readily as in body prose, and the
+ * hand-written list had no entry for that composition — it measured 4.21:1 in
+ * dark and nothing caught it.
  */
 const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
-  ['fg', 'bg', 'prose body'],
-  ['fg', 'bg-subtle', 'table headers, sidebar hover, kbd'],
-  ['fg-muted', 'bg', 'blockquotes, search status'],
-  ['fg-muted', 'bg-subtle', 'sidebar links'],
-  ['fg-subtle', 'bg', 'list markers, TOC, search breadcrumbs'],
-  ['fg-subtle', 'bg-subtle', 'search trigger kbd hint'],
-  ['fg-subtle', 'accent-subtle', 'breadcrumb of the highlighted result'],
-  ['fg', 'accent-subtle', 'heading of the highlighted result'],
+  ...(['fg', 'fg-muted', 'fg-subtle'] as const).flatMap((foreground) =>
+    SURFACES.map(([surface, where]) => [foreground, surface, where] as const),
+  ),
   ['accent', 'bg', 'links'],
   ['accent', 'bg-subtle', 'links on a tinted row'],
   ['accent', 'accent-subtle', 'active sidebar link'],
@@ -141,19 +170,143 @@ const PAIRS: ReadonlyArray<readonly [string, string, string]> = [
   ['accent-fg', 'accent', 'skip link'],
   ['code-fg', 'code-bg', 'inline code'],
   ['callout-caution', 'bg', 'search error text'],
-  ...(['note', 'tip', 'important', 'warning', 'caution'] as const).flatMap(
+  ...(['note', 'tip', 'important', 'warning', 'caution'] as const).map(
     (kind) =>
       [
-        [`callout-${kind}`, `callout-${kind}-bg`, `${kind} callout label`],
-        ['fg', `callout-${kind}-bg`, `${kind} callout body`],
+        `callout-${kind}`,
+        `callout-${kind}-bg`,
+        `${kind} callout label`,
       ] as const,
   ),
 ];
 
-const css = await readFile(STYLESHEET, 'utf8');
+/**
+ * Pairs that carry a *state*, not text.
+ *
+ * WCAG 1.4.11 asks 3:1 of a non-text indicator. The active search result is the
+ * whole reason this tier exists: every result is `tabindex="-1"` so
+ * `:focus-visible` can never fire on one, which leaves the active class as the
+ * only signal of where the keyboard is, and a tint alone measured 1.12:1.
+ */
+const STATE_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
+  ['accent', 'bg', 'active-result outline against the results list'],
+  ['accent', 'accent-subtle', 'active-result outline against its own tint'],
+];
+
+/**
+ * The sheet with comments stripped.
+ *
+ * Every structural check below runs against this rather than the raw file: the
+ * comments quote the very selectors and declarations being asserted about (they
+ * name `:root:not([data-theme='light'])`, `html { scroll-behavior: smooth }`
+ * and `display: none` among others), so a text search over the raw source
+ * reports the prose, not the CSS.
+ */
+const sheet = (await readFile(STYLESHEET, 'utf8')).replace(
+  /\/\*[\s\S]*?\*\//g,
+  '',
+);
+
+interface StyleRule {
+  /** Selector list or at-rule prelude, whitespace collapsed. */
+  readonly prelude: string;
+  /** Offset of the rule's `{`, or -1 for a statement closed by `;`. */
+  readonly at: number;
+  /** 0 at the top level of the sheet, 1 inside one block, and so on. */
+  readonly depth: number;
+}
+
+/**
+ * Every rule in the sheet, by brace walk.
+ *
+ * `depth` is the point of it: `depth === 0` means the rule is outside every
+ * `@layer`, and unlayered CSS beats every layer regardless of specificity — so
+ * a single rule that escapes a layer here silently repaints another package's
+ * markup on any page that loads both.
+ */
+function readRules(source: string): StyleRule[] {
+  const collapse = (text: string): string => text.trim().replace(/\s+/g, ' ');
+  const rules: StyleRule[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === '{') {
+      rules.push({ prelude: collapse(source.slice(start, i)), at: i, depth });
+      depth += 1;
+      start = i + 1;
+    } else if (char === '}') {
+      depth -= 1;
+      start = i + 1;
+    } else if (char === ';') {
+      // A declaration ends here as far as the next prelude is concerned; only
+      // the top-level ones (`@layer a, b, c;`) are rules in their own right.
+      if (depth === 0) {
+        rules.push({
+          prelude: collapse(source.slice(start, i)),
+          at: -1,
+          depth,
+        });
+      }
+      start = i + 1;
+    }
+  }
+  return rules;
+}
+
+/**
+ * Split a selector list on its top-level commas.
+ *
+ * `String.split(',')` would tear `:is(a, button)` in half and hand back two
+ * fragments that are not selectors, so a focus inventory built from it could
+ * never be compared against anything.
+ */
+function splitSelectors(prelude: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let start = 0;
+
+  for (let i = 0; i < prelude.length; i += 1) {
+    const char = prelude[i];
+    if (char === '(') depth += 1;
+    else if (char === ')') depth -= 1;
+    else if (char === ',' && depth === 0) {
+      parts.push(prelude.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  parts.push(prelude.slice(start).trim());
+  return parts;
+}
+
+/**
+ * The selectors whose *subject* is the focused element.
+ *
+ * `.wave-docs-youtube__facade:is(:hover, :focus-visible) .play-bg` mentions
+ * focus but styles a descendant's fill, and it needs no indicator of its own —
+ * hence the anchor at the end of the selector rather than a substring test.
+ * `:has(… :focus-visible)` ends in a paren and is deliberately included.
+ */
+function focusSelectors(rules: readonly StyleRule[]): string[] {
+  return rules
+    .flatMap((rule) => splitSelectors(rule.prelude))
+    .filter((selector) => /:focus(-visible)?\)?$/.test(selector));
+}
+
+/**
+ * Focus rules whose indicator is drawn by a different rule, and which therefore
+ * need no forced-colors entry: the search input's ring lives on the row around
+ * it, because a ring on a borderless full-width input reads as an error state.
+ */
+const INDICATOR_ELSEWHERE: ReadonlySet<string> = new Set([
+  '.wave-docs-search-input:focus',
+]);
+
+const RULES = readRules(sheet);
 
 describe.each(BLOCK_SELECTORS)('tokens in %s', (selector) => {
-  const tokens = readTokens(css, selector);
+  const tokens = readTokens(sheet, selector);
 
   it.each(PAIRS)('%s on %s clears 4.5:1 (%s)', (fg, bg) => {
     const foreground = tokens.get(fg);
@@ -166,19 +319,307 @@ describe.each(BLOCK_SELECTORS)('tokens in %s', (selector) => {
     const ratio = Math.round(contrast(foreground, background) * 100) / 100;
     expect(ratio).toBeGreaterThanOrEqual(4.5);
   });
+
+  it.each(STATE_PAIRS)(
+    '%s on %s clears 3:1 as a state indicator (%s)',
+    (fg, bg) => {
+      const foreground = tokens.get(fg);
+      const background = tokens.get(bg);
+      if (foreground === undefined || background === undefined) {
+        throw new Error(`${selector} defines neither ${fg} nor ${bg}`);
+      }
+      const ratio = Math.round(contrast(foreground, background) * 100) / 100;
+      expect(ratio).toBeGreaterThanOrEqual(3);
+    },
+  );
+});
+
+describe('the cascade contract', () => {
+  it('declares nothing outside a @layer', () => {
+    const top = RULES.filter((rule) => rule.depth === 0);
+    expect(top.length).toBeGreaterThan(0);
+
+    for (const rule of top) {
+      // The header of styles.css promises that "everything this file declares
+      // lives in a @layer". Seven `.shiki` rules once did not, and they erased
+      // the syntax colours of any other package rendering Shiki output on the
+      // same page — unlayered CSS outranks every layer.
+      expect(rule.prelude, `${rule.prelude} escapes every @layer`).toMatch(
+        /^@layer\b/,
+      );
+    }
+  });
+
+  it('keeps every .shiki rule scoped to our own prose', () => {
+    const shiki = RULES.flatMap((rule) => splitSelectors(rule.prelude)).filter(
+      (selector) => selector.includes('.shiki'),
+    );
+    expect(shiki.length).toBeGreaterThan(0);
+
+    for (const selector of shiki) {
+      expect(selector, `${selector} styles .shiki globally`).toContain(
+        '.wave-docs-prose .shiki',
+      );
+    }
+  });
+
+  it('needs no !important anywhere', () => {
+    // `defaultColor: false` in render.ts is what earns this: Shiki emits only
+    // `--shiki-light`/`--shiki-dark` custom properties and no inline `color`,
+    // so nothing here has an inline style to outrank. An `!important` would now
+    // only outrank the consumer.
+    expect(sheet).not.toContain('!important');
+  });
+
+  it('claims no element the host owns', () => {
+    // `html { scroll-behavior: smooth }` fought Next 16's route transitions —
+    // it only de-animates them when `<html>` carries
+    // `data-scroll-behavior="smooth"`, which only the host can set — and
+    // `scroll-padding-top` on bare `html` assumed a sticky header we cannot see.
+    expect(sheet).not.toContain('scroll-behavior');
+
+    const bare = RULES.flatMap((rule) => splitSelectors(rule.prelude)).filter(
+      (selector) => selector === 'html' || selector === 'body',
+    );
+    expect(bare).toEqual([]);
+  });
+
+  it('injects no Tailwind sources', () => {
+    // `@source "./"` scraped the package's compiled JS for anything that looked
+    // like a class name and handed 14 unrequested utilities — `.container`,
+    // `.table`, `.hidden`, `.block` — to every Tailwind consumer, in a layer
+    // that outranks their own components. `dist/` contains no Tailwind classes
+    // at all, so the directive could only ever cost.
+    expect(sheet).not.toContain('@source');
+  });
+});
+
+describe('the theme is opt-in', () => {
+  it('installs a foreground ramp only where it installs a ground with it', () => {
+    const defining = RULES.filter(
+      (rule) =>
+        // Selector rules only: the enclosing `@layer theme` and its `@media`
+        // both contain the tokens too, and neither is a selector that can put
+        // a foreground on a page.
+        rule.at > -1 &&
+        !rule.prelude.startsWith('@') &&
+        readBlock(sheet, rule.at).includes('--wave-docs-fg:'),
+    );
+    expect(defining.length).toBe(THEME_PRELUDES.size);
+
+    for (const rule of defining) {
+      expect(
+        THEME_PRELUDES.has(rule.prelude),
+        `${rule.prelude} installs a foreground ramp from outside the opt-in set`,
+      ).toBe(true);
+      // A ramp without its own ground is the 1.23:1 bug: near-white text on
+      // whatever the host's page happens to paint.
+      expect(readBlock(sheet, rule.at)).toContain('--wave-docs-bg:');
+    }
+  });
+
+  it('follows the OS only for a host that asked it to', () => {
+    // `:root:not([data-theme='light'])` matched the default document of every
+    // light-only site with a /docs section, and of every next-themes consumer
+    // on its default `attribute="class"`, which sets `.dark` and never
+    // `data-theme`.
+    expect(sheet).not.toContain(":root:not([data-theme='light'])");
+
+    for (const [index, rule] of RULES.entries()) {
+      if (!rule.prelude.includes('prefers-color-scheme: dark')) continue;
+      const nested = RULES.slice(index + 1).filter(
+        (candidate) =>
+          candidate.at > rule.at &&
+          candidate.at < rule.at + readBlock(sheet, rule.at).length,
+      );
+      expect(nested.length).toBeGreaterThan(0);
+      for (const child of nested) {
+        expect(
+          child.prelude,
+          `${child.prelude} takes the dark ramp from the OS alone`,
+        ).toContain("[data-theme='system']");
+      }
+    }
+  });
+
+  it('paints the ground it composes its ramp against', () => {
+    // A contrast ratio is a claim about two colours. Without a background of
+    // our own the second one belongs to the host's page, and every assertion
+    // in this file would be about a colour nobody declared.
+    const painted = RULES.filter(
+      (rule) =>
+        rule.at > -1 &&
+        readBlock(sheet, rule.at).includes('background: var(--wave-docs-bg);'),
+    ).flatMap((rule) => splitSelectors(rule.prelude));
+
+    for (const container of [
+      '.wave-docs-prose',
+      '.wave-docs-sidebar',
+      '.wave-docs-toc',
+    ]) {
+      expect(painted, `${container} composes on an unpainted ground`).toContain(
+        container,
+      );
+    }
+    // …and never `body`, which belongs to the host.
+    expect(painted).not.toContain('body');
+  });
+
+  it('tells the UA which scheme it painted', () => {
+    // Without `color-scheme`, native scrollbars, form controls and the
+    // overscroll canvas stay light on a dark page — the one part of the render
+    // no token can reach.
+    expect(readBlock(sheet, sheet.indexOf(':root {'))).toContain(
+      'color-scheme: light',
+    );
+    for (const selector of [
+      ":root[data-theme='system']",
+      ":root[data-theme='dark']",
+    ]) {
+      expect(readBlock(sheet, sheet.indexOf(selector))).toContain(
+        'color-scheme: dark',
+      );
+    }
+  });
+
+  it('spells the two dark blocks identically', () => {
+    // They exist twice only because `@media` and an attribute selector cannot
+    // be combined into one selector list; a token that drifts between them is
+    // a theme that changes when the OS does.
+    const viaOs = readTokens(sheet, ":root[data-theme='system']");
+    const explicit = readTokens(sheet, ":root[data-theme='dark']");
+    expect(Object.fromEntries(explicit)).toEqual(Object.fromEntries(viaOs));
+  });
+});
+
+describe('callout hues', () => {
+  const light = readTokens(sheet, ':root {');
+  const dark = readTokens(sheet, ":root[data-theme='dark']");
+
+  it.each(['note', 'tip', 'important', 'warning', 'caution'] as const)(
+    '%s is one hue in both themes',
+    (kind) => {
+      // Warning used to be 72 in light and 82 in dark, with its own background
+      // on the other hue in each — the only callout whose colour was not a
+      // lightness ramp along a single hue, and the only one that read as a
+      // different family after a theme switch.
+      const hues = [
+        light.get(`callout-${kind}`),
+        light.get(`callout-${kind}-bg`),
+        dark.get(`callout-${kind}`),
+        dark.get(`callout-${kind}-bg`),
+      ].map((token) => {
+        if (token === undefined) {
+          throw new Error(`styles.css defines no callout-${kind} pair`);
+        }
+        return token[2];
+      });
+
+      expect(new Set(hues).size, `callout-${kind} spans hues ${hues}`).toBe(1);
+    },
+  );
+});
+
+describe('focus indicators', () => {
+  const forced = RULES.find(
+    (rule) => rule.prelude === '@media (forced-colors: active)',
+  );
+  if (forced === undefined) {
+    throw new Error('styles.css has no @media (forced-colors: active) block');
+  }
+  const forcedBody = readBlock(sheet, forced.at);
+  const forcedEnd = forced.at + forcedBody.length;
+  const restored = focusSelectors(readRules(forcedBody.slice(1)));
+  const declared = focusSelectors(
+    RULES.filter((rule) => rule.at < forced.at || rule.at > forcedEnd),
+  );
+
+  it('has one for every focusable surface in the package', () => {
+    // The skip link, prose links, the sidebar, the TOC, the YouTube facade, the
+    // table scroll region, the Shiki `<pre>` (Shiki gives it `tabindex="0"`),
+    // the search trigger, its input row, the close button and each result link.
+    expect(declared.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('covers the Shiki <pre>, which Shiki makes focusable', () => {
+    // `tabindex="0"` on the `<pre>` is Shiki's own doing, so a keyboard reader
+    // can scroll a wide block. It was the one hole in the inventory.
+    expect(declared).toContain('.wave-docs-prose .shiki:focus-visible');
+  });
+
+  it('puts the search input ring on the row around it', () => {
+    // Every computed property of `.wave-docs-search-input` was byte-identical
+    // focused and unfocused, and the comment's premise — that the dialog frame
+    // is the indicator — was a static 1.31:1 border that does not change on
+    // focus.
+    expect(declared).toContain(
+      '.wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible)',
+    );
+  });
+
+  it('restores all of them under forced colours', () => {
+    // Forced-colors mode drops `box-shadow` entirely and honours `outline`.
+    // Every ring in this package is a box-shadow paired with `outline: none`,
+    // so without this block the package strictly removes the UA indicator from
+    // every interactive surface and draws nothing in its place.
+    for (const selector of declared) {
+      if (INDICATOR_ELSEWHERE.has(selector)) continue;
+      expect(restored, `${selector} has no forced-colors rule`).toContain(
+        selector,
+      );
+    }
+    expect(forcedBody).toContain('Highlight');
+  });
+
+  it('marks the active search result with more than a tint', () => {
+    // Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one —
+    // so the active class is the only indication of where the keyboard is.
+    const active = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-search-result-active {'),
+    );
+    expect(active).toContain('outline: 2px solid var(--wave-docs-accent)');
+    expect(active).toContain('outline-offset: -2px');
+    expect(forcedBody).toContain('.wave-docs-search-result-active');
+  });
+});
+
+describe('reflow at 320px', () => {
+  /** The declarations of a rule, by selector. */
+  function readRule(selector: string): string {
+    const at = sheet.indexOf(`${selector} {`);
+    expect(at, `${selector} not found in styles.css`).toBeGreaterThan(-1);
+    return readBlock(sheet, at);
+  }
+
+  it('breaks a long token rather than the page', () => {
+    // Measured at 320x640 before this landed: a sha256 digest in a paragraph
+    // took the page to scrollWidth 553, a long heading word to 784, a long word
+    // in a list item to 537. WCAG 1.4.10 fails at the width it names.
+    expect(readRule('.wave-docs-prose')).toContain('overflow-wrap: break-word');
+    // A link label is often a single unbreakable token (`/api/v1/some/path`),
+    // and `break-word` only breaks a word that would overflow a line of its own.
+    expect(readRule('.wave-docs-prose a')).toContain('overflow-wrap: anywhere');
+  });
+
+  it('never reaches for word-break', () => {
+    // A bare autolinked URL already breaks after `/` under UAX#14, and
+    // `word-break: keep-all` would take that away while `break-all` would chop
+    // ordinary prose mid-syllable.
+    expect(sheet).not.toContain('word-break');
+  });
 });
 
 describe('the skip link', () => {
   /**
-   * The declarations of a rule, comments stripped — they discuss `display: none`
-   * and would satisfy a `not.toContain` check on their own. The first match
-   * wins, which is the base rule: the only later repeat of a skip-link selector
-   * is inside the reduced-motion query, and it sets nothing but a transition.
+   * The declarations of a rule. The first match wins, which is the base rule:
+   * the only later repeat of a skip-link selector is inside the reduced-motion
+   * query, and it sets nothing but a transition.
    */
   function readRule(selector: string): string {
-    const at = css.indexOf(`${selector} {`);
+    const at = sheet.indexOf(`${selector} {`);
     expect(at, `${selector} not found in styles.css`).toBeGreaterThan(-1);
-    return readBlock(css, at).replace(/\/\*[\s\S]*?\*\//g, '');
+    return readBlock(sheet, at);
   }
 
   it('is moved out of view rather than hidden, so it stays focusable', () => {
@@ -199,7 +640,7 @@ describe('the skip link', () => {
     expect(readRule('.wave-docs-skip-link:focus')).toContain(
       'transform: translateY(0)',
     );
-    expect(css).not.toContain('.wave-docs-skip-link:focus-visible');
+    expect(sheet).not.toContain('.wave-docs-skip-link:focus-visible');
   });
 });
 
@@ -222,7 +663,7 @@ describe('the converter itself', () => {
     // linear g = ((110/255 + 0.055)/1.055)^2.4 = 0.1560, linear b = 0.5776, so
     // luminance = 0.7152·0.1560 + 0.0722·0.5776 = 0.1533 and the ratio against
     // white is 1.05/0.2033 = 5.16.
-    const accent = readTokens(css, ':root {').get('accent');
+    const accent = readTokens(sheet, ':root {').get('accent');
     if (accent === undefined) {
       throw new Error('styles.css defines no --wave-docs-accent in :root');
     }

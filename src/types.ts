@@ -21,17 +21,24 @@ import type { Root as HastRoot } from 'hast';
  * Consumers extend this with their own schema — {@link DocsConfig.frontmatterSchema} —
  * and the extra fields flow through the generic parameter on {@link DocFile}
  * and friends rather than widening this interface.
+ *
+ * The optionals are spelled `?: T | undefined` because a schema written with
+ * `.optional()` instead of `.exactOptional()` infers exactly that shape, and
+ * under `exactOptionalPropertyTypes` the narrow spelling rejects it — as a
+ * nine-line error through Standard Schema's internals at the config, plus a
+ * `Property 'audience' does not exist on type 'DocFrontmatter'` at every read
+ * site, because the inference then collapses to this default.
  */
 export interface DocFrontmatter {
   /** Page title. Used for `<h1>` fallbacks, `<title>`, and search. */
   title: string;
   /** One-line summary. Used for `<meta name="description">` and search. */
-  description?: string;
+  description?: string | undefined;
   /**
    * Sidebar label, when it should differ from {@link DocFrontmatter.title}.
    * Sidebars are narrow; page ancestors are not.
    */
-  label?: string;
+  label?: string | undefined;
   /**
    * Excluded from navigation, search and `generateStaticParams`.
    *
@@ -39,18 +46,18 @@ export interface DocFrontmatter {
    * production builds, so branching on it would hide drafts in exactly the
    * place reviewers look. Gate on an explicit config flag instead.
    */
-  draft?: boolean;
+  draft?: boolean | undefined;
   /**
    * Previous URLs for this page, relative to the docs base path
    * (e.g. `['old-name', 'legacy/old-name']`). The Next adapter turns these
    * into permanent redirects so a rename never becomes a silent 404.
    */
-  aliases?: string[];
+  aliases?: string[] | undefined;
   /**
    * Sort weight within its directory, for directories without a `meta.json`.
    * Lower sorts first; pages without an order sort last, alphabetically.
    */
-  order?: number;
+  order?: number | undefined;
 }
 
 /* -------------------------------------------------------------------------
@@ -100,7 +107,7 @@ export interface DocNavPage {
 export interface DocNavGroup {
   type: 'group';
   title: string;
-  href?: string;
+  href?: string | undefined;
   children: DocNavNode[];
 }
 
@@ -141,9 +148,9 @@ export type DocNavNode =
  */
 export interface DocsMeta {
   /** Directory title, shown as the group heading. Defaults to the dirname. */
-  title?: string;
+  title?: string | undefined;
   /** Ordered entries. Omit to sort by frontmatter `order`, then alphabetically. */
-  pages?: Array<string | { title: string; href: string }>;
+  pages?: Array<string | { title: string; href: string }> | undefined;
 }
 
 /* -------------------------------------------------------------------------
@@ -302,8 +309,11 @@ export type ImageResolver = (
   src: string,
   from: DocLinkContext,
 ) =>
-  | Promise<{ src: string; width?: number; height?: number } | undefined>
-  | { src: string; width?: number; height?: number }
+  | Promise<
+      | { src: string; width?: number | undefined; height?: number | undefined }
+      | undefined
+    >
+  | { src: string; width?: number | undefined; height?: number | undefined }
   | undefined;
 
 /**
@@ -324,18 +334,18 @@ export interface DocsConfig<
    */
   contentDir: string;
   /** URL prefix the docs are mounted at. Defaults to `'/docs'`. */
-  basePath?: string;
+  basePath?: string | undefined;
   /**
    * Include pages marked `draft: true`. Defaults to `false`.
    *
    * Drive this from your own env check — deliberately not `NODE_ENV`.
    */
-  includeDrafts?: boolean;
+  includeDrafts?: boolean | undefined;
   /**
    * Fail the build when an internal link resolves to a page that does not
    * exist. Defaults to `true`; there is no good reason to turn it off.
    */
-  assertLinks?: boolean;
+  assertLinks?: boolean | undefined;
   /**
    * Validates every page's frontmatter. Defaults to `docFrontmatterSchema`
    * from `@waveso/docs/frontmatter`.
@@ -358,21 +368,28 @@ export interface DocsConfig<
    *
    * Three things are worth knowing before you write one:
    *
-   *  - **The output must still satisfy {@link DocFrontmatter}.** `title` drives
-   *    the `<h1>` fallback and `<title>`, `draft` the visibility filter,
-   *    `aliases` the redirects, `order`/`label` the sidebar. A schema that
-   *    drops them is a compile error here, not a mystery at render time.
+   *  - **The package's fields are not yours to drop.** `title` drives the
+   *    `<h1>` fallback and `<title>`, `draft` the visibility filter, `aliases`
+   *    the redirects, `order`/`label` the sidebar — so all six are re-read from
+   *    the YAML by `docFrontmatterSchema` and laid back over your output. A
+   *    bare `z.object({ title, audience })` therefore cannot publish a draft or
+   *    lose a redirect; it only costs you the six in the inferred type. Nothing
+   *    in the type system could have caught that: `TFrontmatter extends
+   *    DocFrontmatter` constrains `title` and nothing else, because the other
+   *    five are optional. The price is that a `.default()`, `.transform()` or
+   *    `.coerce` aimed at one of the six is not honoured — the YAML wins.
    *  - **Unknown keys are stripped, by every validator worth using.** The
-   *    parsed frontmatter is exactly what the schema declares, so declare every
-   *    field you intend to read — extending
-   *    `docFrontmatterSchema` is the shortest way to keep the built-ins.
+   *    parsed frontmatter is exactly what the schema declares plus the six, so
+   *    declare every field you intend to read — extending
+   *    `docFrontmatterSchema` is the shortest way to get the built-ins back in
+   *    the type as well.
    *  - **Identity is load-bearing.** The filesystem scan is memoised per
    *    resolved config, and two schema objects are only "the same schema" when
    *    they are the same object. Export one from a shared module (as above)
    *    rather than building it inline in each route file, or each file pays for
    *    its own scan.
    */
-  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
+  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter> | undefined;
 }
 
 /** {@link DocsConfig} with defaults applied. */
@@ -384,9 +401,9 @@ export interface ResolvedDocsConfig<
   includeDrafts: boolean;
   assertLinks: boolean;
   /**
-   * As supplied. Absent — never explicitly `undefined`, per
-   * `exactOptionalPropertyTypes` — when the built-in `docFrontmatterSchema`
-   * applies, so the default lives in one place: `parseFrontmatter`.
+   * As supplied. `resolveDocsConfig` omits the key rather than setting it to
+   * `undefined` when the built-in `docFrontmatterSchema` applies, so the
+   * default lives in exactly one place: `parseFrontmatter`.
    */
-  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
+  frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter> | undefined;
 }

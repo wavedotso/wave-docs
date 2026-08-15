@@ -1,9 +1,11 @@
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { afterAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 import { docFrontmatterSchema, parseFrontmatter } from './frontmatter.js';
 import { extractSearchRecords } from './search-index.js';
-import { createDocsSource, resolveDocsConfig } from './source.js';
+import { createDocsSource, resolveDocsConfig, toAliasRoute } from './source.js';
 import type { DocFrontmatter, DocNavNode, RenderedDoc } from './types.js';
 
 // Counting `readdir` is how the scan-once guarantee is asserted: one scan of
@@ -24,6 +26,40 @@ vi.mock('node:fs/promises', async (importOriginal) => {
 
 const FIXTURES = path.join(import.meta.dirname, '__fixtures__', 'source');
 const BASIC = path.join(FIXTURES, 'basic');
+
+const tempDirs: string[] = [];
+
+/** A markdown file with nothing but frontmatter. */
+const doc = (title: string, extra = ''): string =>
+  `---\ntitle: ${title}\n${extra}---\n\nBody.\n`;
+
+async function makeTempDir(): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-source-'));
+  tempDirs.push(dir);
+  return dir;
+}
+
+/**
+ * A throwaway content tree, for shapes the committed fixtures cannot hold:
+ * symlinks (which a Windows checkout turns into text files), an upper-case
+ * `.MD` (which a case-insensitive filesystem will not let you produce by
+ * renaming), and NFD filenames.
+ */
+async function makeContentDir(files: Record<string, string>): Promise<string> {
+  const dir = await makeTempDir();
+  for (const [name, body] of Object.entries(files)) {
+    const file = path.join(dir, name);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, body, 'utf8');
+  }
+  return dir;
+}
+
+afterAll(async () => {
+  await Promise.all(
+    tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
+  );
+});
 
 const describeNodes = (nodes: DocNavNode[]): string[] =>
   nodes.map((node) => {
@@ -187,6 +223,107 @@ describe('a directory and a same-named page', () => {
   });
 });
 
+/**
+ * ⚠️ `entry.isFile()` AND `entry.isDirectory()` ARE BOTH FALSE FOR A SYMLINK,
+ * and `readdir` has no follow option — so a symlinked page or section was
+ * missing from `all()`, the sidebar, the sitemap and the search index without
+ * a word, and the first link to it failed the build with `no such page
+ * exists`, pointing the author at a link that was perfectly correct.
+ */
+describe('symlinks and extension case', () => {
+  it('follows a symlinked page and a symlinked directory', async () => {
+    const dir = await makeContentDir({
+      'index.md': doc('Home'),
+      'real/page.md': doc('Real page'),
+    });
+    await symlink(
+      path.join(dir, 'real', 'page.md'),
+      path.join(dir, 'linked.md'),
+    );
+    await symlink(path.join(dir, 'real'), path.join(dir, 'mirror'));
+
+    const source = createDocsSource({ contentDir: dir });
+    expect((await source.all()).map((file) => file.slug)).toEqual([
+      '',
+      'linked',
+      'mirror/page',
+      'real/page',
+    ]);
+  });
+
+  it('reads a page whose extension is upper case', async () => {
+    const dir = await makeContentDir({
+      'index.md': doc('Home'),
+      'GUIDE.MD': doc('Guide'),
+    });
+
+    const page = await createDocsSource({ contentDir: dir }).find(['GUIDE']);
+    expect(page?.frontmatter.title).toBe('Guide');
+  });
+
+  it('stops at a symlink that points back into its own tree', async () => {
+    const dir = await makeContentDir({
+      'index.md': doc('Home'),
+      'section/page.md': doc('Page'),
+    });
+    await symlink(dir, path.join(dir, 'section', 'loop'));
+
+    const source = createDocsSource({ contentDir: dir });
+    expect((await source.all()).map((file) => file.slug)).toEqual([
+      '',
+      'section/page',
+    ]);
+  });
+
+  it('refuses a broken symlink that names a markdown page', async () => {
+    const dir = await makeContentDir({ 'index.md': doc('Home') });
+    await symlink(path.join(dir, 'gone.md'), path.join(dir, 'ghost.md'));
+
+    await expect(createDocsSource({ contentDir: dir }).all()).rejects.toThrow(
+      /ghost\.md is a broken symbolic link/,
+    );
+  });
+});
+
+describe('route keys', () => {
+  it('addresses an NFD filename by its NFC name', async () => {
+    // Escapes, not the characters: the two spell `cafe` identically on screen
+    // and differently in bytes. NFD — `e` plus a combining acute — is what a
+    // macOS zip yields, and an NFC-typed link to one used to fail the build
+    // naming two strings a reader cannot tell apart.
+    const nfd = 'cafe\u0301';
+    const nfc = 'caf\u00e9';
+    const dir = await makeContentDir({ [`${nfd}.md`]: doc('Cafe') });
+
+    const page = await createDocsSource({ contentDir: dir }).find([nfc]);
+    expect(page).toMatchObject({
+      segments: [nfc],
+      href: '/docs/caf%C3%A9',
+    });
+  });
+
+  it('percent-encodes the href, leaving segments and slug raw', async () => {
+    const dir = await makeContentDir({
+      'c# guide.md': doc('C# guide'),
+      '100%-faster.md': doc('Faster'),
+    });
+    const source = createDocsSource({ contentDir: dir });
+
+    // Raw, because Next decodes route params before they reach `find()`.
+    expect(await source.find(['c# guide'])).toMatchObject({
+      segments: ['c# guide'],
+      slug: 'c# guide',
+      // Unencoded this is a fragment, not a path: the sitemap emitted
+      // `https://example.com/docs/c#%20guide`, and `alternates.canonical` and
+      // `og:url` are built by the same call.
+      href: '/docs/c%23%20guide',
+    });
+    expect((await source.find(['100%-faster']))?.href).toBe(
+      '/docs/100%25-faster',
+    );
+  });
+});
+
 describe('scan caching', () => {
   it('scans once no matter how many callers race', async () => {
     // A distinct basePath keeps this off the memoised source other tests use.
@@ -207,6 +344,134 @@ describe('scan caching', () => {
 
     // basic, basic/api, basic/empty, basic/guides — one pass, not five.
     expect(readdirCalls.count).toBe(4);
+  });
+
+  it('does not cache a scan that failed', async () => {
+    // Caching the rejected promise makes one transient failure permanent: a
+    // dev server would replay the same error for the rest of the session and
+    // never touch the disk again.
+    const parent = await makeTempDir();
+    const contentDir = path.join(parent, 'content');
+    const source = createDocsSource({ contentDir });
+
+    await expect(source.all()).rejects.toThrow(
+      /Docs content directory not found/,
+    );
+
+    await mkdir(contentDir);
+    await writeFile(path.join(contentDir, 'index.md'), doc('Home'), 'utf8');
+
+    expect((await source.all()).map((file) => file.slug)).toEqual(['']);
+  });
+});
+
+/**
+ * ⚠️ A DRAFT `index.md` IS NOT A PUBLIC PAGE, AND ITS TITLE IS NOT EITHER.
+ *
+ * Only the group's `href` used to be gated on visibility, so an unreleased
+ * codename was rendered into the sidebar of a production build — with no link
+ * on it, so no click reveals it and only view-source shows it at all — and its
+ * `order` still positioned the group among published ones.
+ */
+describe('a directory whose index is a draft', () => {
+  const contentDir = path.join(FIXTURES, 'draft-index');
+
+  it('publishes neither its title nor its order to the sidebar', async () => {
+    expect(describeNodes(await createDocsSource({ contentDir }).nav())).toEqual(
+      [
+        'page:Home:/docs',
+        'page:Alpha:/docs/alpha',
+        // Humanised from the directory name, and last: `order: -5` on the draft
+        // index would have put it first.
+        'group:Secret:-(page:Ok:/docs/secret/ok)',
+      ],
+    );
+  });
+
+  it('uses both in a preview that includes drafts', async () => {
+    const preview = createDocsSource({ contentDir, includeDrafts: true });
+    expect(describeNodes(await preview.nav())).toEqual([
+      'group:Unreleased Q4 pricing:/docs/secret(page:Ok:/docs/secret/ok)',
+      'page:Home:/docs',
+      'page:Alpha:/docs/alpha',
+    ]);
+  });
+});
+
+describe('the content root index', () => {
+  it('appears in the sidebar without a meta.json naming it', async () => {
+    // Nothing encloses the root, so no group heading carries its href: it is
+    // the one `index.md` the sidebar has to list itself. Without this the
+    // landing page is missing from its own sidebar and a reader who follows a
+    // link cannot get back.
+    const contentDir = await makeContentDir({
+      'index.md': doc('Home', 'order: 0\n'),
+      'a.md': doc('A'),
+      'nested/index.md': doc('Nested'),
+      'nested/child.md': doc('Child'),
+    });
+
+    expect(describeNodes(await createDocsSource({ contentDir }).nav())).toEqual(
+      [
+        'page:Home:/docs',
+        'page:A:/docs/a',
+        // The nested index stays out: the group heading already links it.
+        'group:Nested:/docs/nested(page:Child:/docs/nested/child)',
+      ],
+    );
+  });
+});
+
+describe('aliases', () => {
+  it('normalises the slashes an author writes, and encodes the rest', () => {
+    expect(toAliasRoute(' /old//name/ ', '/docs', 'renamed.md')).toBe(
+      '/docs/old/name',
+    );
+    expect(toAliasRoute('c# guide', '/docs', 'renamed.md')).toBe(
+      '/docs/c%23%20guide',
+    );
+  });
+
+  /**
+   * Next compiles every `redirects()` source with `path-to-regexp`, so
+   * `v1:beta` installs `/docs/v1([^/]+?)` — a 308 that swallows the genuinely
+   * prerendered `/docs/v1-guide`, with no error anywhere. `c++` is the loud
+   * sibling: the build aborts naming an offset into a string nobody wrote.
+   */
+  it('refuses a path-to-regexp metacharacter, naming the file', () => {
+    for (const alias of ['v1:beta', 'c++', 'old(1)', 'a*b', 'a?b', 'a{2}']) {
+      expect(() => toAliasRoute(alias, '/docs', 'guides/renamed.md')).toThrow(
+        /guides\/renamed\.md/,
+      );
+    }
+    expect(() => toAliasRoute('v1:beta', '/docs', 'renamed.md')).toThrow(
+      /redirect pattern syntax/,
+    );
+  });
+
+  it('refuses a dot segment and an empty entry', () => {
+    expect(() => toAliasRoute('../escape', '/docs', 'renamed.md')).toThrow(
+      /has a '\.' or '\.\.' segment/,
+    );
+    expect(() => toAliasRoute('./here', '/docs', 'renamed.md')).toThrow(
+      /has a '\.' or '\.\.' segment/,
+    );
+    expect(() => toAliasRoute('  /  ', '/docs', 'renamed.md')).toThrow(
+      /empty entry in its/,
+    );
+  });
+
+  it('rejects one during the scan, naming the markdown file', async () => {
+    // Validated where the file is in hand: the adapters call `toAliasRoute`
+    // long after the scan, and their error can name no file at all.
+    const contentDir = await makeContentDir({
+      'index.md': doc('Home'),
+      'guides/renamed.md': doc('Renamed', 'aliases:\n  - v1:beta\n'),
+    });
+
+    await expect(createDocsSource({ contentDir }).all()).rejects.toThrow(
+      /the alias 'v1:beta' in guides\/renamed\.md/,
+    );
   });
 });
 

@@ -12,6 +12,10 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Element, ElementContent, Root } from 'hast';
+import {
+  type DefaultBuildType,
+  rehypeGithubAlerts,
+} from 'rehype-github-alerts';
 import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
@@ -59,6 +63,22 @@ function rehypeFakeShiki(): (tree: Root) => undefined {
   };
 }
 
+/**
+ * The same `<callout>` element `src/render.ts` builds, rather than
+ * `rehype-github-alerts`' default octicon-and-CSS-class markup.
+ *
+ * Copied instead of imported for the reason above: the extractor is proved
+ * against the hast contract, and a `> [!NOTE]` wrapping a heading is part of
+ * that contract — the heading is real, it gets a real id, and it has to open a
+ * real section.
+ */
+const buildCallout: DefaultBuildType = (alert, children): Element => ({
+  type: 'element',
+  tagName: 'callout',
+  properties: { type: alert.keyword.toLowerCase() },
+  children,
+});
+
 function elementText(node: ElementContent): string {
   if (node.type === 'text') return node.value;
   if (node.type !== 'element') return '';
@@ -72,6 +92,9 @@ export async function renderFixtureDoc(): Promise<RenderedDoc> {
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
+    // Before slugging, as in the real pipeline, so a heading inside a callout
+    // is slugged in its final position.
+    .use(rehypeGithubAlerts, { build: buildCallout })
     .use(rehypeSlug)
     .use(rehypeFakeShiki);
   const hast = await processor.run(processor.parse(source));

@@ -14,11 +14,12 @@
  * caller can assert the target exists instead of shipping a dead link.
  */
 
-import type { Root } from 'mdast';
+import type { Definition, Link, Root } from 'mdast';
 import type { Plugin } from 'unified';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 import type { DocLinkContext, LinkResolver } from '../types.js';
+import { docsError } from '../docs-error.js';
 
 /**
  * Where a link was found and what it resolved to.
@@ -35,6 +36,15 @@ export interface DocLinkRef {
   href: string | undefined;
   /** 1-based line in the source markdown, when the parser recorded one. */
   line?: number;
+  /**
+   * The target is a file served beside the docs (`./schema.json`), not a page.
+   *
+   * It is still folded and still recorded, because a `../` chain that climbs
+   * out of the content root is an authoring error whatever it points at — but
+   * it must not be checked against the set of published ROUTES, which it will
+   * never be a member of.
+   */
+  asset?: true;
 }
 
 /**
@@ -94,6 +104,27 @@ function isRelativeLink(href: string): boolean {
 }
 
 /**
+ * Is this already-absolute href one of OUR routes?
+ *
+ * `/docs/api/auht` needs no rewriting and used to need no thought either — so
+ * it was never recorded, never asserted, and shipped a 404 with a green build.
+ * A typo in a hand-written absolute link is exactly as likely as one in a
+ * relative link; only the rewriting differs.
+ *
+ * Requires a non-empty base path. Docs mounted at the site root cannot be told
+ * apart from the rest of the site, and asserting `/login` against the set of
+ * documentation routes would fail builds over links that are perfectly good.
+ */
+function isInternalAbsoluteLink(href: string, basePath: string): boolean {
+  const base = basePath.replace(/\/+$/, '');
+  if (base === '' || href.startsWith('//')) {
+    return false;
+  }
+  const path = HREF_PARTS.exec(href)?.[1] ?? '';
+  return path === base || path.startsWith(`${base}/`);
+}
+
+/**
  * Fold `.` and `..` against a starting directory.
  *
  * Hand-rolled rather than `path.resolve` because these are URL paths, not
@@ -128,10 +159,19 @@ export function foldSegments(
   return out;
 }
 
-/** Join route segments onto the base path, e.g. `('/docs', ['api'])`. */
+/**
+ * Join route segments onto the base path, e.g. `('/docs', ['api'])`.
+ *
+ * ⚠️ ENCODES EACH SEGMENT, which is the half of the percent-encoding contract
+ * that lives here: `source.ts` builds every published `href` as
+ * `basePath + '/' + segments.map(encodeURIComponent).join('/')` and keeps
+ * `segments` raw, so a route computed from a link has to be spelled the same
+ * way or `assertLinks` compares an encoded route against a decoded one and
+ * fails the build on a page that exists.
+ */
 function toRoute(basePath: string, segments: readonly string[]): string {
   const base = basePath.replace(/\/+$/, '');
-  const path = segments.join('/');
+  const path = segments.map((segment) => encodeURIComponent(segment)).join('/');
   if (path === '') {
     return base === '' ? '/' : base;
   }
@@ -139,9 +179,51 @@ function toRoute(basePath: string, segments: readonly string[]): string {
 }
 
 /**
+ * Percent-decode one authored path segment, and normalise it.
+ *
+ * GitHub's own UI writes `[gs](./getting%20started.md)` when you drag a file
+ * with a space in its name into an issue, and that is the form that ends up in
+ * a repository's markdown. Without decoding, the segment stays `getting%20started`,
+ * matches no file, and hard-fails the build on a link GitHub renders correctly.
+ *
+ * NFC because macOS hands back decomposed filenames and `source.ts` normalises
+ * at the `readdir` boundary; two spellings of `é` are one page.
+ *
+ * Throws rather than returning the input on failure: `decodeURIComponent`
+ * rejects `100%-faster`, and a silent pass-through would turn a malformed link
+ * into a mystery 404 instead of a message the author can act on.
+ */
+function decodeSegment(segment: string, href: string): string {
+  try {
+    return decodeURIComponent(segment).normalize('NFC');
+  } catch (error) {
+    throw new URIError(
+      `@waveso/docs: link '${href}' is not valid percent-encoding — ` +
+        `'${segment}' cannot be decoded. Write '%25' for a literal percent ` +
+        'sign, or link to the file by its real name.',
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Decode BEFORE folding, never after: `%2E%2E%2F` is `../` in disguise, and
+ * `foldSegments` is the only thing that refuses a chain climbing out of the
+ * content root.
+ */
+function decodePath(path: string, href: string): string {
+  return path
+    .split('/')
+    .map((segment) => decodeSegment(segment, href))
+    .join('/');
+}
+
+/**
  * The built-in {@link LinkResolver}: markdown file path in, route out.
  *
- * Exported for reuse by hosts that want to wrap rather than replace it.
+ * Exported for reuse by hosts that want to wrap rather than replace it. Throws
+ * a {@link URIError} on a malformed percent-escape; every other failure is
+ * reported as `undefined`.
  */
 export function resolveMarkdownLink(
   href: string,
@@ -157,7 +239,7 @@ export function resolveMarkdownLink(
     return undefined;
   }
 
-  const segments = foldSegments(fromDir, path);
+  const segments = foldSegments(fromDir, decodePath(path, href));
   if (segments === undefined) {
     return undefined;
   }
@@ -171,6 +253,40 @@ export function resolveMarkdownLink(
     } else {
       segments[segments.length - 1] = stripped;
     }
+  }
+
+  return `${toRoute(basePath, segments)}${query}${hash}`;
+}
+
+/**
+ * Respell an already-absolute internal link the way route keys are spelled.
+ *
+ * An absolute link is not rewritten — it is already a route — but it still has
+ * to be *compared* against one, and `source.ts` spells every published href
+ * with `encodeURIComponent` per segment. Recording the author's raw text made
+ * that comparison spelling-sensitive: `/docs/café` and `/docs/caf%C3%A9` are the
+ * same page, and only the second matched, so the human-readable form every
+ * editor produces failed the build with "no such page exists" for a page that
+ * plainly exists. Decoding and re-encoding puts both on the canonical spelling.
+ *
+ * `.`/`..` are folded for the same reason: `/docs/api/../guide` is a route a
+ * browser resolves happily and `knownRoutes` has never heard of.
+ */
+function normalizeInternalRoute(
+  href: string,
+  basePath: string,
+): string | undefined {
+  const parts = HREF_PARTS.exec(href);
+  const path = parts?.[1] ?? '';
+  const query = parts?.[2] ?? '';
+  const hash = parts?.[3] ?? '';
+
+  const base = basePath.replace(/\/+$/, '');
+  const rest = path.slice(base.length);
+
+  const segments = foldSegments([], decodePath(rest, href));
+  if (segments === undefined) {
+    return undefined;
   }
 
   return `${toRoute(basePath, segments)}${query}${hash}`;
@@ -192,6 +308,34 @@ function isAssetLink(href: string): boolean {
 }
 
 /**
+ * An asset href, folded against the page's directory.
+ *
+ * ⚠️ ASSETS USED TO BE RETURNED UNTOUCHED, which made `./schema.json` mean two
+ * different files: the browser resolves a relative href against the ROUTE, so
+ * `guide/index.md` requested `/docs/guide/schema.json` and `guide/setup.md`
+ * requested `/docs/guide/setup/schema.json` — from byte-identical markdown that
+ * previews correctly in both places. Folding to a route-absolute path is what
+ * every link in this file already does, and there is no reason a download is
+ * the exception.
+ */
+function resolveAssetLink(
+  href: string,
+  fromDir: readonly string[],
+  basePath: string,
+): string | undefined {
+  const parts = HREF_PARTS.exec(href);
+  const path = parts?.[1] ?? '';
+  const query = parts?.[2] ?? '';
+  const hash = parts?.[3] ?? '';
+
+  const segments = foldSegments(fromDir, decodePath(path, href));
+  if (segments === undefined) {
+    return undefined;
+  }
+  return `${toRoute(basePath, segments)}${query}${hash}`;
+}
+
+/**
  * remark plugin. Requires `file.data.docLinkContext` to be set; without it the
  * containing document is unknown and every relative link would resolve against
  * the content root, which is worse than leaving them alone.
@@ -204,7 +348,8 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
   return (tree: Root, file: VFile): undefined => {
     const context = file.data.docLinkContext;
     if (context === undefined) {
-      throw new Error(
+      throw docsError(
+        'internal',
         `@waveso/docs: remarkDocLinks ran without file.data.docLinkContext${
           file.path === undefined ? '' : ` (file: ${file.path})`
         }. Set it before running the processor.`,
@@ -214,41 +359,103 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
     const refs: DocLinkRef[] = file.data.docLinks ?? [];
     file.data.docLinks = refs;
 
-    // `definition` covers reference-style links (`[a]: ./b.md`), which break
-    // exactly as inline ones do and are easy to forget.
-    visit(tree, ['link', 'definition'], (node) => {
-      if (node.type !== 'link' && node.type !== 'definition') {
-        return;
-      }
-      const raw = node.url;
-      if (!isRelativeLink(raw)) {
-        return;
-      }
-      // A custom resolver owns every relative link, assets included; the
-      // built-in one only claims pages.
-      if (resolve === undefined && isAssetLink(raw)) {
-        return;
-      }
-
-      /*
-       * ⚠️ THE WHOLE CONTEXT, NOT `context.segments`. This used to hand a
-       * custom resolver the ROUTE segments while the built-in one below took
-       * the DIRECTORY segments — so a consumer replacing the resolver got
-       * strictly less than it needed, and `./sibling.md` resolved wrongly on
-       * every directory index page. The comment on `DocLinkContext` is the
-       * diagnosis; this line was the bug it described.
-       */
-      const href = resolve
-        ? resolve(raw, context)
-        : resolveMarkdownLink(raw, context.dirSegments, basePath);
-
-      const line = node.position?.start.line;
-      refs.push(line === undefined ? { raw, href } : { raw, href, line });
-
-      if (href !== undefined) {
-        node.url = href;
+    /*
+     * ⚠️ A `definition` CANNOT TELL YOU WHAT REFERS TO IT. `[l]: ./logo.png`
+     * is a link target for `[text][l]` and an image source for `![alt][l]`, and
+     * the node is identical in both cases. Treated as a link it either fails
+     * the build with a message about a link that is not a link, or — with a
+     * custom resolver — quietly rewrites an image `src` to a page route, which
+     * nothing downstream can undo: the leading `/` makes the image folder pass
+     * it straight through and the `imageResolver` never sees it.
+     *
+     * So the identifiers are collected first, in the same walk, and an image's
+     * definition is left for the image path in `render.ts` to fold.
+     */
+    const imageIdentifiers = new Set<string>();
+    const targets: Array<Link | Definition> = [];
+    visit(tree, (node) => {
+      if (node.type === 'imageReference') {
+        imageIdentifiers.add(node.identifier);
+      } else if (node.type === 'link' || node.type === 'definition') {
+        // `definition` covers reference-style links (`[a]: ./b.md`), which
+        // break exactly as inline ones do and are easy to forget.
+        targets.push(node);
       }
     });
+
+    for (const node of targets) {
+      const raw = node.url;
+      if (node.type === 'definition' && imageIdentifiers.has(node.identifier)) {
+        continue;
+      }
+
+      const line = node.position?.start.line;
+      const record = (href: string | undefined, asset?: true): void => {
+        const ref: DocLinkRef = { raw, href };
+        if (line !== undefined) {
+          ref.line = line;
+        }
+        if (asset !== undefined) {
+          ref.asset = asset;
+        }
+        refs.push(ref);
+        if (href !== undefined) {
+          node.url = href;
+        }
+      };
+
+      /*
+       * One guard around every branch, because all four can decode a
+       * percent-escape and so all four can raise `URIError`. Only the last used
+       * to be wrapped: `[a](./100%-faster.json)` escaped as a bare `URIError`
+       * with no code, no file and no line, past the very check that exists to
+       * make failures locatable.
+       */
+      try {
+        if (!isRelativeLink(raw)) {
+          // Already a route; recorded so a typo in it is caught, not rewritten
+          // — but respelled first, so the comparison is like-for-like.
+          if (isInternalAbsoluteLink(raw, basePath) && !isAssetLink(raw)) {
+            record(normalizeInternalRoute(raw, basePath));
+          }
+          continue;
+        }
+
+        // A custom resolver owns every relative link, assets included; the
+        // built-in one only claims pages.
+        if (resolve === undefined && isAssetLink(raw)) {
+          record(resolveAssetLink(raw, context.dirSegments, basePath), true);
+          continue;
+        }
+
+        /*
+         * ⚠️ THE WHOLE CONTEXT, NOT `context.segments`. This used to hand a
+         * custom resolver the ROUTE segments while the built-in one below took
+         * the DIRECTORY segments — so a consumer replacing the resolver got
+         * strictly less than it needed, and `./sibling.md` resolved wrongly on
+         * every directory index page. The comment on `DocLinkContext` is the
+         * diagnosis; this line was the bug it described.
+         */
+        if (resolve) {
+          record(resolve(raw, context));
+          continue;
+        }
+
+        record(resolveMarkdownLink(raw, context.dirSegments, basePath));
+      } catch (error) {
+        if (!(error instanceof URIError)) {
+          throw error;
+        }
+        const at = line === undefined ? '' : `:${line}`;
+        throw docsError(
+          'broken-link',
+          `@waveso/docs: ${context.relativePath}${at} links to '${raw}', ` +
+            'whose percent-encoding is malformed. Write %25 for a literal ' +
+            'percent sign, or link to the file by its real name.',
+          { cause: error },
+        );
+      }
+    }
 
     return undefined;
   };

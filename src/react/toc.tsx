@@ -25,6 +25,14 @@ export interface DocsTocProps {
 
 const DEFAULT_ROOT_MARGIN = '-80px 0px -60% 0px';
 
+/**
+ * How many frames to keep looking for headings that are not in the document
+ * yet. ~1s at 60Hz, which covers a `<Suspense>` boundary resolving or a
+ * tabs/accordion wrapper revealing its panel. Bounded because the loop must
+ * also terminate on a page whose headings genuinely never arrive.
+ */
+const MAX_ATTACH_FRAMES = 60;
+
 function flattenTocIds(entries: TocEntry[]): string[] {
   const ids: string[] = [];
   const walk = (list: TocEntry[]) => {
@@ -99,14 +107,48 @@ export function DocsToc({
       { rootMargin, threshold: 0 },
     );
 
-    for (const id of ids) {
-      const element = document.getElementById(id);
-      if (element !== null) {
-        observer.observe(element);
-      }
-    }
+    /*
+     * Retry while nothing resolves. The TOC and the document it describes are
+     * separate subtrees, so the headings are not guaranteed to exist when this
+     * effect runs — a `<Suspense>` boundary the TOC renders outside of, or a
+     * tabs wrapper that mounts its panel late, both leave `getElementById`
+     * returning `null` on the first pass. Give up there and the observer holds
+     * nothing for the life of the page: no entry ever becomes current, and
+     * nothing throws or logs, so it reads as "the highlight just doesn't work".
+     *
+     * Only the all-or-nothing case retries. A partial resolve means the content
+     * is mounted and the missing ids are an authoring error — a TOC entry for a
+     * heading the page does not have — which no amount of waiting fixes.
+     */
+    let frame: number | undefined;
+    let framesLeft = MAX_ATTACH_FRAMES;
 
-    return () => observer.disconnect();
+    const attach = (): void => {
+      let attached = 0;
+      for (const id of ids) {
+        const element = document.getElementById(id);
+        if (element !== null) {
+          observer.observe(element);
+          attached += 1;
+        }
+      }
+      if (
+        attached === 0 &&
+        framesLeft > 0 &&
+        typeof requestAnimationFrame === 'function'
+      ) {
+        framesLeft -= 1;
+        frame = requestAnimationFrame(attach);
+      }
+    };
+    attach();
+
+    return () => {
+      if (frame !== undefined) {
+        cancelAnimationFrame(frame);
+      }
+      observer.disconnect();
+    };
   }, [ids, rootMargin]);
 
   if (entries.length === 0) {

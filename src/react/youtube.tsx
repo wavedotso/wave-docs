@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface YouTubeProps {
@@ -30,6 +30,22 @@ const DEFAULT_TITLE = 'YouTube video player';
  */
 export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
   const [isPlaying, setIsPlaying] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+
+  // Move focus on the transition, and only on it. The button that started
+  // playback unmounted under the reader's focus, so without this a keyboard
+  // user is dropped back at the top of the document.
+  //
+  // Keyed to `isPlaying` rather than done in the `ref`: an inline ref callback
+  // has a new identity every render, so React detaches and re-attaches it and
+  // calls `focus()` again. Any unrelated parent re-render — a theme toggle, a
+  // version switcher, `router.refresh()` — would then pull the keyboard out of
+  // whatever the reader had started typing into.
+  useEffect(() => {
+    if (isPlaying) {
+      frameRef.current?.focus();
+    }
+  }, [isPlaying]);
 
   // Only reachable if the pipeline emitted a malformed element; a missing id
   // can only ever produce a broken player, so render nothing at all.
@@ -60,11 +76,7 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
           loading="lazy"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
-          // The button that triggered this just unmounted, so without moving
-          // focus a keyboard user is dropped back at the top of the document.
-          ref={(node) => {
-            node?.focus();
-          }}
+          ref={frameRef}
         />
       </div>
     );

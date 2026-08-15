@@ -18,11 +18,17 @@ import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
-import { CONTINUE, EXIT, visit } from 'unist-util-visit';
+import { visit } from 'unist-util-visit';
 import { VFile } from 'vfile';
 import type { DocsHighlighter, DocsLang, DocsThemes } from './highlighter.js';
 import { createDocsHighlighter, DEFAULT_DOCS_THEMES } from './highlighter.js';
 import { rehypeCaptureToc } from './plugins/rehype-capture-toc.js';
+import {
+  rehypeNormalizeCodeLanguage,
+  rehypeRestoreExcludedCode,
+} from './plugins/rehype-code-language.js';
+import { rehypeFallbackHeadingIds } from './plugins/rehype-fallback-heading-ids.js';
+import { rehypeFlattenRoots } from './plugins/rehype-flatten-roots.js';
 import type { DocLinkRef } from './plugins/remark-doc-links.js';
 import { foldSegments, remarkDocLinks } from './plugins/remark-doc-links.js';
 import { remarkUnwrapImages } from './plugins/remark-unwrap-images.js';
@@ -36,6 +42,7 @@ import type {
   RenderedDoc,
   ResolvedDocsConfig,
 } from './types.js';
+import { docsError } from './docs-error.js';
 
 /*
  * `@shikijs/rehype` asks for `HighlighterGeneric<any, any>` while
@@ -66,11 +73,11 @@ export interface DocsRendererOptions {
    * Reuse an existing highlighter — the escape hatch for grammars and themes
    * outside the curated set. Defaults to {@link createDocsHighlighter}.
    */
-  highlighter?: DocsHighlighter | Promise<DocsHighlighter>;
+  highlighter?: DocsHighlighter | Promise<DocsHighlighter> | undefined;
   /** Grammars to load, when building the default highlighter. */
-  langs?: readonly DocsLang[];
+  langs?: readonly DocsLang[] | undefined;
   /** Theme pair. Defaults to {@link DEFAULT_DOCS_THEMES}. */
-  themes?: DocsThemes;
+  themes?: DocsThemes | undefined;
   /**
    * Prepend an `<h1>` built from `frontmatter.title` when the markdown body
    * has none. Defaults to `true`.
@@ -80,15 +87,20 @@ export interface DocsRendererOptions {
    * starting at `h2`, and markdown that repeats the frontmatter title as `# `
    * is a duplication authors forget to keep in step.
    */
-  titleHeading?: boolean;
+  titleHeading?: boolean | undefined;
   /** Replaces the built-in markdown-link resolution. */
-  linkResolver?: LinkResolver;
+  linkResolver?: LinkResolver | undefined;
   /**
    * Resolves image `src` to a public URL and intrinsic dimensions, so
-   * `next/image` can render without `fill`. Images are left untouched when
-   * omitted, or when the resolver returns `undefined`.
+   * `next/image` can render without `fill`.
+   *
+   * Required as soon as any page writes a relative `![](./diagram.png)`: there
+   * is no correct output for one without it, so it throws rather than shipping
+   * a src the browser resolves against the route. Absolute (`/logo.png`) and
+   * external sources need no resolver, and a resolver returning `undefined`
+   * keeps the folded — not the authored — src.
    */
-  imageResolver?: ImageResolver;
+  imageResolver?: ImageResolver | undefined;
   /**
    * Every route the site publishes, used by `assertLinks`. Read at render
    * time, so a host may pass a set it populates during the source walk.
@@ -96,7 +108,36 @@ export interface DocsRendererOptions {
    * Without it only unresolvable links can be caught; with it, links to pages
    * that simply do not exist are caught too.
    */
-  knownRoutes?: ReadonlySet<string>;
+  knownRoutes?: ReadonlySet<string> | undefined;
+  /**
+   * Routes of pages excluded from {@link DocsRendererOptions.knownRoutes}
+   * because they are `draft: true`.
+   *
+   * Purely diagnostic, and it earns its place: a link to a draft is a link to a
+   * file plainly sitting on disk, and the generic "no such page exists — add an
+   * `aliases` entry" is advice that cannot be followed. Failing the build is
+   * still right; naming the reason is what makes it fixable.
+   */
+  draftRoutes?: ReadonlySet<string> | undefined;
+  /**
+   * Alias route → the canonical `href` it redirects to.
+   *
+   * Deliberately not folded into {@link DocsRendererOptions.knownRoutes}. An
+   * alias is only a live URL once `createDocsRedirects` is wired into
+   * `next.config.ts`, which the quick start does not do — so treating one as
+   * publishable produced a green build and a hard 404 for every reader who
+   * clicked, which is the exact failure `assertLinks` exists to prevent.
+   * Knowing the target lets the error name the page to link instead.
+   */
+  aliasRoutes?: ReadonlyMap<string, string> | undefined;
+  /**
+   * Fence languages Shiki must not touch, e.g. `['mermaid']`.
+   *
+   * The `<pre><code class="language-mermaid">` reaches your `pre`/`code`
+   * component untouched, which is what lets a consumer render a diagram rather
+   * than a monochrome block of DSL.
+   */
+  excludeLangs?: readonly string[] | undefined;
 }
 
 /**
@@ -149,6 +190,68 @@ function toDirSegments(relativePath: string): string[] {
 const IMAGE_HAS_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
 
 /**
+ * Is this src already a URL a browser can fetch from any page?
+ *
+ * `/logo.png`, `//cdn/…` and `https://…` are; everything else is relative to
+ * the markdown file and means nothing once the file has become a route.
+ */
+function isPublicImageSrc(src: string): boolean {
+  return src.startsWith('/') || IMAGE_HAS_SCHEME.test(src);
+}
+
+/** What an {@link ImageResolver} promises to return. */
+type ResolvedImage = NonNullable<Awaited<ReturnType<ImageResolver>>>;
+
+/**
+ * Check what the resolver actually returned.
+ *
+ * `ImageResolver` is a type, and a type stops at the JavaScript boundary: a
+ * host reading dimensions from a manifest hands back `{ src, width: '1200' }`
+ * or a bare string, and the only symptom is `width="undefined"` in the HTML —
+ * on one page, at build time, with nothing naming the image or the document.
+ */
+function assertResolvedImage(
+  value: unknown,
+  src: string,
+  relativePath: string,
+): asserts value is ResolvedImage {
+  const blame = `for image "${src}" in ${relativePath}`;
+
+  if (typeof value !== 'object' || value === null) {
+    throw docsError(
+      'invalid-image',
+      `@waveso/docs: the imageResolver returned ${typeof value} ${blame}. ` +
+        'Return `{ src, width?, height? }`, or `undefined` to leave the src alone.',
+    );
+  }
+
+  const resolved: Partial<Record<'src' | 'width' | 'height', unknown>> = value;
+
+  if (typeof resolved.src !== 'string' || resolved.src === '') {
+    throw docsError(
+      'invalid-image',
+      `@waveso/docs: the imageResolver returned no \`src\` ${blame}. ` +
+        'Return `{ src, width?, height? }`, or `undefined` to leave the src alone.',
+    );
+  }
+
+  for (const key of ['width', 'height'] as const) {
+    const dimension = resolved[key];
+    if (dimension === undefined) {
+      continue;
+    }
+    if (typeof dimension !== 'number' || !Number.isFinite(dimension)) {
+      throw docsError(
+        'invalid-image',
+        `@waveso/docs: the imageResolver returned a non-numeric \`${key}\` ` +
+          `${blame}. \`next/image\` needs intrinsic pixel dimensions; parse ` +
+          'the value before returning it.',
+      );
+    }
+  }
+}
+
+/**
  * An image `src` folded against the page's directory, or `undefined` if it
  * climbs out of the content root.
  *
@@ -161,7 +264,7 @@ function foldImageSrc(
   src: string,
   dirSegments: readonly string[],
 ): string | undefined {
-  if (src.startsWith('/') || IMAGE_HAS_SCHEME.test(src)) {
+  if (isPublicImageSrc(src)) {
     return src;
   }
 
@@ -181,15 +284,19 @@ function describeLink(file: DocFile, ref: DocLinkRef): string {
   return `${file.relativePath}${at}`;
 }
 
-/** Does the document already open on a page title? */
+/**
+ * Does the document already open on a page title?
+ *
+ * ⚠️ TOP-LEVEL CHILDREN ONLY, DELIBERATELY. A whole-tree walk counted an `h1`
+ * anywhere — including `> [!NOTE]\n> # Callout title` — and suppressed the
+ * frontmatter heading, so the page title appeared nowhere in the body and the
+ * document's only `h1` was buried inside a callout. That is precisely the
+ * `page-has-heading-one` failure this option's docstring says it prevents.
+ */
 function hasHeadingOne(tree: HastRoot): boolean {
-  let found = false;
-  visit(tree, 'element', (node) => {
-    if (node.tagName !== 'h1') return CONTINUE;
-    found = true;
-    return EXIT;
-  });
-  return found;
+  return tree.children.some(
+    (child) => child.type === 'element' && child.tagName === 'h1',
+  );
 }
 
 /**
@@ -256,21 +363,28 @@ function stripPositions(tree: HastRoot): HastRoot {
  *                             `remark-gfm` does not implement alerts at all.
  *                             Runs before slugging so a heading inside a
  *                             callout is slugged in its final position.
- *  8. `rehypeSlug`          — assigns heading ids.
- *  9. `rehypeCaptureToc`    — reads those ids. Before autolinking, so heading
+ *  8. `rehypeFallbackHeadingIds` — before slugging, so an emoji-only heading
+ *                             never seeds the collision counter with `''`.
+ *  9. `rehypeSlug`          — assigns heading ids.
+ * 10. `rehypeCaptureToc`    — reads those ids. Before autolinking, so heading
  *                             text is captured without the appended `#`.
- * 10. `rehypeAutolinkHeadings` — appends the permalink.
- * 11. `rehypeShikiFromHighlighter` — last: it replaces `<pre><code>` wholesale,
- *                             and anything walking code blocks afterwards
- *                             would be walking Shiki's token spans instead.
+ * 11. `rehypeAutolinkHeadings` — appends the permalink.
+ * 12. `rehypeNormalizeCodeLanguage` — immediately before Shiki, which is the
+ *                             last moment `class="language-JSON"` exists.
+ * 13. `rehypeShikiFromHighlighter` — near-last: it replaces `<pre><code>`
+ *                             wholesale, and anything walking code blocks
+ *                             afterwards would be walking Shiki's token spans.
+ * 14. `rehypeRestoreExcludedCode` — the other side of step 12's disguise.
+ * 15. `rehypeFlattenRoots` — last of all, because Shiki is what splices a
+ *                             `root` into `root.children` and the published
+ *                             `RenderedDoc.hast` type says that cannot happen.
  */
-async function buildProcessor(options: DocsRendererOptions) {
-  const themes = options.themes ?? DEFAULT_DOCS_THEMES;
-  const highlighter = await (options.highlighter ??
-    createDocsHighlighter({
-      themes,
-      ...(options.langs === undefined ? {} : { langs: options.langs }),
-    }));
+async function buildProcessor(
+  options: DocsRendererOptions,
+  themes: DocsThemes,
+  highlighterPromise: DocsHighlighter | Promise<DocsHighlighter>,
+) {
+  const highlighter = await highlighterPromise;
 
   return unified()
     .use(remarkParse)
@@ -292,6 +406,7 @@ async function buildProcessor(options: DocsRendererOptions) {
       footnoteLabelProperties: { className: ['wave-docs-sr-only'] },
     })
     .use(rehypeGithubAlerts, { build: buildCallout })
+    .use(rehypeFallbackHeadingIds)
     .use(rehypeSlug)
     .use(rehypeCaptureToc)
     .use(rehypeAutolinkHeadings, {
@@ -309,14 +424,36 @@ async function buildProcessor(options: DocsRendererOptions) {
         tabIndex: -1,
       },
     })
+    .use(rehypeNormalizeCodeLanguage, {
+      ...(options.excludeLangs === undefined
+        ? {}
+        : { exclude: options.excludeLangs }),
+    })
     .use(rehypeShikiFromHighlighter, highlighter as ShikiHighlighter, {
       themes,
+      /*
+       * ⚠️ WITHOUT THIS, EVERY `<pre>` CARRIES AN INLINE
+       * `background-color:#fff;color:#24292e`, taken from whichever theme is
+       * "default". Inline styles beat every stylesheet rule that is not
+       * `!important`, so the light theme's background was painted onto code
+       * blocks in dark mode and the stylesheet had to fight its way out with
+       * `!important` and an unlayered block. `false` emits only the
+       * `--shiki-light` / `--shiki-dark` custom properties, and CSS decides.
+       */
+      defaultColor: false,
       // An unloaded grammar does not throw — it ships an unhighlighted block
       // to production. Naming the fallback makes that outcome deliberate
       // instead of accidental.
       fallbackLanguage: 'text',
       defaultLanguage: 'text',
+      // Shiki throws the fence language away, and it is destroyed in Node, so
+      // there is no client-side workaround: without this a consumer's `pre`
+      // override cannot tell a diagram from a shell snippet, add a language
+      // badge, or label a copy button with the file type.
+      addLanguageClass: true,
     })
+    .use(rehypeRestoreExcludedCode)
+    .use(rehypeFlattenRoots)
     .freeze();
 }
 
@@ -328,33 +465,55 @@ async function buildProcessor(options: DocsRendererOptions) {
  * a docs build that takes a second and one that takes a minute.
  */
 export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
-  const processorPromise = buildProcessor(options);
-  const { config, imageResolver, knownRoutes } = options;
+  const themes = options.themes ?? DEFAULT_DOCS_THEMES;
+  /*
+   * ⚠️ BUILT HERE, SYNCHRONOUSLY, SO A BAD NAME THROWS FROM THE CONSTRUCTOR.
+   * `createDocsHighlighter` validates themes and languages synchronously, but
+   * doing it inside the async `buildProcessor` turned that throw into a
+   * rejection on a promise nobody was awaiting yet — and an unhandled rejection
+   * terminates the Next.js build worker before a `try`/`catch` around either
+   * this call or `render()` can see it. A typo in config deserves a stack
+   * trace, not a dead worker.
+   */
+  const highlighter =
+    options.highlighter ??
+    createDocsHighlighter({
+      themes,
+      ...(options.langs === undefined ? {} : { langs: options.langs }),
+    });
+
+  const processorPromise = buildProcessor(options, themes, highlighter);
+  // A grammar import that fails at runtime rejects this promise before the
+  // first `render()` awaits it. Marking it handled keeps the process alive so
+  // the rejection surfaces from `render()`, where a caller can catch it.
+  processorPromise.catch(() => undefined);
+
+  const { config, imageResolver, knownRoutes, draftRoutes, aliasRoutes } =
+    options;
   const titleHeading = options.titleHeading ?? true;
 
   /**
-   * Hand every `<img>` to the resolver, FOLDED AND CONTAINED.
+   * Fold every `<img src>`, then hand it to the resolver if there is one.
    *
-   * ⚠️ IMAGES USED TO SKIP FOLDING ENTIRELY. `remarkDocLinks` visits `link` and
-   * `definition` and never `image`, so an image `src` reached the resolver
-   * exactly as authored — `../../../../.env` included — while every LINK on the
-   * same page went through `foldSegments`, which refuses a chain that climbs
-   * out of the content root. Two paths into the same kind of consumer code,
-   * one of them guarded.
+   * ⚠️ THIS RUNS FOR EVERY DOCUMENT, RESOLVER OR NOT, AND THAT IS THE POINT.
+   * It used to be gated on `imageResolver`, which is the option nobody sets
+   * first — so under the quickstart config `![d](./diagram.png)` shipped
+   * byte-for-byte as authored and the BROWSER resolved it, against the route:
+   * `/docs/guide` asked for `/docs/diagram.png` and `/docs/guide/setup` asked
+   * for `/docs/guide/diagram.png`, from identical markdown. `assertLinks` could
+   * not see it either — `remarkDocLinks` visits `link` and `definition`, never
+   * `image` — so the build stayed green and the containment throw below was
+   * dead code in the only configuration most sites run.
    *
-   * That is a containment hole rather than a formatting bug: the resolver's
-   * documented job is to turn a src into a public URL, and a reasonable
-   * implementation joins it onto a directory. So the fold happens HERE, before
-   * the call, and an escape throws with the file named — the same treatment
-   * `assertLinks` gives a link that climbs out.
-   *
-   * Absolute and external srcs are passed through untouched: `/logo.png` is
-   * already a public URL and `https://…` belongs to someone else.
+   * A relative src has no correct output without a resolver, so it throws.
+   * Absolute (`/logo.png`) and schemed srcs are already public URLs and are
+   * passed through untouched — but still offered to the resolver, so a host can
+   * rewrite them onto a CDN.
    */
   async function resolveImages(
     tree: HastRoot,
     file: DocFile,
-    resolve: ImageResolver,
+    resolve: ImageResolver | undefined,
   ): Promise<void> {
     const images: Element[] = [];
     visit(tree, 'element', (node) => {
@@ -362,6 +521,9 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
         images.push(node);
       }
     });
+    if (images.length === 0) {
+      return;
+    }
 
     const context: DocLinkContext = {
       segments: file.segments,
@@ -379,15 +541,50 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
         const folded = foldImageSrc(src, context.dirSegments);
 
         if (folded === undefined) {
-          throw new Error(
+          throw docsError(
+            'invalid-image',
             `@waveso/docs: image "${src}" in ${file.relativePath} climbs above the content root.`,
           );
         }
 
-        const resolved = await resolve(folded, context);
+        if (resolve === undefined) {
+          if (isPublicImageSrc(src)) {
+            return;
+          }
+          throw docsError(
+            'invalid-image',
+            `@waveso/docs: image "${src}" in ${file.relativePath} is relative ` +
+              'to the markdown file, and nothing can serve it: the browser ' +
+              'would resolve it against the page route, so the same markdown ' +
+              'would request a different file from every page. Pass an ' +
+              '`imageResolver`, or move the image under `public/` and write ' +
+              'an absolute src such as "/diagram.png".',
+          );
+        }
+
+        let resolved: Awaited<ReturnType<ImageResolver>>;
+        try {
+          resolved = await resolve(folded, context);
+        } catch (error) {
+          // A resolver typically reads the file to measure it, and `ENOENT:
+          // no such file 'architecture.png'` names neither the document nor
+          // the line that asked for it.
+          throw docsError(
+            'invalid-image',
+            `@waveso/docs: the imageResolver threw on image "${src}" in ` +
+              `${file.relativePath}.`,
+            { cause: error },
+          );
+        }
+
         if (resolved === undefined) {
+          // ⚠️ THE FOLD SURVIVES. Returning `undefined` means "I have no public
+          // URL for this", not "put the author's `../` back".
+          node.properties.src = folded;
           return;
         }
+
+        assertResolvedImage(resolved, src, file.relativePath);
         node.properties.src = resolved.src;
         if (resolved.width !== undefined) {
           node.properties.width = resolved.width;
@@ -408,23 +605,62 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
   function assertLinks(file: DocFile, refs: readonly DocLinkRef[]): void {
     for (const ref of refs) {
       if (ref.href === undefined) {
-        throw new Error(
+        throw docsError(
+          'broken-link',
           `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
             'which does not resolve to a documentation page. Use a path ' +
             'relative to this file, or an absolute URL for external links.',
         );
       }
-      if (knownRoutes === undefined) {
+      // An asset is a download served beside the docs, never a route, so the
+      // published-route set has nothing to say about it. It is still recorded,
+      // and the `href === undefined` check above still contains it.
+      if (knownRoutes === undefined || ref.asset) {
         continue;
       }
       const route = toRouteKey(ref.href);
-      if (!knownRoutes.has(route)) {
-        throw new Error(
+      if (knownRoutes.has(route)) {
+        continue;
+      }
+      /*
+       * A draft is the one missing page whose file is plainly on disk, so the
+       * generic message below sends the author looking for a typo in a link
+       * that is spelled correctly, and offers an `aliases` entry on a page that
+       * has no alias to give. Same throw, different diagnosis.
+       */
+      if (draftRoutes?.has(route)) {
+        throw docsError(
+          'draft-link',
           `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
-            `which resolves to '${route}' — no such page exists. Fix the ` +
-            'link, or add an `aliases` entry to the page it used to point at.',
+            `which resolves to '${route}' — a page marked \`draft: true\`, ` +
+            'so it is not published and the link would 404. Publish the page, ' +
+            'remove the link, or build with `includeDrafts`.',
         );
       }
+      /*
+       * An alias is a redirect, not a page: `generateStaticParams` never emits
+       * it, so with `dynamicParams = false` the link is a hard 404 — and it is
+       * only a working URL at all once `createDocsRedirects` is wired up. The
+       * author already told us where the page went, so say so rather than
+       * accepting the link and breaking it at runtime.
+       */
+      const aliasTarget = aliasRoutes?.get(route);
+      if (aliasTarget !== undefined) {
+        throw docsError(
+          'alias-link',
+          `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
+            `which resolves to '${route}' — an alias that redirects to ` +
+            `'${aliasTarget}'. An alias is not a page: it 404s unless ` +
+            '`createDocsRedirects` is wired into `next.config.ts`, and it is ' +
+            `never prerendered. Link to '${aliasTarget}' directly.`,
+        );
+      }
+      throw docsError(
+        'broken-link',
+        `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
+          `which resolves to '${route}' — no such page exists. Fix the ` +
+          'link, or add an `aliases` entry to the page it used to point at.',
+      );
     }
   }
 
@@ -448,9 +684,7 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
       if (titleHeading && !hasHeadingOne(hast)) {
         hast.children.unshift(titleHeadingNode(file.frontmatter.title));
       }
-      if (imageResolver !== undefined) {
-        await resolveImages(hast, file, imageResolver);
-      }
+      await resolveImages(hast, file, imageResolver);
       if (config.assertLinks) {
         assertLinks(file, vfile.data.docLinks ?? []);
       }

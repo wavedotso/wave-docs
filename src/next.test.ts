@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { isValidElement } from 'react';
-import { afterAll, describe, expect, expectTypeOf, it } from 'vitest';
+import { afterAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { docFrontmatterSchema } from './frontmatter.js';
@@ -465,5 +465,229 @@ describe('createDocsRedirects', () => {
     });
 
     expect(await createDocsRedirects({ contentDir })).toEqual([]);
+  });
+});
+
+/* -------------------------------------------------------------------------
+ * Regressions from the pre-publish defect review
+ * ---------------------------------------------------------------------- */
+
+describe('siteUrl containment', () => {
+  /*
+   * `new URL('/docs/x', 'https://example.com/product-docs')` silently discards
+   * the base path, so every canonical, every `og:url` and every sitemap entry
+   * pointed at a URL that 404s — and a canonical aimed at a 404 is a signal to
+   * Google to drop the page.
+   */
+  it('rejects a siteUrl carrying a path, naming basePath as the fix', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+
+    expect(() =>
+      createDocsRoute({ contentDir, siteUrl: 'https://example.com/product' }),
+    ).toThrow(/has a path \('\/product'\).*`basePath`/s);
+
+    await expect(
+      createDocsSitemap({
+        contentDir,
+        siteUrl: 'https://example.com/product/',
+      }),
+    ).rejects.toThrow(/has a path/);
+  });
+
+  it('still accepts an origin with or without a trailing slash', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+
+    for (const siteUrl of ['https://example.com', 'https://example.com/']) {
+      const entries = await createDocsSitemap({ contentDir, siteUrl });
+      expect(entries[0]?.url).toBe('https://example.com/docs');
+    }
+  });
+});
+
+describe('links to an alias', () => {
+  /*
+   * An alias is a redirect, not a page: `generateStaticParams` never emits it,
+   * so with `dynamicParams = false` it is a hard 404 — and it only resolves at
+   * all once `createDocsRedirects` is wired into `next.config.ts`, which the
+   * quick start does not do. Accepting the link built green and broke at
+   * runtime; naming the target is advice the author can act on.
+   */
+  it('fails the build and names the page to link instead', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n\n[old name](./quickstart)\n',
+      'getting-started.md':
+        '---\ntitle: Getting started\naliases:\n  - quickstart\n---\n',
+    });
+
+    const docs = createDocsRoute({ contentDir });
+
+    await expect(docs.getPage([])).rejects.toThrow(
+      /an alias that redirects to '\/docs\/getting-started'.*Link to '\/docs\/getting-started' directly/s,
+    );
+  });
+
+  it('leaves the alias out of the prerendered route list', async () => {
+    const contentDir = await makeContentDir({
+      'getting-started.md':
+        '---\ntitle: Getting started\naliases:\n  - quickstart\n---\n',
+    });
+
+    const params = await createDocsRoute({ contentDir }).generateStaticParams();
+    expect(params.map((p) => p.slug.join('/'))).toEqual(['getting-started']);
+  });
+});
+
+describe('the source handed to layouts', () => {
+  /*
+   * `docs.source.nav()` is the documented way to feed the sidebar, and it was
+   * the one reader that never invalidated: the request after adding a page
+   * rendered the new body beside the old sidebar.
+   */
+  it('sees a new page on the same request that renders it', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+    const docs = createDocsRoute({ contentDir, rescanPerRequest: true });
+    const titles = async (): Promise<string[]> =>
+      (await docs.source.nav()).map((node) => node.title);
+
+    expect(await titles()).not.toContain('Added');
+
+    await writeFile(
+      path.join(contentDir, 'added.md'),
+      '---\ntitle: Added\n---\n',
+      'utf8',
+    );
+
+    expect(await titles()).toContain('Added');
+  });
+
+  it('does not rescan when the route is configured not to', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+    const docs = createDocsRoute({ contentDir, rescanPerRequest: false });
+    const titles = async (): Promise<string[]> =>
+      (await docs.source.nav()).map((node) => node.title);
+
+    expect(await titles()).not.toContain('Added');
+    await writeFile(
+      path.join(contentDir, 'added.md'),
+      '---\ntitle: Added\n---\n',
+      'utf8',
+    );
+    expect(await titles()).not.toContain('Added');
+  });
+});
+
+describe('createDocsSitemap staleness', () => {
+  /*
+   * `createDocsSource` memoises globally by config, so without an explicit
+   * invalidate the first scan of the process was the only one — and
+   * `app/sitemap.ts` under `next dev` served the page set as it stood at boot.
+   */
+  it('re-reads the tree between calls by default', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+    const siteUrl = 'https://example.com';
+
+    expect(await createDocsSitemap({ contentDir, siteUrl })).toHaveLength(1);
+
+    await writeFile(
+      path.join(contentDir, 'second.md'),
+      '---\ntitle: Second\n---\n',
+      'utf8',
+    );
+
+    expect(await createDocsSitemap({ contentDir, siteUrl })).toHaveLength(2);
+  });
+
+  it('honours rescanPerRequest: false', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+    const options = {
+      contentDir,
+      siteUrl: 'https://example.com',
+      rescanPerRequest: false,
+    };
+
+    expect(await createDocsSitemap(options)).toHaveLength(1);
+    await writeFile(
+      path.join(contentDir, 'second.md'),
+      '---\ntitle: Second\n---\n',
+      'utf8',
+    );
+    expect(await createDocsSitemap(options)).toHaveLength(1);
+  });
+});
+
+describe('adapter wiring the renderer depends on', () => {
+  /*
+   * Mutating `collectRoutes(draftRoutes, drafts)` to a no-op used to leave the
+   * whole suite green: `render.ts` had the diagnosis and nothing proved the
+   * adapter ever filled the set it reads.
+   */
+  it('tells a draft link apart from a typo, end to end', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n[beta](./beta.md)\n',
+      'beta.md': '---\ntitle: Beta\ndraft: true\n---\n',
+    });
+
+    await expect(createDocsRoute({ contentDir }).getPage([])).rejects.toThrow(
+      /a page marked `draft: true`/,
+    );
+  });
+
+  it('reports a genuine typo as a typo, not as a draft', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n[nope](./nope.md)\n',
+    });
+
+    await expect(createDocsRoute({ contentDir }).getPage([])).rejects.toThrow(
+      /no such page exists/,
+    );
+  });
+
+  /*
+   * `excludeLangs` existed on the renderer and on no entry point that reaches
+   * it, so the documented way to render a mermaid fence yourself did nothing.
+   */
+  it('forwards excludeLangs so a fence can escape the highlighter', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n\n```mermaid\ngraph TD;\n```\n',
+    });
+
+    const doc = await createDocsRoute({
+      contentDir,
+      excludeLangs: ['mermaid'],
+    }).getPage([]);
+
+    // Untouched by Shiki: still a plain `<pre><code class="language-mermaid">`
+    // for the consumer's own `pre` component to intercept.
+    expect(JSON.stringify(doc?.hast)).toContain('language-mermaid');
+    expect(JSON.stringify(doc?.hast)).not.toContain('shiki');
+  });
+
+  it('warns rather than silently emitting an oversized sitemap', async () => {
+    const contentDir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n',
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    try {
+      await createDocsSitemap({
+        contentDir,
+        siteUrl: 'https://example.com',
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -99,19 +99,19 @@ describe('remarkDocLinks', () => {
     ]);
   });
 
-  it('leaves external, absolute and in-page links alone', () => {
+  it('leaves external and in-page links alone', () => {
     const source = [
       '[a](https://example.com/x.md)',
       '[b](//cdn.example.com/x)',
       '[c](mailto:hi@example.com)',
       '[d](tel:+15551234)',
-      '[e](/docs/api/auth)',
       '[f](#section)',
-      '[g](../assets/logo.svg)',
       // Path-less: addresses this page, and has nothing to resolve. Recording
       // it as unresolvable would fail the build with advice — "use a path
       // relative to this file" — that cannot be followed.
       '[h](?tab=json)',
+      // Absolute, but outside the base path: someone else's route.
+      '[i](/login)',
     ].join('\n\n');
     const { urls, refs } = run(source, FROM_PAGE);
 
@@ -120,13 +120,99 @@ describe('remarkDocLinks', () => {
       '//cdn.example.com/x',
       'mailto:hi@example.com',
       'tel:+15551234',
-      '/docs/api/auth',
       '#section',
-      '../assets/logo.svg',
       '?tab=json',
+      '/login',
     ]);
     // None of them are documentation pages, so none are asserted against.
     expect(refs).toEqual([]);
+  });
+
+  /**
+   * ⚠️ `/docs/api/auht` SHIPPED A 404 WITH A GREEN BUILD.
+   *
+   * An absolute internal link needs no rewriting, so it was never recorded and
+   * therefore never asserted — while a typo in one is exactly as likely as a
+   * typo in a relative link. Only the rewriting differs.
+   */
+  it('records an absolute link under the base path, so it can be asserted', () => {
+    const { urls, refs } = run(
+      '[a](/docs/api/auth) [b](/docs) [c](/docs/api/auth#bearer)',
+      FROM_PAGE,
+    );
+
+    // Unchanged: it is already a route.
+    expect(urls).toEqual(['/docs/api/auth', '/docs', '/docs/api/auth#bearer']);
+    expect(refs.map((ref) => ref.href)).toEqual([
+      '/docs/api/auth',
+      '/docs',
+      '/docs/api/auth#bearer',
+    ]);
+  });
+
+  /*
+   * Absolute links are compared against route keys, and `source.ts` spells those
+   * with `encodeURIComponent` per segment. Recording the author's raw text made
+   * the comparison spelling-sensitive, so the human-readable `/docs/café` —
+   * what every editor and GitHub's own UI produce — failed the build with "no
+   * such page exists" for a page that plainly exists.
+   */
+  it('respells an absolute link the way route keys are spelled', () => {
+    const { urls, refs } = run(
+      '[a](/docs/café) [b](/docs/caf%C3%A9) [c](/docs/api/../café)',
+      FROM_PAGE,
+    );
+
+    // All three spellings collapse onto the one the source layer publishes —
+    // in the emitted href as well as in the recorded ref, so the page ships a
+    // canonically-encoded URL and a folded path rather than the author's.
+    expect(urls).toEqual([
+      '/docs/caf%C3%A9',
+      '/docs/caf%C3%A9',
+      '/docs/caf%C3%A9',
+    ]);
+    expect(refs.map((ref) => ref.href)).toEqual([
+      '/docs/caf%C3%A9',
+      '/docs/caf%C3%A9',
+      '/docs/caf%C3%A9',
+    ]);
+  });
+
+  it('reports a malformed escape in an absolute link with the file and line', () => {
+    expect(() => run('[a](/docs/100%-faster)', FROM_PAGE)).toThrow(
+      /whose percent-encoding is malformed/,
+    );
+  });
+
+  it('cannot tell an internal absolute link from any other when the base path is empty', () => {
+    const { refs } = run('[a](/login)', FROM_PAGE, { basePath: '' });
+    expect(refs).toEqual([]);
+  });
+
+  /**
+   * ⚠️ `./schema.json` MEANT TWO DIFFERENT FILES.
+   *
+   * Assets were returned untouched, so the browser resolved them against the
+   * ROUTE: from `guide/index.md` that is `/docs/guide/schema.json`, from
+   * `guide/setup.md` it is `/docs/guide/setup/schema.json` — from markdown that
+   * previews identically in both places.
+   */
+  it('folds a relative asset link, and marks it as not a page', () => {
+    const fromIndex = run('[s](./schema.json)', FROM_DIR_INDEX);
+    const fromLeaf = run('[s](../assets/logo.svg)', FROM_PAGE);
+
+    expect(fromIndex.urls).toEqual(['/docs/api/schema.json']);
+    expect(fromLeaf.urls).toEqual(['/docs/assets/logo.svg']);
+    // `asset: true` is what keeps `assertLinks` from checking a download
+    // against the set of published routes, which it will never be a member of.
+    expect(fromLeaf.refs).toEqual([
+      {
+        raw: '../assets/logo.svg',
+        href: '/docs/assets/logo.svg',
+        line: 1,
+        asset: true,
+      },
+    ]);
   });
 
   it('resolves against the directory, not the route, for index pages', () => {
@@ -230,6 +316,70 @@ describe('remarkDocLinks', () => {
 
     expect(() => processor.runSync(processor.parse(file), file)).toThrow(
       /docLinkContext.*broken\.md/s,
+    );
+  });
+
+  /**
+   * ⚠️ A `definition` CANNOT TELL YOU WHAT REFERS TO IT.
+   *
+   * `[l]: ./logo.png` is a link target for `[text][l]` and an image source for
+   * `![alt][l]`, and the node is identical. Handed to a custom resolver it
+   * either failed the build with a message about a link that is not a link, or
+   * silently rewrote the image `src` to a page route — which nothing downstream
+   * can undo, because the leading `/` makes the image folder pass it straight
+   * through and the `imageResolver` never sees it.
+   */
+  it('leaves a definition that an image reference points at', () => {
+    const { urls, refs } = run(
+      ['![logo][l]', '', '[l]: ./logo.png'].join('\n'),
+      FROM_PAGE,
+      { basePath: '/docs', resolve: (href) => `/x/${href}` },
+    );
+
+    expect(urls).toEqual(['./logo.png']);
+    expect(refs).toEqual([]);
+  });
+
+  it('still resolves a definition used only as a link', () => {
+    const { urls } = run(
+      ['[the guide][l]', '', '[l]: ./install.md'].join('\n'),
+      FROM_PAGE,
+    );
+    expect(urls).toEqual(['/docs/guide/install']);
+  });
+
+  /**
+   * ⚠️ `[gs](./getting%20started.md)` IS WHAT GITHUB'S UI WRITES for a file
+   * with a space in its name — and without decoding, the segment stayed
+   * `getting%20started`, matched no page, and hard-failed the build on a link
+   * GitHub renders correctly.
+   *
+   * Re-encoding on the way out is the other half: `source.ts` spells every
+   * published href with `encodeURIComponent`, and `assertLinks` compares the
+   * two strings.
+   */
+  it('decodes a percent-encoded link and re-encodes the route', () => {
+    const { urls } = run(
+      // The angle-bracket form is how CommonMark spells a literal space in a
+      // destination; both must land on the same route.
+      '[a](./getting%20started.md) [b](<./getting started.md>)',
+      FROM_PAGE,
+    );
+
+    expect(urls).toEqual([
+      '/docs/guide/getting%20started',
+      '/docs/guide/getting%20started',
+    ]);
+  });
+
+  it('decodes before folding, so an encoded `..` is still contained', () => {
+    const { refs } = run('[a](%2E%2E/%2E%2E/outside.md)', FROM_PAGE);
+    expect(refs.map((ref) => ref.href)).toEqual([undefined]);
+  });
+
+  it('names the document when a link is not valid percent-encoding', () => {
+    expect(() => run('intro\n\n[a](./100%-faster.md)\n', FROM_PAGE)).toThrow(
+      /guide\/setup\.md:3 links to '\.\/100%-faster\.md'.*percent-encoding/s,
     );
   });
 

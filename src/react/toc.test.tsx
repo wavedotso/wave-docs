@@ -54,7 +54,50 @@ function mountHeadings(ids: readonly string[] = HEADING_IDS): void {
 afterEach(() => {
   article?.remove();
   article = undefined;
+  vi.restoreAllMocks();
 });
+
+/** Frames a drain will run before it calls the retry loop unbounded. */
+const FRAME_DRAIN_LIMIT = 500;
+
+/**
+ * Take over `requestAnimationFrame` so the retry loop can be run by hand.
+ *
+ * jsdom drives rAF off a real timer, which would turn "does it eventually give
+ * up?" into a race against the clock. Install this *before* rendering.
+ */
+function captureFrames(): { runOne: () => void; drain: () => number } {
+  const queue: FrameRequestCallback[] = [];
+  vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(
+    (callback) => {
+      queue.push(callback);
+      return queue.length;
+    },
+  );
+
+  const runOne = (): void => {
+    const next = queue.shift();
+    if (next === undefined) {
+      throw new Error('expected a queued animation frame');
+    }
+    act(() => {
+      next(0);
+    });
+  };
+
+  return {
+    runOne,
+    /** Runs queued frames until none are left; the count it took. */
+    drain: (): number => {
+      let count = 0;
+      while (queue.length > 0 && count < FRAME_DRAIN_LIMIT) {
+        runOne();
+        count += 1;
+      }
+      return count;
+    },
+  };
+}
 
 /** Which entries a screen reader would announce as the current location. */
 function currentHrefs(): (string | null)[] {
@@ -132,14 +175,47 @@ describe('DocsToc scrollspy', () => {
     disconnect.mockRestore();
   });
 
-  it('survives a page whose headings are not in the document', () => {
-    // Nothing mounted: the TOC still renders, it just never becomes current.
+  it('picks up headings that only reach the document a frame later', () => {
+    // The TOC and the document it describes are separate subtrees, so the
+    // headings need not exist when the effect runs — `<DocContent/>` inside a
+    // `<Suspense>` boundary the TOC renders outside of, or a tabs wrapper that
+    // mounts its panel late. Resolving zero elements used to observe nothing
+    // for the life of the page: no entry ever became current, and nothing threw
+    // or logged, so it read as "the highlight just doesn't work on our site".
+    const frames = captureFrames();
     render(<DocsToc entries={entries} />);
 
     scrollTo(['install']);
+    expect(currentHrefs()).toEqual([]);
 
+    mountHeadings();
+    frames.runOne();
+
+    scrollTo(['install']);
+    expect(currentHrefs()).toEqual(['#install']);
+  });
+
+  it('stops looking when the headings never arrive', () => {
+    // The retry is what makes a late mount work; a retry with no end is a rAF
+    // loop running for the life of every page that legitimately has none.
+    const frames = captureFrames();
+    render(<DocsToc entries={entries} />);
+
+    expect(frames.drain()).toBeLessThan(FRAME_DRAIN_LIMIT);
     expect(screen.getByRole('navigation')).toBeInTheDocument();
     expect(currentHrefs()).toEqual([]);
+  });
+
+  it('does not keep retrying once some headings resolved', () => {
+    // A partial resolve means the content is mounted and the missing ids are an
+    // authoring error — an entry for a heading the page does not have — which
+    // no amount of waiting fixes.
+    mountHeadings(['install']);
+    const frames = captureFrames();
+
+    render(<DocsToc entries={entries} />);
+
+    expect(frames.drain()).toBe(0);
   });
 
   it("drops the previous page's current entry when the headings change", () => {
