@@ -72,9 +72,37 @@
       "browser": null,
       "default": "./dist/next.js"
     },
-    "./react/*": {
-      "types": "./dist/react/*.d.ts",
-      "default": "./dist/react/*.js"
+    "./react/callout": {
+      "types": "./dist/react/callout.d.ts",
+      "default": "./dist/react/callout.js"
+    },
+    "./react/doc-content": {
+      "types": "./dist/react/doc-content.d.ts",
+      "default": "./dist/react/doc-content.js"
+    },
+    "./react/markdown-components": {
+      "types": "./dist/react/markdown-components.d.ts",
+      "default": "./dist/react/markdown-components.js"
+    },
+    "./react/search-dialog": {
+      "types": "./dist/react/search-dialog.d.ts",
+      "default": "./dist/react/search-dialog.js"
+    },
+    "./react/sidebar": {
+      "types": "./dist/react/sidebar.d.ts",
+      "default": "./dist/react/sidebar.js"
+    },
+    "./react/skip-link": {
+      "types": "./dist/react/skip-link.d.ts",
+      "default": "./dist/react/skip-link.js"
+    },
+    "./react/toc": {
+      "types": "./dist/react/toc.d.ts",
+      "default": "./dist/react/toc.js"
+    },
+    "./react/youtube": {
+      "types": "./dist/react/youtube.d.ts",
+      "default": "./dist/react/youtube.js"
     }
   },
   "files": [

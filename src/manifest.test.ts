@@ -150,8 +150,18 @@ describe('node version floors', () => {
   });
 });
 
+/**
+ * React modules that are deliberately NOT importable, each with the reason.
+ *
+ * Empty today. It exists because the shell work adds `layout`, `nav`,
+ * `next-nav` and `code-runtime` to `src/react/`, none of which is the public
+ * API — `docs.Layout` is, and `DocsSidebar` is. Without this the enumeration
+ * below would be silently completed by whoever adds the first one.
+ */
+const INTERNAL_REACT_MODULES = new Set<string>([]);
+
 describe('exports map', () => {
-  /** Every string target in the map, wildcards included. */
+  /** Every string target in the map. */
   function targets(node: unknown): string[] {
     if (typeof node === 'string') {
       return [node];
@@ -174,36 +184,66 @@ describe('exports map', () => {
   });
 
   /**
+   * Wildcards are gone on purpose, and must not come back. Node's `exports`
+   * wildcard does not check that the target exists, so `"./react/*"` made every
+   * file that ever lands in `src/react/` public API on the day it is typed —
+   * verified: a throwaway module dropped into `dist/react/` imported cleanly.
+   * The stability policy promises nothing undocumented is exported, and a
+   * wildcard makes that promise unkeepable rather than merely unkept.
+   */
+  it('enumerates every subpath rather than wildcarding', () => {
+    for (const key of Object.keys(section(manifest, 'exports'))) {
+      expect(key).not.toContain('*');
+    }
+    for (const target of all) {
+      expect(target).not.toContain('*');
+    }
+  });
+
+  /**
    * Skipped rather than failed when `dist/` is absent so the suite does not
    * depend on build order — CI type-checks and tests before it builds.
    */
   it.skipIf(!existsSync(path.join(ROOT, 'dist')))(
     'points every subpath at a file the build actually emits',
     () => {
-      const missing = all.flatMap((target) => {
-        if (!target.includes('*')) {
-          return existsSync(path.join(ROOT, target)) ? [] : [target];
-        }
-        const [prefix, suffix] = target.split('*');
-        if (prefix === undefined || suffix === undefined) {
-          return [target];
-        }
-        // `./dist/react/*.js` splits to a prefix that is already a directory;
-        // `path.dirname` on it would climb one level too far and silently
-        // pass against the wrong folder.
-        const isDir = prefix.endsWith('/');
-        const dir = path.join(ROOT, isDir ? prefix : path.dirname(prefix));
-        if (!existsSync(dir)) {
-          return [target];
-        }
-        const base = isDir ? '' : path.basename(prefix);
-        const matches = readdirSync(dir).filter(
-          (name) => name.startsWith(base) && name.endsWith(suffix),
-        );
-        return matches.length > 0 ? [] : [target];
-      });
+      const missing = all.filter(
+        (target) => !existsSync(path.join(ROOT, target)),
+      );
 
       expect(missing).toEqual([]);
     },
   );
+
+  /**
+   * The other half of the enumeration: a component added to `src/react/` and
+   * forgotten in the map ships unimportable, which no other test would catch.
+   * A module that is genuinely internal goes on the allowlist WITH the reason —
+   * the package already keeps `docs-error`, `map-pooled` and `section-boundary`
+   * out of the map entirely, and `src/react/` now works the same way.
+   */
+  it('exports every react module, or names it internal', () => {
+    const modules = readdirSync(path.join(ROOT, 'src', 'react'))
+      .filter((name) => name.endsWith('.tsx') && !name.includes('.test.'))
+      .map((name) => name.replace(/\.tsx$/, ''));
+
+    const exported = new Set(
+      Object.keys(section(manifest, 'exports'))
+        .filter((key) => key.startsWith('./react/'))
+        .map((key) => key.slice('./react/'.length)),
+    );
+
+    const unaccounted = modules.filter(
+      (name) => !exported.has(name) && !INTERNAL_REACT_MODULES.has(name),
+    );
+
+    expect(unaccounted).toEqual([]);
+
+    // An allowlist entry for a module that no longer exists is a stale comment
+    // pretending to be a decision.
+    const stale = [...INTERNAL_REACT_MODULES].filter(
+      (name) => !modules.includes(name),
+    );
+    expect(stale).toEqual([]);
+  });
 });

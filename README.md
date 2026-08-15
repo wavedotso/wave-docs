@@ -111,13 +111,15 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/render` | Node | `createDocsRenderer` |
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS` |
 | `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex`, `writeSearchIndex` |
-| `@waveso/docs/react/*` | Browser + RSC | See [Components](#components) |
+| `@waveso/docs/react/<name>` | Browser + RSC | Eight components, one per subpath — see [Components](#components) |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/search-options` | Any | `SEARCH_INDEX_OPTIONS` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
 | `@waveso/docs/styles.css` | — | The stylesheet |
 
 The Node-only subpaths carry `"browser": null`, so importing one from client code fails with a located *module not found* rather than quietly bundling `node:fs`.
+
+Every subpath is enumerated in `exports` — there is no wildcard. A name that is not in the table above is not importable, which is what makes "nothing undocumented is exported" a guarantee rather than an intention.
 
 ## Components
 
