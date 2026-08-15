@@ -87,15 +87,27 @@ export interface SearchDialogProps {
   /**
    * Overrides applied through `mergeSearchOptions` when the index is
    * deserialised — the escape hatch for tokenisation, `processTerm` and the
-   * query defaults (`fuzzy`, `prefix`, `combineWith`, `boost`) without waiting
-   * on a release of this package.
+   * query defaults, without waiting on a release of this package.
    *
-   * ⚠️ HAND THE IDENTICAL OVERRIDES TO `buildSearchIndex`. `tokenize` and
-   * `processTerm` decide how terms were written into the index; a client that
-   * splits differently from the build looks up terms that were never written
-   * and finds nothing, silently.
+   * MiniSearch's own name for the query defaults is `searchOptions`, so they
+   * nest one level down:
+   *
+   * ```tsx
+   * <DocsSearch miniSearchOptions={{ searchOptions: { fuzzy: 0.1 } }} />
+   * ```
+   *
+   * That stutter is why this prop is not called `searchOptions` too. It was,
+   * and `searchOptions={{ fuzzy: 0.1 }}` reads so naturally that both README
+   * examples were written that way — neither compiled, and the flat form is
+   * not a runtime error either. It is a `fuzzy` MiniSearch never reads.
+   *
+   * ⚠️ HAND THE IDENTICAL OVERRIDES TO THE BUILD — `createDocsRoute`'s
+   * `miniSearchOptions`, or `buildSearchIndex`'s second argument. `tokenize`
+   * and `processTerm` decide how terms were written into the index; a client
+   * that splits differently from the build looks up terms that were never
+   * written and finds nothing, silently.
    */
-  searchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
+  miniSearchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
 }
 
 /** A search result, narrowed out of MiniSearch's untyped stored fields. */
@@ -126,7 +138,7 @@ export function SearchDialog({
   maxResults = 8,
   debounceMs = 120,
   className,
-  searchOptions,
+  miniSearchOptions,
 }: SearchDialogProps): ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -158,7 +170,7 @@ export function SearchDialog({
    * `debounceMs` forever. The options are consumed exactly once per URL
    * anyway, when that URL's index is deserialised.
    */
-  const searchOptionsRef = useRef(searchOptions);
+  const miniSearchOptionsRef = useRef(miniSearchOptions);
   /** Whether the dialog has ever been open. See the focus effect below. */
   const hasOpenedRef = useRef(false);
 
@@ -167,15 +179,15 @@ export function SearchDialog({
   const optionId = (index: number): string => `${baseId}-option-${index}`;
 
   useEffect(() => {
-    searchOptionsRef.current = searchOptions;
-  }, [searchOptions]);
+    miniSearchOptionsRef.current = miniSearchOptions;
+  }, [miniSearchOptions]);
 
   /** Load each URL at most once; a failure evicts that key so a retry can. */
   const ensureIndex = useCallback((): Promise<MiniSearch<SearchRecord>> => {
     const cache = indexCacheRef.current;
     let pending = cache.get(indexUrl);
     if (pending === undefined) {
-      pending = loadIndex(indexUrl, searchOptionsRef.current).catch(
+      pending = loadIndex(indexUrl, miniSearchOptionsRef.current).catch(
         (error: unknown) => {
           cache.delete(indexUrl);
           throw error;
