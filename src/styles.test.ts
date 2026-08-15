@@ -295,9 +295,9 @@ function focusSelectors(rules: readonly StyleRule[]): string[] {
 }
 
 /**
- * Focus rules whose indicator is drawn by a different rule, and which therefore
- * need no forced-colors entry: the search input's ring lives on the row around
- * it, because a ring on a borderless full-width input reads as an error state.
+ * Focus rules whose indicator is drawn by a different rule: the search input's
+ * ring lives on the row around it, because a ring on a borderless full-width
+ * input reads as an error state.
  */
 const INDICATOR_ELSEWHERE: ReadonlySet<string> = new Set([
   '.wave-docs-search-input:focus',
@@ -521,24 +521,13 @@ describe('callout hues', () => {
 });
 
 describe('focus indicators', () => {
-  const forced = RULES.find(
-    (rule) => rule.prelude === '@media (forced-colors: active)',
-  );
-  if (forced === undefined) {
-    throw new Error('styles.css has no @media (forced-colors: active) block');
-  }
-  const forcedBody = readBlock(sheet, forced.at);
-  const forcedEnd = forced.at + forcedBody.length;
-  const restored = focusSelectors(readRules(forcedBody.slice(1)));
-  const declared = focusSelectors(
-    RULES.filter((rule) => rule.at < forced.at || rule.at > forcedEnd),
-  );
+  const declared = focusSelectors(RULES);
 
   it('has one for every focusable surface in the package', () => {
     // The skip link, prose links, the sidebar, the TOC, the YouTube facade, the
     // table scroll region, the Shiki `<pre>` (Shiki gives it `tabindex="0"`),
-    // the search trigger, its input row, the close button and each result link.
-    expect(declared.length).toBeGreaterThanOrEqual(10);
+    // the search trigger, its input row and the close button.
+    expect(declared.length).toBeGreaterThanOrEqual(9);
   });
 
   it('covers the Shiki <pre>, which Shiki makes focusable', () => {
@@ -557,30 +546,42 @@ describe('focus indicators', () => {
     );
   });
 
-  it('restores all of them under forced colours', () => {
-    // Forced-colors mode drops `box-shadow` entirely and honours `outline`.
-    // Every ring in this package is a box-shadow paired with `outline: none`,
-    // so without this block the package strictly removes the UA indicator from
-    // every interactive surface and draws nothing in its place.
+  /**
+   * Replaces the forced-colors assertion this file used to carry, and is a
+   * stronger invariant than it was.
+   *
+   * The old test checked that every focus rule had a matching entry in a
+   * `@media (forced-colors: active)` block — necessary only because every ring
+   * was a `box-shadow`, which that mode drops. It could not tell whether the
+   * *normal* indicator was visible; a rule declaring `outline: none` with no
+   * shadow passed it. This one reads the declarations: forced-colors forces
+   * `outline-color` to a system colour by itself, so an outline that is visible
+   * here is visible there, and there is nothing left to keep in step.
+   */
+  it('draws a real outline, so forced colours need no second list', () => {
+    expect(sheet).not.toContain('--wave-docs-ring');
+    expect(sheet).not.toContain('outline: 2px solid transparent');
+
     for (const selector of declared) {
       if (INDICATOR_ELSEWHERE.has(selector)) continue;
-      expect(restored, `${selector} has no forced-colors rule`).toContain(
-        selector,
+      const block = readBlock(sheet, sheet.indexOf(`${selector}`));
+      expect(block, `${selector} declares no outline`).toMatch(
+        /outline:\s*\d+px solid (?!transparent)/,
       );
     }
-    expect(forcedBody).toContain('Highlight');
   });
 
   it('marks the active search result with more than a tint', () => {
     // Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one —
-    // so the active class is the only indication of where the keyboard is.
+    // so the active class is the only indication of where the keyboard is, and
+    // `.wave-docs-search-result-link:focus-visible` was dead CSS.
     const active = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-search-result-active {'),
     );
     expect(active).toContain('outline: 2px solid var(--wave-docs-accent)');
     expect(active).toContain('outline-offset: -2px');
-    expect(forcedBody).toContain('.wave-docs-search-result-active');
+    expect(sheet).not.toContain('.wave-docs-search-result-link:focus-visible');
   });
 });
 

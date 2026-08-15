@@ -118,10 +118,6 @@
     --wave-docs-scroll-padding: 4rem;
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
-
-    /* Focus ring, shared by every interactive thing in the package. */
-    --wave-docs-ring: 0 0 0 2px var(--wave-docs-bg),
-      0 0 0 4px var(--wave-docs-accent);
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -279,15 +275,18 @@
    * plain `:focus` for the same reason. */
   .wave-docs-skip-link:focus {
     transform: translateY(0);
-    /* Transparent rather than `none`, here and at every other ring in this
-     * file: forced-colors mode zeroes `box-shadow` and honours `outline`, so
-     * `outline: none` would strictly remove the UA indicator and put nothing
-     * back. A transparent outline is invisible normally and repainted in a
-     * system colour there. The explicit `forced-colors` block at the end of
-     * this file is the belt to this pair of braces. */
-    outline: 2px solid transparent;
+    /* `outline`, here and at every other focus ring in this file, never
+     * `box-shadow`. Forced-colors mode drops `box-shadow` and forces
+     * `outline-color` to a system colour, so an outline is repainted for free
+     * where a shadow ring had to be restored by hand — which is what a 24-line
+     * `forced-colors` block used to do, for all eleven of them, with a test
+     * policing the list. An outline also follows the element's own
+     * `border-radius`, and shows the real surface through `outline-offset`
+     * instead of painting `--wave-docs-bg` as a spacer — which was a lie on the
+     * active search result, where the row is `accent-subtle` and the ring drew
+     * a white gap across it. */
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -376,9 +375,8 @@
   .wave-docs-sidebar :is(a, button):focus-visible,
   .wave-docs-toc a:focus-visible,
   .wave-docs-youtube__facade:focus-visible {
-    outline: 2px solid transparent;
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   .wave-docs-prose :is(ul, ol) {
@@ -469,9 +467,8 @@
   }
 
   .wave-docs-table-scroll:focus-visible {
-    outline: 2px solid transparent;
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   .wave-docs-table {
@@ -572,9 +569,8 @@
    * wide block — which makes it the one focusable element in this package that
    * had no focus style. */
   .wave-docs-prose .shiki:focus-visible {
-    outline: 2px solid transparent;
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   .wave-docs-prose .shiki code {
@@ -929,11 +925,9 @@
   }
 
   .wave-docs-search-trigger:focus-visible,
-  .wave-docs-search-close:focus-visible,
-  .wave-docs-search-result-link:focus-visible {
-    outline: 2px solid transparent;
+  .wave-docs-search-close:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   /* The label is the flexible half of the trigger; the shortcut hint beside it
@@ -1015,9 +1009,9 @@
     font-size: 1rem;
   }
 
-  /* Not `outline: 2px solid transparent` like every other control here: the
-   * row above already draws a real outline, and a second one on the input
-   * would double up in forced-colors mode. */
+  /* The one `outline: none` in the file, and it is not a missing indicator:
+   * the row around the input draws a real outline on `:has(:focus-visible)`,
+   * and a second one on the input itself would double up. */
   .wave-docs-search-input:focus {
     outline: none;
   }
@@ -1134,46 +1128,5 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-}
-
-/* ---------------------------------------------------------------------------
- * Forced colours
- *
- * Windows High Contrast and its kin drop `box-shadow` entirely and replace
- * every colour with one from the user's palette. Every focus indicator in this
- * package is a `box-shadow` ring, so without this block the package would
- * *remove* the UA outline from every focusable surface it styles and draw
- * nothing in its place — a strictly worse page than shipping no CSS at all.
- *
- * `Highlight` rather than a token: user-chosen system colours are the whole
- * point of the mode, and `--wave-docs-accent` is forced to something else
- * anyway. This list must stay in step with every `:focus-visible` rule above;
- * `src/styles.test.ts` fails if one appears without its entry here.
- * ------------------------------------------------------------------------ */
-
-@layer components {
-  @media (forced-colors: active) {
-    .wave-docs-skip-link:focus,
-    .wave-docs-prose a:focus-visible,
-    .wave-docs-sidebar :is(a, button):focus-visible,
-    .wave-docs-toc a:focus-visible,
-    .wave-docs-youtube__facade:focus-visible,
-    .wave-docs-table-scroll:focus-visible,
-    .wave-docs-prose .shiki:focus-visible,
-    .wave-docs-search-trigger:focus-visible,
-    .wave-docs-search-close:focus-visible,
-    .wave-docs-search-result-link:focus-visible {
-      outline: 3px solid Highlight;
-      outline-offset: 2px;
-    }
-
-    /* Inward, like their normal-mode rules: one is clipped by the dialog, the
-     * other by the scrolling results list. */
-    .wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible),
-    .wave-docs-search-result-active {
-      outline: 2px solid Highlight;
-      outline-offset: -2px;
-    }
   }
 }
