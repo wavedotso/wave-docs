@@ -1,8 +1,17 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import MiniSearch from 'minisearch';
 import { isValidElement } from 'react';
-import { afterAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+} from 'vitest';
 import { z } from 'zod';
 
 import { docFrontmatterSchema } from './frontmatter.js';
@@ -11,6 +20,9 @@ import {
   createDocsRoute,
   createDocsSitemap,
 } from './next.js';
+import { buildSearchIndex, extractSearchRecords } from './search-index.js';
+import { mergeSearchOptions } from './search-options.js';
+import type { SearchRecord } from './types.js';
 
 const BASIC = path.join(import.meta.dirname, '__fixtures__', 'source', 'basic');
 
@@ -234,6 +246,146 @@ describe('createDocsRoute', () => {
     await expect(
       route.Page({ params: Promise.resolve({ slug: ['nope'] }) }),
     ).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+});
+
+describe('docs.searchIndex', () => {
+  const route = createDocsRoute({ contentDir: BASIC });
+
+  it('derives its URL from the base path, root mount included', () => {
+    expect(route.searchIndexUrl).toBe('/docs/search-index.json');
+    expect(
+      createDocsRoute({ contentDir: BASIC, basePath: '/' }).searchIndexUrl,
+    ).toBe('/search-index.json');
+    expect(
+      createDocsRoute({ contentDir: BASIC, basePath: '/product/docs' })
+        .searchIndexUrl,
+    ).toBe('/product/docs/search-index.json');
+  });
+
+  it('serves an index the dialog can load, hit and deep-link from', async () => {
+    const response = await route.searchIndex();
+    expect(response.headers.get('content-type')).toBe('application/json');
+
+    // Loaded exactly as `search-dialog.tsx` loads it: the same merged options,
+    // or the terms in the index are ones no query can spell.
+    const index = MiniSearch.loadJSON<SearchRecord>(
+      await response.text(),
+      mergeSearchOptions(),
+    );
+    const hits = index.search('authentication');
+
+    expect(hits.length).toBeGreaterThan(0);
+    // `basePath` reaches the href, so a hit navigates somewhere that exists.
+    expect(hits.every((hit) => String(hit.href).startsWith('/docs'))).toBe(
+      true,
+    );
+    expect(hits.map((hit) => hit.href)).toContain('/docs/api/authentication');
+    // A draft is not a page; indexing one leaks unpublished prose into a
+    // dialog that then navigates to a hard 404.
+    expect(
+      index.search('changelog').every((hit) => hit.href !== '/docs/changelog'),
+    ).toBe(true);
+  });
+
+  it('is byte-identical to the documented escape hatch', async () => {
+    // The handler is a convenience over `renderAll()` + these two functions,
+    // and this is what pins it there: if it ever grows its own opinion about
+    // records or options, anyone who built the index by hand — because they
+    // needed a step the handler cannot express — gets a different artifact
+    // than their dialog was configured for.
+    const byHand = buildSearchIndex(
+      (await route.renderAll()).flatMap((doc) => extractSearchRecords(doc)),
+    );
+
+    expect(await (await route.searchIndex()).text()).toBe(byHand);
+  });
+
+  it('applies miniSearchOptions to the index it builds', async () => {
+    const custom = createDocsRoute({
+      contentDir: BASIC,
+      miniSearchOptions: { storeFields: ['href'] },
+    });
+    const record = JSON.parse(await (await custom.searchIndex()).text()) as {
+      storedFields: Record<string, Record<string, unknown>>;
+    };
+
+    // `storeFields` is applied at build time and cannot be recovered on the
+    // client, so an override that never reached the index would fail silently.
+    expect(Object.keys(Object.values(record.storedFields)[0] ?? {})).toEqual([
+      'href',
+    ]);
+  });
+
+  describe('the force-static guard', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('refuses to render the corpus at request time in production', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('NEXT_PHASE', undefined);
+
+      await expect(route.searchIndex()).rejects.toMatchObject({
+        code: 'search-index-dynamic',
+      });
+      // The message has to name the file to edit — the whole failure is one
+      // missing line in a route file nobody looks at twice.
+      await expect(route.searchIndex()).rejects.toThrow(
+        /app\/docs\/search-index\.json\/route\.ts/,
+      );
+    });
+
+    it('allows the prerender that writes the file', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('NEXT_PHASE', 'phase-production-build');
+
+      expect((await route.searchIndex()).status).toBe(200);
+    });
+
+    it('stays out of the way in development', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('NEXT_PHASE', undefined);
+
+      expect((await route.searchIndex()).status).toBe(200);
+    });
+  });
+
+  describe('cache headers', () => {
+    it('replaces a year of s-maxage with a validator', async () => {
+      // Next's default for a `force-static` route is
+      // `s-maxage=31536000, stale-while-revalidate` with nothing to revalidate
+      // *against*, so a CDN pins one index to a URL that never changes.
+      const headers = (await route.searchIndex()).headers;
+
+      expect(headers.get('cache-control')).toBe(
+        'public, max-age=0, must-revalidate',
+      );
+      expect(headers.get('etag')).toMatch(/^"[0-9a-f]{40}"$/);
+    });
+
+    it('holds the ETag still while the corpus does, and moves it when it does not', async () => {
+      const dir = await makeContentDir({
+        'index.md': '---\ntitle: Home\n---\n\nOriginal body.\n',
+      });
+      const dev = createDocsRoute({ contentDir: dir });
+      const etag = async (): Promise<string | null> =>
+        (await dev.searchIndex()).headers.get('etag');
+
+      const first = await etag();
+      // The stable half is the load-bearing one: `buildSearchIndex` promises
+      // byte-stable output, and an ETag that churned would quietly disprove it
+      // while turning every revalidation into a full download.
+      expect(await etag()).toBe(first);
+
+      await writeFile(
+        path.join(dir, 'index.md'),
+        '---\ntitle: Home\n---\n\nEdited body.\n',
+        'utf8',
+      );
+
+      expect(await etag()).not.toBe(first);
+    });
   });
 });
 

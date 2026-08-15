@@ -44,7 +44,9 @@
  * out of the config load, which was never true.
  */
 
+import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
+import type { Options as MiniSearchOptions } from 'minisearch';
 import type { ComponentProps, ComponentType, ReactNode } from 'react';
 import { cache, createElement } from 'react';
 
@@ -77,6 +79,7 @@ import type {
   ImageResolver,
   LinkResolver,
   RenderedDoc,
+  SearchRecord,
 } from './types.js';
 import { docsError } from './docs-error.js';
 
@@ -367,6 +370,16 @@ export interface DocsRouteOptions<
    * set neither, you ship pages with no usable canonical.
    */
   siteUrl?: string | undefined;
+  /**
+   * MiniSearch overrides for the index {@link DocsRoute.searchIndex} builds.
+   *
+   * ⚠️ THE IDENTICAL OBJECT MUST REACH THE DIALOG — pass it to `DocsSearch`'s
+   * (or `SearchDialog`'s) `miniSearchOptions`. MiniSearch reads `tokenize` and
+   * `processTerm` both when indexing and when querying, so applying one here
+   * and not there produces an index whose terms no query can spell: zero
+   * results, no error, nothing in the console.
+   */
+  miniSearchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -484,11 +497,51 @@ export interface DocsRoute<
     segments: string[],
   ) => Promise<RenderedDoc<TFrontmatter> | undefined>;
   /**
-   * Every published page, rendered. The input to
-   * `extractSearchRecords`/`writeSearchIndex` — nothing builds the search index
-   * for you.
+   * Every published page, rendered. The escape hatch behind
+   * {@link DocsRoute.searchIndex}, for anyone building their own artifact out
+   * of `extractSearchRecords`.
    */
   renderAll: () => Promise<Array<RenderedDoc<TFrontmatter>>>;
+  /**
+   * `GET` handler for `app/<basePath>/search-index.json/route.ts`, serving the
+   * MiniSearch index the dialog fetches.
+   *
+   * ```ts
+   * // app/docs/search-index.json/route.ts — the whole file
+   * import { docs } from '@/lib/docs';
+   *
+   * export const GET = docs.searchIndex;
+   * export const dynamic = 'force-static'; // a literal, see below
+   * ```
+   *
+   * **`dynamic = 'force-static'` is not optional and must be a literal**, for
+   * the same reason as {@link DocsRoute.dynamicParams}: route segment config is
+   * parsed out of the module before any of it runs. Without it Next marks the
+   * route `ƒ` (Dynamic) and re-renders your entire corpus on every request —
+   * from markdown that output tracing did not put in the deployment bundle, so
+   * on a serverless host it does not merely get slow, it throws, at the reader,
+   * inside the search dialog. The build prints no warning for this, so the
+   * handler detects it at runtime and throws with `code:
+   * 'search-index-dynamic'` instead of failing quietly.
+   *
+   * The index is built from the same `renderAll()` → `extractSearchRecords` →
+   * `buildSearchIndex` pipeline you could write by hand, with the `charset`-free
+   * `application/json` content type, a strong `ETag` and
+   * `cache-control: public, max-age=0, must-revalidate` — Next's default for a
+   * prerendered route is a year of `s-maxage` with no validator, which on a
+   * stable URL means a CDN serving last year's index until someone purges it.
+   */
+  searchIndex: () => Promise<Response>;
+  /**
+   * `${basePath}/search-index.json` — hand it to `DocsSearch`'s `indexUrl`.
+   *
+   * Derived from the route's own `basePath`, so it is right when the docs are
+   * mounted at `/`, at `/docs`, or under a nested prefix. It is *not* prefixed
+   * with Next's `basePath` config, which Next applies to `<Link>` and to
+   * navigation but never to a client `fetch()` — on a site setting that, prefix
+   * it yourself.
+   */
+  searchIndexUrl: string;
 }
 
 /**
@@ -691,6 +744,74 @@ export function createDocsRoute<
     );
   };
 
+  const searchIndexUrl = `${config.basePath}/search-index.json`;
+
+  /**
+   * Fail loudly when the search-index route was not frozen at build time.
+   *
+   * The signal is `NEXT_PHASE`, which Next sets to `phase-production-build`
+   * while prerendering — verified in both output modes, and `undefined` under
+   * `next start`. It is internal and undocumented, which is why the CI smoke
+   * build asserts the prerendered body exists: if this ever changes meaning it
+   * fails there, in this repository, rather than in a consumer's deploy.
+   *
+   * The alternative was a `console.error`, and it is not one. A warning in a
+   * serverless log is unread, and the observable symptom — a search dialog
+   * stuck on "could not load the index" — arrives days later with nothing
+   * connecting it to a missing line in a route file.
+   */
+  const assertPrerendered = (): void => {
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.NEXT_PHASE !== 'phase-production-build'
+    ) {
+      throw docsError(
+        'search-index-dynamic',
+        'the search index was requested at runtime instead of being built ' +
+          `into your deployment. Add \`export const dynamic = 'force-static'\` ` +
+          `to app${searchIndexUrl}/route.ts — it has to be a literal, like ` +
+          '`dynamicParams`. Without it Next re-renders every page of your ' +
+          'corpus per request, from markdown that is not in the deployment ' +
+          'bundle. (Building the index somewhere else on purpose? Use ' +
+          '`docs.renderAll()` with `extractSearchRecords` and ' +
+          '`buildSearchIndex` from `@waveso/docs/search-index` instead of ' +
+          'calling this handler.)',
+      );
+    }
+  };
+
+  const searchIndex = async (): Promise<Response> => {
+    assertPrerendered();
+    // Lazy so MiniSearch stays off the module graph of `next.config.ts`, which
+    // loads this entry point for `createDocsSitemap`/`createDocsRedirects`.
+    const { buildSearchIndex, extractSearchRecords } = await import(
+      './search-index.js'
+    );
+    const rendered = await renderAll();
+    const json = buildSearchIndex(
+      rendered.flatMap((doc) => extractSearchRecords(doc)),
+      options.miniSearchOptions ?? {},
+    );
+
+    return new Response(json, {
+      headers: {
+        // No `charset`: JSON is UTF-8 by definition and the parameter is not
+        // defined for this media type (RFC 8259 §11).
+        'content-type': 'application/json',
+        // Next's default for a `force-static` route is
+        // `s-maxage=31536000` with no validator, so a CDN in front of a
+        // self-hosted `next start` pins a year-old index to a URL that never
+        // changes. `must-revalidate` on a stable URL with a strong ETag is
+        // the shape a docs index actually wants: revalidation is a 304.
+        'cache-control': 'public, max-age=0, must-revalidate',
+        // Strong, not weak: the body is byte-stable for a given corpus, which
+        // `buildSearchIndex` guarantees, so byte equality is the real
+        // equivalence here and a `W/` prefix would understate it.
+        etag: `"${createHash('sha1').update(json).digest('hex')}"`,
+      },
+    });
+  };
+
   async function renderRoute(segments: string[]): Promise<ReactNode> {
     const doc = await getPage(segments);
     if (doc === undefined) {
@@ -721,6 +842,8 @@ export function createDocsRoute<
     source: requestScopedSource,
     getPage,
     renderAll,
+    searchIndex,
+    searchIndexUrl,
     dynamicParams: false,
 
     async Page({ params }: DocsPageProps): Promise<ReactNode> {

@@ -6,7 +6,15 @@
  * our module, what the tracer decides to ship, what actually lands on disk.
  * Those are undocumented internals that move under a Next minor, and when one
  * moves, this fails here — on the pull request that bumped Next — instead of
- * in a consumer's deploy.
+ * in a consumer's deploy. Four of them are load-bearing:
+ *
+ * - `path.resolve(process.cwd(), …)` does not sweep the whole project into the
+ *   server bundle, because `resolveDocsConfig` carries a `turbopackIgnore`;
+ * - a `force-static` route handler prerenders to `<route>.body`, which is the
+ *   entire premise of `docs.searchIndex`;
+ * - headers set on that handler's `Response` survive into the prerender
+ *   manifest as `initialHeaders`, and are served verbatim;
+ * - `output: 'export'` writes the same body out as a plain static file.
  *
  * `smoke/lib/docs.ts` imports `@waveso/docs/next` **by name**, which Node
  * self-references through the real `exports` map into `dist/`, exactly as a
@@ -19,9 +27,23 @@ import { spawnSync } from 'node:child_process';
 import { readFile, rm, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import MiniSearch from 'minisearch';
+
+/*
+ * The one deliberate reach past `exports`. `mergeSearchOptions` is internal —
+ * the dialog bundles it so a consumer never has to know it exists — but
+ * loading an index without it is exactly the silent failure it prevents, so
+ * this has to load the index the way the browser does.
+ */
+import { mergeSearchOptions } from '../dist/search-options.js';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const SMOKE = path.join(ROOT, 'smoke');
+
+const EXPECTED_HEADERS: Record<string, string> = {
+  'content-type': 'application/json',
+  'cache-control': 'public, max-age=0, must-revalidate',
+};
 
 const failures: string[] = [];
 
@@ -49,7 +71,8 @@ async function exists(file: string): Promise<boolean> {
  * to trace **everything**: their source, their content, their whole `public/`
  * folder, the output of their last build. `resolveDocsConfig` carries a
  * `turbopackIgnore` comment to stop that, which is safe only because nothing
- * reads markdown at request time — every page is prerendered.
+ * reads markdown at request time — every page is prerendered, and so is the
+ * search index.
  *
  * Asserted as behaviour rather than as the presence of the comment. A bundler
  * that strips comments, a Turbopack release that renames the directive, and
@@ -57,7 +80,11 @@ async function exists(file: string): Promise<boolean> {
  * only one of the three would fail a grep.
  */
 async function checkNothingSwept(): Promise<void> {
-  const traces = ['page.js.nft.json', '[...slug]/page.js.nft.json'];
+  const traces = [
+    'page.js.nft.json',
+    '[...slug]/page.js.nft.json',
+    'search-index.json/route.js.nft.json',
+  ];
 
   for (const name of traces) {
     const file = path.join(SMOKE, '.next', 'server', 'app', 'docs', name);
@@ -80,6 +107,88 @@ async function checkNothingSwept(): Promise<void> {
   }
 }
 
+/** The index, loaded and queried the way `SearchDialog` loads and queries it. */
+function checkIndexContents(json: string): void {
+  const index = MiniSearch.loadJSON(json, mergeSearchOptions());
+
+  check(
+    'published prose is searchable',
+    index.search('quokka').length > 0,
+    'a word that appears only in installation.md found nothing',
+  );
+  check(
+    'draft prose is absent',
+    index.search('wombat').length === 0,
+    'a word that appears only on a `draft: true` page was indexed',
+  );
+  check(
+    'hits carry the base path',
+    index
+      .search('installation')
+      .every((hit) => String(hit.href).startsWith('/docs/')),
+    'a hit would navigate somewhere the route table does not serve',
+  );
+}
+
+/**
+ * The prerendered index, and the headers Next carried out of the handler.
+ *
+ * A missing `.body` is the failure `docs.searchIndex`'s guard exists for, seen
+ * from the build side: the route went dynamic, so in production it would
+ * re-render the whole corpus per request out of markdown the deployment does
+ * not carry.
+ */
+async function checkSearchIndex(): Promise<void> {
+  const app = path.join(SMOKE, '.next', 'server', 'app', 'docs');
+  const body = await readFile(
+    path.join(app, 'search-index.json.body'),
+    'utf8',
+  ).catch(() => undefined);
+
+  check(
+    'the handler prerendered to search-index.json.body',
+    body !== undefined,
+    'no body on disk: the route went dynamic, so every request would ' +
+      're-render the corpus from markdown the deployment does not carry',
+  );
+  if (body === undefined) return;
+
+  const manifest = JSON.parse(
+    await readFile(
+      path.join(SMOKE, '.next', 'prerender-manifest.json'),
+      'utf8',
+    ),
+  ) as {
+    routes?: Record<
+      string,
+      { compute?: string; initialHeaders?: Record<string, string> }
+    >;
+  };
+  const route = manifest.routes?.['/docs/search-index.json'];
+
+  check(
+    'the prerender manifest calls it static',
+    route?.compute === 'static',
+    `compute was ${JSON.stringify(route?.compute)}`,
+  );
+
+  const headers = route?.initialHeaders ?? {};
+  for (const [name, value] of Object.entries(EXPECTED_HEADERS)) {
+    check(
+      `initialHeaders carries ${name}`,
+      headers[name] === value,
+      `got ${JSON.stringify(headers[name])}`,
+    );
+  }
+  check(
+    'initialHeaders carries a strong ETag',
+    /^"[0-9a-f]{40}"$/.test(headers.etag ?? ''),
+    `got ${JSON.stringify(headers.etag)}`,
+  );
+
+  checkIndexContents(body);
+}
+
 async function checkDefaultOutput(): Promise<void> {
   const app = path.join(SMOKE, '.next', 'server', 'app', 'docs');
 
@@ -95,6 +204,7 @@ async function checkDefaultOutput(): Promise<void> {
   );
 
   await checkNothingSwept();
+  await checkSearchIndex();
 }
 
 async function checkStaticExport(): Promise<void> {
@@ -103,6 +213,18 @@ async function checkStaticExport(): Promise<void> {
     await exists(path.join(SMOKE, 'out', 'docs', 'installation.html')),
     'a statically exported site would 404 on its own content',
   );
+
+  const file = path.join(SMOKE, 'out', 'docs', 'search-index.json');
+  const body = await readFile(file, 'utf8').catch(() => undefined);
+
+  check(
+    "output: 'export' wrote out/docs/search-index.json",
+    body !== undefined,
+    'a statically exported site would 404 on its own search index',
+  );
+  if (body === undefined) return;
+
+  checkIndexContents(body);
 }
 
 /**

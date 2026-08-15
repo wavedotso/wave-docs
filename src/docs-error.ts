@@ -50,6 +50,8 @@ export type DocsErrorCode =
   | 'missing-peer'
   /** The search index could not be fetched or parsed. */
   | 'search-index-unavailable'
+  /** The search-index route ran at request time instead of being prerendered. */
+  | 'search-index-dynamic'
   /** A plugin ran without the context this package always supplies. */
   | 'internal';
 
