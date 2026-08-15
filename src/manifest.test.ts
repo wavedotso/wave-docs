@@ -158,7 +158,13 @@ describe('node version floors', () => {
  * API — `docs.Layout` is, and `DocsSidebar` is. Without this the enumeration
  * below would be silently completed by whoever adds the first one.
  */
-const INTERNAL_REACT_MODULES = new Set<string>([]);
+const INTERNAL_REACT_MODULES = new Set<string>([
+  // The `next/link` → `DocsLinkProps` adapter, shared by `@waveso/docs/next`
+  // (server, markdown components) and `./next-search` (client, search
+  // results). Private on purpose: it exists to stop those two answering the
+  // same question differently, not to be a third answer.
+  'next-link',
+]);
 
 describe('exports map', () => {
   /** Every string target in the map. */
@@ -241,9 +247,11 @@ describe('exports map', () => {
    * out of the map entirely, and `src/react/` now works the same way.
    */
   it('exports every react module, or names it internal', () => {
+    // `.ts` as well as `.tsx`: a module in here that happens to use
+    // `createElement` instead of JSX is no less public a name.
     const modules = readdirSync(path.join(ROOT, 'src', 'react'))
-      .filter((name) => name.endsWith('.tsx') && !name.includes('.test.'))
-      .map((name) => name.replace(/\.tsx$/, ''));
+      .filter((name) => /\.tsx?$/.test(name) && !name.includes('.test.'))
+      .map((name) => name.replace(/\.tsx?$/, ''));
 
     const exported = new Set(
       Object.keys(section(manifest, 'exports'))
@@ -264,4 +272,47 @@ describe('exports map', () => {
     );
     expect(stale).toEqual([]);
   });
+
+  /**
+   * `'use client'` has to survive the build, as the FIRST statement.
+   *
+   * It is the only thing that makes a component a client boundary, and losing
+   * it is completely silent: the module still compiles, still renders, still
+   * type-checks. What changes is that the boundary moves up into whatever
+   * imported it — a consumer's `app/docs/layout.tsx` becomes a client
+   * component, dragging the whole subtree with it, and nothing anywhere says
+   * so. `tsdown` keeps directives only because `unbundle` is on and Rolldown
+   * tracks them; a bundling config, a minifier, or a plugin that rewrites the
+   * prologue all drop it.
+   *
+   * Skipped when `dist/` is absent so the suite still runs on a clean
+   * checkout — CI builds before `check:package`, which is where this matters.
+   */
+  it.skipIf(!existsSync(path.join(ROOT, 'dist', 'react')))(
+    'keeps the use-client directive through the build',
+    () => {
+      const sourceDir = path.join(ROOT, 'src', 'react');
+      const clientModules = readdirSync(sourceDir)
+        .filter((name) => name.endsWith('.tsx') && !name.includes('.test.'))
+        .filter((name) =>
+          readFileSync(path.join(sourceDir, name), 'utf8').startsWith(
+            "'use client'",
+          ),
+        )
+        .map((name) => name.replace(/\.tsx$/, '.js'));
+
+      // A guard on the guard: if the filter ever matches nothing — a rename, a
+      // changed quote style — this test would pass by testing an empty list.
+      expect(clientModules.length).toBeGreaterThan(0);
+
+      const stripped = clientModules.filter((name) => {
+        const built = readFileSync(path.join(ROOT, 'dist', 'react', name), {
+          encoding: 'utf8',
+        });
+        return !/^['"]use client['"];/.test(built.trimStart());
+      });
+
+      expect(stripped).toEqual([]);
+    },
+  );
 });

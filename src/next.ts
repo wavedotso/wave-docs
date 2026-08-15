@@ -47,7 +47,7 @@
 import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
 import type { Options as MiniSearchOptions } from 'minisearch';
-import type { ComponentProps, ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { cache, createElement } from 'react';
 
 import { mapPooled } from './map-pooled.js';
@@ -61,12 +61,12 @@ import { DocContent } from './react/doc-content.js';
 import type {
   DocsImageComponent,
   DocsImageProps,
-  DocsLinkComponent,
-  DocsLinkProps,
   MarkdownComponents,
 } from './react/markdown-components.js';
 import { createMarkdownComponents } from './react/markdown-components.js';
 import { DOCS_CONTENT_ID } from './docs-content-id.js';
+import type { NextLinkComponent } from './react/next-link.js';
+import { wrapNextLink } from './react/next-link.js';
 import type { DocsRenderer } from './render.js';
 import { createDocsRenderer } from './render.js';
 import type { DocsSource } from './source.js';
@@ -104,20 +104,6 @@ const SITEMAP_URL_LIMIT = 50_000;
 /* -------------------------------------------------------------------------
  * Lazily-loaded `next` modules
  * ---------------------------------------------------------------------- */
-
-/**
- * The part of `next/link` this adapter uses.
- *
- * Declared locally rather than imported: `next` is an optional peer, and a
- * type-only import of it would still be a hard resolution requirement for
- * anyone type-checking against our `.d.ts`.
- */
-type NextLinkComponent = ComponentType<
-  Omit<ComponentProps<'a'>, 'href' | 'ref'> & {
-    href: string;
-    prefetch?: boolean | null | undefined;
-  }
->;
 
 /** The part of `next/image` this adapter uses. */
 type NextImageComponent = ComponentType<{
@@ -225,34 +211,6 @@ async function loadNotFound(): Promise<() => never> {
     );
   }
   return value as () => never;
-}
-
-/**
- * Adapt `next/link` to {@link DocsLinkProps}.
- *
- * `next/link` widens `href` to `string | UrlObject` and `prefetch` to
- * `boolean | null`; the React layer promises neither, because it must also run
- * with a plain `<a>`. One wrapper keeps that mismatch in a single
- * place instead of at every call site.
- */
-function wrapNextLink(NextLink: NextLinkComponent): DocsLinkComponent {
-  return function DocsNextLink({
-    href,
-    prefetch,
-    children,
-    ...rest
-  }: DocsLinkProps): ReactNode {
-    return createElement(
-      NextLink,
-      {
-        ...rest,
-        href,
-        // `exactOptionalPropertyTypes`: absent, never explicitly `undefined`.
-        ...(prefetch === undefined ? {} : { prefetch }),
-      },
-      children,
-    );
-  };
 }
 
 /**
