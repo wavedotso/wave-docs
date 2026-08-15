@@ -868,7 +868,9 @@ export function createDocsRoute<
       createElement(
         'article',
         {
-          className: 'wave-docs-prose wave-docs-layout__main',
+          // `wave-docs-prose` is NOT here: `DocContent` owns it, so the one
+          // hand-rolled path in the README cannot forget it.
+          className: 'wave-docs-layout__main',
           // The target `SkipLink` points at by default. `tabIndex` with it: a
           // fragment link moves the scroll position but not always the focus,
           // so an unfocusable target leaves a keyboard user stranded at the

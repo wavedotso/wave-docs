@@ -150,7 +150,7 @@ Every component takes data as props and imports nothing from `next/*` — the ad
 
 | Component | Subpath | Notes |
 | --- | --- | --- |
-| `DocContent` | `react/doc-content` | Renders a hast tree. Server Component |
+| `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation` |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
@@ -217,7 +217,7 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
 
   return (
     <>
-      <article id="docs-content" tabIndex={-1} className="wave-docs-prose">
+      <article id="docs-content" tabIndex={-1}>
         <DocContent hast={doc.hast} />
       </article>
       <DocsToc entries={doc.toc} />

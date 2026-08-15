@@ -14,14 +14,38 @@ export interface DocContentProps {
   hast: Root;
   /** Overrides, merged over {@link defaultMarkdownComponents}. */
   components?: MarkdownComponents | undefined;
+  /**
+   * Appended to `wave-docs-prose`, never substituted for it.
+   *
+   * Substitution is the failure this whole wrapper exists to prevent, so it is
+   * not offered: almost every rule in the stylesheet is scoped under
+   * `.wave-docs-prose`, and dropping it leaves a page whose code blocks still
+   * carry correct syntax colours and nothing else — which reads as a design
+   * choice rather than as a mistake.
+   */
+  className?: string | undefined;
 }
 
 /**
- * Render a hast tree as React elements.
+ * Render a hast tree as React elements, inside the prose wrapper.
  *
  * Not a client component, and it must stay that way: the markdown parser and
  * Shiki ran in Node at build time, and this component only walks the resulting
  * tree. Nothing here pulls unified, remark or a highlighter into the browser.
+ *
+ * ## Why the wrapper is here and not on your `<article>`
+ *
+ * `.wave-docs-prose` is the scope for nearly every rule in `styles.css` —
+ * including `.wave-docs-prose .shiki`, which is deliberately scoped so the
+ * package never styles a code block it did not render. `createDocsRoute.Page`
+ * always put the class on for you, but the documented hand-rolled path made
+ * the consumer type it, and forgetting it silently unstyled every code block
+ * on the site while leaving the syntax colours intact. One component owning
+ * the class removes the way to get that wrong.
+ *
+ * The rules that care about tree shape are `.wave-docs-prose > * + *` and
+ * `.wave-docs-prose > :is(h2…h6)`, and the tree's own children are this
+ * element's direct children, so nothing moves.
  *
  * `passNode` is left off (the default). `react-markdown` hardcodes it *on* with
  * no opt-out, so any mapped component that spreads its props renders
@@ -29,11 +53,25 @@ export interface DocContentProps {
  * you, because `node` is a legal prop on the component and an unknown attribute
  * on the element.
  */
-export function DocContent({ hast, components }: DocContentProps): ReactNode {
-  return toJsxRuntime(hast, {
-    Fragment,
-    jsx,
-    jsxs,
-    components: { ...defaultMarkdownComponents, ...components },
-  });
+export function DocContent({
+  hast,
+  components,
+  className,
+}: DocContentProps): ReactNode {
+  return (
+    <div
+      className={
+        className === undefined || className === ''
+          ? 'wave-docs-prose'
+          : `wave-docs-prose ${className}`
+      }
+    >
+      {toJsxRuntime(hast, {
+        Fragment,
+        jsx,
+        jsxs,
+        components: { ...defaultMarkdownComponents, ...components },
+      })}
+    </div>
+  );
 }

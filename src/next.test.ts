@@ -4,6 +4,7 @@ import path from 'node:path';
 import MiniSearch from 'minisearch';
 import type { ReactNode } from 'react';
 import { Fragment, isValidElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   afterAll,
   afterEach,
@@ -258,6 +259,28 @@ describe('createDocsRoute', () => {
     expect(article.type).toBe('article');
     expect(article.props.id).toBe('docs-content');
     expect(article.props.tabIndex).toBe(-1);
+  });
+
+  it('leaves the prose class to DocContent, exactly once', async () => {
+    /*
+     * `DocContent` owns `.wave-docs-prose` so the hand-rolled route in the
+     * README cannot forget it. That only helps if this stops emitting it too:
+     * nested, the measure applies at two levels and `.wave-docs-prose > * + *`
+     * starts matching the wrapper as well as the content.
+     */
+    const [article] = pageChildren(
+      await route.Page({
+        params: Promise.resolve({ slug: ['getting-started'] }),
+      }),
+    );
+
+    if (!isValidElement<{ className?: string }>(article)) {
+      throw new Error('expected an article element');
+    }
+    expect(article.props.className).toBe('wave-docs-layout__main');
+
+    const rendered = renderToStaticMarkup(article);
+    expect(rendered.split('wave-docs-prose')).toHaveLength(2);
   });
 
   it('emits the article and the TOC as siblings, not as a nested pair', async () => {
