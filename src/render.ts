@@ -55,6 +55,22 @@ import { docsError } from './docs-error.js';
 type ShikiHighlighter = Parameters<typeof rehypeShikiFromHighlighter>[0];
 
 /**
+ * Re-exported because writing a {@link LinkResolver} without it is a trap.
+ *
+ * `./markdown-links` used to expose six names — the plugin, its options, two
+ * types and two helpers — to make this one reachable. The plugin among them
+ * throws `docsError('internal')` unless the caller sets an undocumented vfile
+ * field, so five of the six were surface with no use, frozen by semver.
+ *
+ * This one earns its place: a resolver author has to fold `../` without
+ * escaping the content root, strip `.md`, collapse `/index`, and NFC-normalise
+ * each segment — and getting any of them wrong fails the build on a link that
+ * is spelled correctly. Reusing it is what keeps a custom resolver and the
+ * source layer agreeing about which routes exist.
+ */
+export { resolveMarkdownLink } from './plugins/remark-doc-links.js';
+
+/**
  * The parts of {@link ResolvedDocsConfig} rendering actually depends on.
  *
  * Declared as a `Pick` so a full resolved config passes straight through: the

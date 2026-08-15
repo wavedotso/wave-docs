@@ -204,27 +204,6 @@ describe('createDocsRoute', () => {
     });
   });
 
-  it('reads the tree once when the rescan is off', async () => {
-    const dir = await makeContentDir({
-      'index.md': '---\ntitle: Home\n---\n\nOriginal body.\n',
-    });
-    const built = createDocsRoute({
-      contentDir: dir,
-      basePath: '/built-docs',
-      rescanPerRequest: false,
-    });
-
-    expect(JSON.stringify(await built.getPage([]))).toContain('Original body');
-    await writeFile(
-      path.join(dir, 'index.md'),
-      '---\ntitle: Home\n---\n\nEdited body.\n',
-      'utf8',
-    );
-    // A production build must not re-read the tree between pages; the content
-    // cannot change while it runs, and caching is the whole point.
-    expect(JSON.stringify(await built.getPage([]))).toContain('Original body');
-  });
-
   it('gives the article the id the skip link targets, and makes it focusable', async () => {
     // The literal, not the constant the adapter imports: this is the published
     // default, and `SkipLink`'s own test pins the same string on the `href`. Both
@@ -244,22 +223,6 @@ describe('createDocsRoute', () => {
     expect(page.type).toBe('article');
     expect(page.props.id).toBe('docs-content');
     expect(page.props.tabIndex).toBe(-1);
-  });
-
-  it('renders no id at all when the consumer turns it off', async () => {
-    const bare = createDocsRoute({ contentDir: BASIC, contentId: false });
-
-    const page = await bare.Page({
-      params: Promise.resolve({ slug: ['getting-started'] }),
-    });
-
-    if (!isValidElement<{ id?: string; tabIndex?: number }>(page)) {
-      throw new Error('expected `Page` to return an element');
-    }
-    // Both halves go together: an id with no `tabIndex` is the stranded-focus
-    // case above, and a `tabIndex` with no id is a tab stop pointing nowhere.
-    expect(page.props.id).toBeUndefined();
-    expect(page.props.tabIndex).toBeUndefined();
   });
 
   it('calls `notFound()` for an unknown slug', async () => {
@@ -551,7 +514,7 @@ describe('the source handed to layouts', () => {
     const contentDir = await makeContentDir({
       'index.md': '---\ntitle: Home\n---\n',
     });
-    const docs = createDocsRoute({ contentDir, rescanPerRequest: true });
+    const docs = createDocsRoute({ contentDir });
     const titles = async (): Promise<string[]> =>
       (await docs.source.nav()).map((node) => node.title);
 
@@ -564,23 +527,6 @@ describe('the source handed to layouts', () => {
     );
 
     expect(await titles()).toContain('Added');
-  });
-
-  it('does not rescan when the route is configured not to', async () => {
-    const contentDir = await makeContentDir({
-      'index.md': '---\ntitle: Home\n---\n',
-    });
-    const docs = createDocsRoute({ contentDir, rescanPerRequest: false });
-    const titles = async (): Promise<string[]> =>
-      (await docs.source.nav()).map((node) => node.title);
-
-    expect(await titles()).not.toContain('Added');
-    await writeFile(
-      path.join(contentDir, 'added.md'),
-      '---\ntitle: Added\n---\n',
-      'utf8',
-    );
-    expect(await titles()).not.toContain('Added');
   });
 });
 
@@ -605,25 +551,6 @@ describe('createDocsSitemap staleness', () => {
     );
 
     expect(await createDocsSitemap({ contentDir, siteUrl })).toHaveLength(2);
-  });
-
-  it('honours rescanPerRequest: false', async () => {
-    const contentDir = await makeContentDir({
-      'index.md': '---\ntitle: Home\n---\n',
-    });
-    const options = {
-      contentDir,
-      siteUrl: 'https://example.com',
-      rescanPerRequest: false,
-    };
-
-    expect(await createDocsSitemap(options)).toHaveLength(1);
-    await writeFile(
-      path.join(contentDir, 'second.md'),
-      '---\ntitle: Second\n---\n',
-      'utf8',
-    );
-    expect(await createDocsSitemap(options)).toHaveLength(1);
   });
 });
 

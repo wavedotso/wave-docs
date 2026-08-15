@@ -2,13 +2,13 @@ import type { ReactNode } from 'react';
 
 /**
  * The `id` this link targets, and the one `createDocsRoute` puts on its
- * `<article>`.
- *
- * One constant for both halves: the two files spelled the string independently,
- * and a skip link pointing at an id nothing carries scrolls nowhere and focuses
- * nothing — a failure with no symptom until a keyboard user hits it.
+ * `<article>`. Defined in a private module so the Node adapter can read it
+ * without importing this `'use client'` file; re-exported here because this is
+ * the documented import path.
  */
-export const DOCS_CONTENT_ID = 'docs-content';
+import { DOCS_CONTENT_ID } from '../docs-content-id.js';
+
+export { DOCS_CONTENT_ID };
 
 export interface SkipLinkProps {
   /** Fragment id of the main content region. */

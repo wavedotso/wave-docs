@@ -184,6 +184,24 @@ describe('exports map', () => {
   });
 
   /**
+   * Two subpaths were deleted rather than kept for symmetry, and must not
+   * return. `./markdown-links` froze six names to make one reachable — the
+   * plugin among them throws `docsError('internal')` unless the caller sets an
+   * undocumented vfile field, so it was surface with no use. `./search-options`
+   * froze `tokenizeSearchText`, an `Intl.Segmenter` policy with a feature-detect
+   * fallback, i.e. the function most likely to change; and it was doing nothing
+   * even internally, since both readers import it relatively.
+   *
+   * `resolveMarkdownLink` survives, from `./render`: six public names became
+   * one, and it is the only one a `linkResolver` author cannot hand-roll.
+   */
+  it('does not re-expose the deleted plumbing subpaths', () => {
+    const keys = Object.keys(section(manifest, 'exports'));
+    expect(keys).not.toContain('./markdown-links');
+    expect(keys).not.toContain('./search-options');
+  });
+
+  /**
    * Wildcards are gone on purpose, and must not come back. Node's `exports`
    * wildcard does not check that the target exists, so `"./react/*"` made every
    * file that ever lands in `src/react/` public API on the day it is typed —

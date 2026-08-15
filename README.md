@@ -108,12 +108,11 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | --- | --- | --- |
 | `@waveso/docs/next` | Node | `createDocsRoute`, `createDocsSitemap`, `createDocsRedirects` |
 | `@waveso/docs/source` | Node | `createDocsSource`, `resolveDocsConfig` |
-| `@waveso/docs/render` | Node | `createDocsRenderer` |
+| `@waveso/docs/render` | Node | `createDocsRenderer`, `resolveMarkdownLink` |
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS` |
 | `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex`, `writeSearchIndex` |
 | `@waveso/docs/react/<name>` | Browser + RSC | Eight components, one per subpath — see [Components](#components) |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
-| `@waveso/docs/search-options` | Any | `SEARCH_INDEX_OPTIONS` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
 | `@waveso/docs/styles.css` | — | The stylesheet |
 
@@ -469,12 +468,12 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
 | `highlighter` | built-in | Supply your own for grammars outside the set |
 | `titleHeading` | `true` | Build an `<h1>` from `frontmatter.title` when the markdown has none |
 | `components` | built-in map | Override any element → component mapping |
-| `contentId` | `'docs-content'` | The id `SkipLink` targets; `false` if your layout owns it |
-| `rescanPerRequest` | dev only | Re-scan the content directory per request |
 | `siteUrl` | — | Makes canonical URLs absolute |
 | `linkResolver` · `imageResolver` | — | Override link rewriting and image dimensions. An `imageResolver` receives a folded, contained src — except an absolute `/logo.png` or a schemed `https://…`, which arrive unfolded, so branch on them |
 
 `titleHeading` defaults on because a document with no `h1` has a broken heading outline and fails every accessibility audit. Turn it off if your layout renders the title itself.
+
+The `<article>` always carries `id="docs-content"`, which is what `SkipLink` targets by default — there is no option to change it, because there was no matching option on `SkipLink` to follow it with, so changing it silently pointed the skip link at nothing. Outside `NODE_ENV=production` the content directory is always re-scanned per request; `docs.source.invalidate()` is the escape hatch if you need to force one.
 
 ### Redirects and sitemap
 

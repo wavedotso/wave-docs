@@ -5,7 +5,8 @@ import { afterAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { z } from 'zod';
 import { docFrontmatterSchema, parseFrontmatter } from './frontmatter.js';
 import { extractSearchRecords } from './search-index.js';
-import { createDocsSource, resolveDocsConfig, toAliasRoute } from './source.js';
+import { createDocsSource, resolveDocsConfig } from './source.js';
+import { toAliasRoute } from './route-path.js';
 import type { DocFrontmatter, DocNavNode, RenderedDoc } from './types.js';
 
 // Counting `readdir` is how the scan-once guarantee is asserted: one scan of

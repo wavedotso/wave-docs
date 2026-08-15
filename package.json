@@ -59,14 +59,6 @@
       "browser": null,
       "default": "./dist/search-index.js"
     },
-    "./search-options": {
-      "types": "./dist/search-options.d.ts",
-      "default": "./dist/search-options.js"
-    },
-    "./markdown-links": {
-      "types": "./dist/plugins/remark-doc-links.d.ts",
-      "default": "./dist/plugins/remark-doc-links.js"
-    },
     "./next": {
       "types": "./dist/next.d.ts",
       "browser": null,

@@ -64,11 +64,12 @@ import type {
   MarkdownComponents,
 } from './react/markdown-components.js';
 import { createMarkdownComponents } from './react/markdown-components.js';
-import { DOCS_CONTENT_ID } from './react/skip-link.js';
+import { DOCS_CONTENT_ID } from './docs-content-id.js';
 import type { DocsRenderer } from './render.js';
 import { createDocsRenderer } from './render.js';
 import type { DocsSource } from './source.js';
-import { createDocsSource, resolveDocsConfig, toAliasRoute } from './source.js';
+import { createDocsSource, resolveDocsConfig } from './source.js';
+import { toAliasRoute } from './route-path.js';
 import type {
   DocFile,
   DocFrontmatter,
@@ -350,23 +351,6 @@ export interface DocsRouteOptions<
    * Defaults to `true`; turn it off if your layout renders the title itself.
    */
   titleHeading?: boolean | undefined;
-  /**
-   * `id` of the rendered `<article>`, which is also what
-   * `@waveso/docs/react/skip-link` targets by default. Defaults to
-   * `'docs-content'`. Pass `false` to render no id at all.
-   */
-  contentId?: string | false | undefined;
-  /**
-   * Re-read the content directory on every request.
-   *
-   * Defaults to `true` outside `NODE_ENV=production`. Markdown files are not in
-   * Next's module graph, so nothing re-evaluates a route module when one
-   * changes: without this, `next dev` serves whatever it read on the first
-   * request until the server restarts, and a file added afterwards is never
-   * found. A rescan of a few hundred small files costs single-digit
-   * milliseconds; a production build reads the tree once, as it should.
-   */
-  rescanPerRequest?: boolean | undefined;
   /** Replaces the built-in markdown-link resolution. */
   linkResolver?: LinkResolver | undefined;
   /**
@@ -520,9 +504,13 @@ export function createDocsRoute<
   const config = resolveDocsConfig(options);
   const source = createDocsSource(options);
   const siteUrl = normalizeSiteUrl(options.siteUrl);
-  const contentId = options.contentId ?? DOCS_CONTENT_ID;
-  const rescanPerRequest =
-    options.rescanPerRequest ?? process.env.NODE_ENV !== 'production';
+  // Re-read the content directory on every request outside a production
+  // build. Markdown is not in Next's module graph, so nothing re-evaluates a
+  // route module when a file changes: without this, `next dev` serves what it
+  // read on the first request until the server restarts, and a file added
+  // afterwards is never found. It was an option; nobody should have turned it
+  // off, and `docs.source.invalidate()` is the escape hatch if anyone must.
+  const rescanPerRequest = process.env.NODE_ENV !== 'production';
 
   // Built on first render, not on import: `generateStaticParams` runs in its
   // own pass and has no use for a syntax highlighter.
@@ -719,7 +707,8 @@ export function createDocsRoute<
         // fragment link moves the scroll position but not always the focus, so
         // an unfocusable target leaves a keyboard user stranded at the top of
         // the sidebar they were trying to skip.
-        ...(contentId === false ? {} : { id: contentId, tabIndex: -1 }),
+        id: DOCS_CONTENT_ID,
+        tabIndex: -1,
       },
       createElement(DocContent, {
         hast: doc.hast,
@@ -822,16 +811,6 @@ export interface DocsSitemapOptions<
   lastModified?: (
     file: DocFile<TFrontmatter>,
   ) => Date | undefined | Promise<Date | undefined>;
-  /**
-   * Re-read the content directory before building the sitemap.
-   *
-   * Defaults to `true` outside `NODE_ENV=production`, matching
-   * {@link DocsRouteOptions.rescanPerRequest}. `createDocsSource` memoises by
-   * config, so without this the first scan of the process is the only one —
-   * and `app/sitemap.ts` in `next dev` would keep serving the page set as it
-   * stood when the server booted.
-   */
-  rescanPerRequest?: boolean | undefined;
 }
 
 /**
@@ -857,7 +836,7 @@ export async function createDocsSitemap<
 >(options: DocsSitemapOptions<TFrontmatter>): Promise<DocsSitemapEntry[]> {
   const siteUrl = requireSiteUrl(options.siteUrl);
   const source = createDocsSource(options);
-  if (options.rescanPerRequest ?? process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     source.invalidate();
   }
   const files = await source.all();
