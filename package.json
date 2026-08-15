@@ -123,7 +123,8 @@
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish",
-    "test:browser": "vitest run --project browser"
+    "test:browser": "vitest run --project browser",
+    "test:smoke": "node smoke/check.ts"
   },
   "dependencies": {
     "@shikijs/langs": "4.4.3",

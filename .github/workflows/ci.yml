@@ -88,6 +88,21 @@ jobs:
       - name: Build library
         run: pnpm run build
 
+      # The tripwire for the Next internals the search index rests on, none of
+      # them public API: that a `force-static` route handler prerenders to
+      # `<route>.body`, that `NEXT_PHASE` marks the prerender, that response
+      # headers survive into the prerender manifest, and that `turbopackIgnore`
+      # keeps the consumer's whole project out of the server bundle. A unit
+      # test can call the handler; only a real build can prove Next invoked it.
+      # When a Next minor changes one of these, it fails here — on the pull
+      # request that bumped Next — instead of in a consumer's deploy.
+      #
+      # Must follow the build: `smoke/lib/docs.ts` imports `@waveso/docs/next`
+      # by name, which Node self-references through the real `exports` map into
+      # dist/, exactly as a consumer resolves it.
+      - name: Smoke build (a real Next app, both output modes)
+        run: pnpm run test:smoke
+
       # Must follow the build: `attw --pack .` packs the real tarball and
       # resolves every export subpath against dist/.
       - name: Check package (publint + are-the-types-wrong)

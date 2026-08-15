@@ -88,7 +88,29 @@ export function resolveDocsConfig<
   TFrontmatter extends DocFrontmatter = DocFrontmatter,
 >(config: DocsConfig<TFrontmatter>): ResolvedDocsConfig<TFrontmatter> {
   return {
-    contentDir: path.resolve(process.cwd(), config.contentDir),
+    /*
+     * ⚠️ `turbopackIgnore` IS LOAD-BEARING — IT IS NOT A WARNING SUPPRESSION.
+     * `contentDir` comes from the consumer, so Turbopack's static analysis
+     * cannot see what this reads — and its fallback is to trace *the entire
+     * project* into the server output: every source file, the whole `public/`
+     * folder, previous build output. Measured on the smoke app, that was 39
+     * unrelated files traced into a route that needs none of them; on a real
+     * docs site it is every image you ship, and on a serverless host it is how
+     * you meet a bundle size limit for no reason. The build says so out loud
+     * ("Dynamic filesystem access causes tracing of the whole project"), which
+     * meant every consumer got a warning we had no answer for.
+     *
+     * Nothing needs tracing here, because nothing reads markdown at request
+     * time: `dynamicParams = false` prerenders every page, and the search
+     * index is `force-static` with a guard that throws if it is not. Both are
+     * required, so there is no supported configuration this takes anything
+     * away from. `smoke/check.ts` asserts no `.md` is traced, so if that ever
+     * stops being true it fails there rather than in someone's deploy.
+     */
+    contentDir: path.resolve(
+      /*turbopackIgnore: true*/ process.cwd(),
+      config.contentDir,
+    ),
     basePath: normalizeBasePath(config.basePath ?? '/docs'),
     includeDrafts: config.includeDrafts ?? false,
     assertLinks: config.assertLinks ?? true,

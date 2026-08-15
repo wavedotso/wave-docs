@@ -14,3 +14,7 @@ package-lock.json
 # Failure screenshots from the browser test project.
 src/__screenshots__
 .vitest-attachments
+
+# Static export output from the smoke app.
+smoke/out
+next-env.d.ts
