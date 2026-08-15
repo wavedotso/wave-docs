@@ -202,10 +202,10 @@ const STATE_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
  * and `display: none` among others), so a text search over the raw source
  * reports the prose, not the CSS.
  */
-const sheet = (await readFile(STYLESHEET, 'utf8')).replace(
-  /\/\*[\s\S]*?\*\//g,
-  '',
-);
+const rawSheet = await readFile(STYLESHEET, 'utf8');
+
+/** Comments stripped, so a selector match cannot be a sentence about one. */
+const sheet = rawSheet.replace(/\/\*[\s\S]*?\*\//g, '');
 
 interface StyleRule {
   /** Selector list or at-rule prelude, whitespace collapsed. */
@@ -650,6 +650,153 @@ describe('the reading column', () => {
       const layer = sheet.lastIndexOf('@layer', sheet.indexOf(`${token}:`));
       expect(sheet.slice(layer, layer + 13)).toBe('@layer theme ');
     }
+  });
+});
+
+describe('the type scale', () => {
+  /** A declaration's value inside one rule, by selector. */
+  function decl(selector: string, property: string): string | undefined {
+    const at = sheet.indexOf(`${selector} {`);
+    expect(at, `${selector} not found`).toBeGreaterThan(-1);
+    const block = readBlock(sheet, at);
+    const match = new RegExp(`${property}:\\s*([^;]+);`).exec(block);
+    return match?.[1]?.trim();
+  }
+
+  const LEVELS = [
+    '.wave-docs-prose h1',
+    '.wave-docs-prose h2',
+    '.wave-docs-prose h3',
+    '.wave-docs-prose h4',
+    '.wave-docs-prose :is(h5, h6)',
+  ] as const;
+
+  /**
+   * The old scale shared `line-height: 1.25` across all six levels, so the 36px
+   * h1 floated apart and the 16px h5 crowded. Leading has to fall as size
+   * rises; a single shared value is the signature of a scale nobody set.
+   */
+  it('gives every level its own leading, rising as size falls', () => {
+    const leading = LEVELS.map((selector) => {
+      const value = decl(selector, 'line-height');
+      expect(value, `${selector} declares no line-height`).toBeDefined();
+      return Number(value);
+    });
+
+    expect(new Set(leading).size, `shared leading: ${leading}`).toBe(
+      leading.length,
+    );
+    for (let i = 1; i < leading.length; i += 1) {
+      expect(
+        leading[i],
+        `${LEVELS[i]} does not lead looser than ${LEVELS[i - 1]}`,
+      ).toBeGreaterThan(leading[i - 1] as number);
+    }
+  });
+
+  /**
+   * h5 and h6 were the same size and weight as body text, differing only in
+   * colour — a coloured paragraph, not a hierarchy level. Two more steps of a
+   * 1.2 scale would land inside a rounding error of the body, so the
+   * distinction moves to a different axis.
+   */
+  it('makes h5/h6 an eyebrow rather than a fifth indistinguishable size', () => {
+    const eyebrow = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-prose :is(h5, h6) {'),
+    );
+    expect(eyebrow).toContain('text-transform: uppercase');
+    expect(eyebrow).toContain('letter-spacing');
+    expect(decl('.wave-docs-prose :is(h5, h6)', 'font-size')).not.toBe('1rem');
+  });
+
+  /**
+   * A full-width hairline under every h2 is the loudest "rendered GitHub
+   * README" signal a page carries. The opt-in ships in the same commit as the
+   * deletion, because otherwise the first consumer who wants rules forks.
+   */
+  it('rules no h2, and offers the opt-in that replaces it', () => {
+    const h2 = readBlock(sheet, sheet.indexOf('.wave-docs-prose h2 {'));
+    expect(h2).not.toContain('border-block-end');
+
+    const optIn = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-prose[data-rules] > h2 {'),
+    );
+    expect(optIn).toContain('border-block-end');
+  });
+
+  it('does not italicise blockquotes', () => {
+    // The rule and the muted colour already say "quotation", and markdown
+    // authors use blockquotes for asides, not only for speech.
+    const quote = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-prose blockquote {'),
+    );
+    expect(quote).toContain('font-style: normal');
+  });
+
+  it('sizes only the h1 fluidly', () => {
+    // Fluid type against a fixed measure means characters-per-line drifts and
+    // the measure token stops meaning what it says — but a fixed h1 wraps an
+    // ordinary title to three lines at 390px.
+    expect(decl('.wave-docs-prose h1', 'font-size')).toContain('clamp(');
+    for (const selector of LEVELS.slice(1)) {
+      expect(decl(selector, 'font-size')).not.toContain('clamp(');
+    }
+  });
+});
+
+describe('tables', () => {
+  const table = readBlock(sheet, sheet.indexOf('.wave-docs-table {'));
+  const scroll = readBlock(sheet, sheet.indexOf('.wave-docs-table-scroll {'));
+
+  /**
+   * `width: 100%` is not a floor. Auto table layout floors at min-content, and
+   * `.wave-docs-prose a { overflow-wrap: anywhere }` collapses a link-bearing
+   * column's min-content to about one character — `anywhere` affects intrinsic
+   * sizing where `break-word` does not (CSS Text 3). So an API table fitted
+   * 320px without overflowing, at five lines per row.
+   */
+  it('declares a minimum width, not just a percentage', () => {
+    expect(table).toContain('min-width: min(100%, 40rem)');
+    expect(table).toContain('width: 100%');
+  });
+
+  /**
+   * The comment is the finding. Without it the next reader sees a link rule and
+   * a table rule with no connection between them, and `anywhere` looks like a
+   * safe tidy-up.
+   */
+  it('records why the link rule is what sizes the table', () => {
+    expect(sheet).toContain('overflow-wrap: anywhere');
+    // Against the raw sheet: this assertion is *about* the comment.
+    const documented = readBlock(
+      rawSheet,
+      rawSheet.indexOf('.wave-docs-table {'),
+    );
+    expect(documented).toMatch(/anywhere/);
+    expect(documented).toMatch(/intrinsic/);
+  });
+
+  /** With `border-collapse: collapse` the border belongs to the table, so it
+   * scrolls out from under a sticky header. */
+  it('holds the header down with a shadow rather than a border', () => {
+    const head = readBlock(sheet, sheet.indexOf('.wave-docs-table thead th {'));
+    expect(head).toContain('position: sticky');
+    expect(head).toContain('box-shadow: inset');
+    expect(head).not.toContain('border-block-end');
+  });
+
+  /**
+   * Four gradients, two `local` and two `scroll`, are what make the affordance
+   * stateless — the covers travel with the content and uncover the shadow only
+   * on the side that has more to show. Losing either pair silently turns it
+   * into a permanent shadow on both edges.
+   */
+  it('shows which way a wide table scrolls, without JavaScript', () => {
+    expect(scroll.match(/no-repeat local/g)).toHaveLength(2);
+    expect(scroll.match(/no-repeat scroll/g)).toHaveLength(2);
   });
 });
 

@@ -370,38 +370,98 @@
     margin-block-start: 1.25em;
   }
 
+  /* `pretty`, not `balance`: balance is for headings, where every line matters
+   * and there are two or three of them. On a paragraph it is capped at four
+   * lines in most engines anyway; `pretty` is the one that stops a paragraph
+   * ending on a single orphaned word. */
+  .wave-docs-prose p {
+    text-wrap: pretty;
+  }
+
+  /*
+   * A 1.2 minor third, four sizes, six unmistakable levels.
+   *
+   * The old scale stepped 1.50 / 1.20 / 1.18 / 1.06 / 1.00 — one enormous jump
+   * and then four nearly flat ones, so h3, h4 and h5 were interchangeable at a
+   * glance. h5 and h6 were the same size *and* weight as body text, differing
+   * only in colour: a coloured paragraph, not a level. They are an eyebrow now,
+   * which is a different axis (tracking and case) rather than a fifth size
+   * nobody can distinguish from the fourth.
+   *
+   * Leading falls as size rises — 1.15 through 1.5 — because one shared 1.25
+   * let the 36px h1 float apart and crowded the 16px h5. Tracking tightens the
+   * same way, for the same reason.
+   */
   .wave-docs-prose :is(h1, h2, h3, h4, h5, h6) {
-    position: relative;
     color: var(--wave-docs-fg);
     font-weight: 650;
-    line-height: 1.25;
     text-wrap: balance;
     scroll-margin-top: var(--wave-docs-scroll-padding);
   }
 
-  .wave-docs-prose > :is(h2, h3, h4, h5, h6) {
+  /* Top margin scales with the size of the break the heading signals, so a new
+   * section reads as a bigger pause than a subsection. */
+  .wave-docs-prose > h2 {
+    margin-block-start: 2.5em;
+  }
+  .wave-docs-prose > h3 {
     margin-block-start: 2em;
+  }
+  .wave-docs-prose > :is(h4, h5, h6) {
+    margin-block-start: 1.75em;
+  }
+  /* ...and a heading sits close to what it introduces. */
+  .wave-docs-prose :is(h1, h2, h3, h4, h5, h6) + * {
+    margin-block-start: 0.75em;
   }
 
   .wave-docs-prose h1 {
-    font-size: 2.25rem;
-    letter-spacing: -0.02em;
+    /* The one fluid size. A fixed 2.0736rem h1 wraps an ordinary page title to
+     * three lines at 390px; everything below it stays fixed, because fluid type
+     * against a fixed measure means characters-per-line silently drifts and the
+     * measure token stops meaning what it says. */
+    font-size: clamp(1.75rem, 1.45rem + 1.3vw, 2.0736rem);
+    line-height: 1.15;
+    letter-spacing: -0.021em;
+    font-weight: 680;
   }
   .wave-docs-prose h2 {
-    font-size: 1.5rem;
-    letter-spacing: -0.015em;
-    padding-block-end: 0.3em;
-    border-block-end: 1px solid var(--wave-docs-border);
+    font-size: 1.44rem;
+    line-height: 1.25;
+    letter-spacing: -0.014em;
+    font-weight: 660;
   }
   .wave-docs-prose h3 {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
+    line-height: 1.35;
+    letter-spacing: -0.008em;
   }
   .wave-docs-prose h4 {
-    font-size: 1.0625rem;
-  }
-  .wave-docs-prose :is(h5, h6) {
     font-size: 1rem;
+    line-height: 1.45;
+  }
+  /* An eyebrow, not a fifth size: at this depth the distinction has to come
+   * from case and tracking, because two more steps of a 1.2 scale would land
+   * inside a rounding error of the body text. */
+  .wave-docs-prose :is(h5, h6) {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
     color: var(--wave-docs-fg-muted);
+  }
+
+  /*
+   * No rule under `h2`. A full-width hairline under every section heading is
+   * the single loudest "rendered GitHub README" signal a page can carry, and
+   * with no measure it ran the entire viewport. A long reference page that
+   * genuinely wants them is one attribute away, and shipping the opt-out in the
+   * same breath as the deletion is what stops someone forking the stylesheet
+   * to get it back:
+   */
+  .wave-docs-prose[data-rules] > h2 {
+    padding-block-end: 0.3em;
+    border-block-end: 1px solid var(--wave-docs-border);
   }
 
   .wave-docs-prose a {
@@ -464,7 +524,10 @@
     padding-inline-start: 1rem;
     border-inline-start: 3px solid var(--wave-docs-border-strong);
     color: var(--wave-docs-fg-muted);
-    font-style: italic;
+    /* Not italic. The rule and the muted colour already say "quotation"; a
+     * long italic passage is measurably slower to read, and markdown authors
+     * use blockquotes for asides and notes, not only for speech. */
+    font-style: normal;
   }
 
   .wave-docs-prose hr {
@@ -516,6 +579,32 @@
     overflow-x: auto;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
+    scrollbar-width: thin;
+    scrollbar-color: var(--wave-docs-border-strong) transparent;
+    /*
+     * ⚠️ NOT DECORATIVE, AND NOT DELETABLE AS SUCH.
+     *
+     * This is the whole scroll affordance, and it is four gradients because
+     * that is what makes it stateless. The two `local` covers are painted in
+     * the page colour and scroll *with* the content, so each one sits over its
+     * shadow only while that edge is at rest; the two `scroll` shadows are
+     * pinned to the box. The result is a shadow that appears on precisely the
+     * side that has content off-screen, with no listener, no state and no
+     * hydration — on a table the reader may well meet before JS arrives.
+     */
+    background:
+      linear-gradient(to right, var(--wave-docs-bg) 30%, transparent) left /
+        2rem 100% no-repeat local,
+      linear-gradient(to left, var(--wave-docs-bg) 30%, transparent) right /
+        2rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, oklch(0 0 0 / 0.12), transparent)
+        left / 0.75rem 100% no-repeat scroll,
+      radial-gradient(
+          farthest-side at 100% 50%,
+          oklch(0 0 0 / 0.12),
+          transparent
+        )
+        right / 0.75rem 100% no-repeat scroll;
   }
 
   .wave-docs-table-scroll:focus-visible {
@@ -525,9 +614,46 @@
 
   .wave-docs-table {
     width: 100%;
+    /*
+     * A FLOOR, NOT A SIZING MODE — and `width: 100%` is not one.
+     *
+     * Auto table layout floors at min-content, so `width: 100%` inside an
+     * `overflow-x: auto` container does not stop a table from being squeezed;
+     * it only stops it from being wider than the container. What actually
+     * collapses the columns is `.wave-docs-prose a { overflow-wrap: anywhere }`
+     * above: per CSS Text 3, `anywhere` affects *intrinsic* sizing and
+     * `break-word` does not, so a cell holding a link — i.e. every column of a
+     * real API table — reports a min-content width of about one character. The
+     * table then fits 320px, does not overflow, and renders rows five lines
+     * tall with one word per line.
+     *
+     * `width: max-content` is the obvious fix and is worse: it forbids a
+     * description cell from wrapping at all, so a table with one sentence in it
+     * is over 1600px wide at every viewport and you scroll sideways to read
+     * one sentence.
+     *
+     * A floor solves both. Below 40rem of available width the table stops
+     * shrinking and the scroll container takes over; above it, the description
+     * column wraps as it should. A consumer with an eight-column monster
+     * overrides `min-width` from their own unlayered rule and wins by the
+     * cascade contract this file already guarantees — so no token for it.
+     */
+    min-width: min(100%, 40rem);
     border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
     font-size: 0.9375rem;
     line-height: 1.6;
+  }
+
+  /* `box-shadow`, not `border-block-end`: with `border-collapse: collapse` the
+   * border belongs to the table, not the cell, so it scrolls away from a
+   * sticky header instead of staying under it. */
+  .wave-docs-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--wave-docs-bg-subtle);
+    box-shadow: inset 0 -1px 0 var(--wave-docs-border);
   }
 
   .wave-docs-table :is(th, td) {
