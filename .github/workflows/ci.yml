@@ -73,6 +73,18 @@ jobs:
       - name: Test
         run: pnpm run test
 
+      # The browser tier is out of `pnpm test` on purpose — it costs a browser
+      # launch, and the sub-seven-second inner loop is what makes the fast
+      # suite worth running on every save. CI has no such constraint, and these
+      # are the only assertions that can see layout at all: jsdom reports every
+      # width as 0, so the measure, the type scale, reflow and the table floor
+      # are unassertable without a real engine.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Test in a browser
+        run: pnpm run test:browser
+
       - name: Build library
         run: pnpm run build
 

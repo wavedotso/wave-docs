@@ -10,3 +10,7 @@ package-lock.json
 
 # Next.js artifacts, from the scratch apps used to verify the adapter.
 .next
+
+# Failure screenshots from the browser test project.
+src/__screenshots__
+.vitest-attachments

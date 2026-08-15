@@ -759,8 +759,18 @@ describe('tables', () => {
    * 320px without overflowing, at five lines per row.
    */
   it('declares a minimum width, not just a percentage', () => {
-    expect(table).toContain('min-width: min(100%, 40rem)');
     expect(table).toContain('width: 100%');
+    expect(table).toContain('min-width: 40rem');
+
+    /*
+     * NOT `min(100%, 40rem)`. That spelling looks like the same floor and is a
+     * no-op at exactly the widths it governs: the `100%` resolves against the
+     * box being floored, so in a 318px scroll container it computes to 318px —
+     * the container's own width — and the table squeezes exactly as it did
+     * before. The browser tier caught it at 318 vs 318; this keeps it from
+     * coming back as a tidy-up.
+     */
+    expect(table).not.toContain('min(100%');
   });
 
   /**

@@ -1,0 +1,227 @@
+/**
+ * What the stylesheet actually does to a page, in a real engine.
+ *
+ * `styles.test.ts` reads declarations; this reads geometry. The distinction is
+ * not pedantry — every visual defect this package has shipped was a rule that
+ * parsed exactly as intended and rendered wrongly. jsdom cannot stand in: it
+ * has no layout at all, so `clientWidth`, `scrollWidth` and `offsetTop` are all
+ * 0 and every assertion below would pass against a blank page.
+ *
+ * Runs only under `pnpm test:browser`, deliberately. A browser launch costs
+ * more than the entire node+dom suite, and the sub-seven-second inner loop is
+ * worth protecting.
+ */
+
+import { page } from 'vitest/browser';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import styles from './styles.css?inline';
+
+/** Widths the reflow and layout claims are made at. */
+const VIEWPORTS = [320, 390, 768, 1024, 1440] as const;
+
+function mount(html: string): HTMLElement {
+  document.head.querySelector('#wave-docs-styles')?.remove();
+  const style = document.createElement('style');
+  style.id = 'wave-docs-styles';
+  style.textContent = styles;
+  document.head.append(style);
+
+  document.body.innerHTML = `<article class="wave-docs-prose">${html}</article>`;
+  const root = document.body.firstElementChild;
+  if (!(root instanceof HTMLElement)) {
+    throw new Error('failed to mount the prose fixture');
+  }
+  return root;
+}
+
+/**
+ * Resize the actual viewport.
+ *
+ * `document.documentElement.style.width` would not do: a media query reads the
+ * viewport, not the root element, so every breakpoint assertion would sample
+ * whatever width the runner happened to open with.
+ */
+async function resize(width: number): Promise<void> {
+  await page.viewport(width, 900);
+}
+
+const LONG_WORD = 'a'.repeat(120);
+const DIGEST = `sha256:${'0123456789abcdef'.repeat(4)}`;
+
+beforeEach(() => {
+  document.body.innerHTML = '';
+});
+
+describe('the reading column', () => {
+  it('holds the measure rather than running the viewport', async () => {
+    const prose = mount('<p>Hello.</p>');
+    await resize(1440);
+
+    const width = prose.getBoundingClientRect().width;
+    // 46rem at the 16px default root. Without a measure this was the full
+    // 1424px content box.
+    expect(width).toBeGreaterThan(700);
+    expect(width).toBeLessThanOrEqual(736);
+  });
+
+  it('renders in the shipped stack, not the UA serif', async () => {
+    const prose = mount('<p>Hello.</p>');
+    await resize(1024);
+
+    // The FIRST family, not a substring of the stack: `/serif$/` matches
+    // `sans-serif`, so a naive negative assertion here passes on a serif page
+    // and fails on a correct one.
+    const first = getComputedStyle(prose).fontFamily.split(',')[0]?.trim();
+    expect(first).not.toMatch(/^(Times|serif)/i);
+    expect(first).toMatch(/ui-sans-serif|system-ui|-apple-system/);
+  });
+});
+
+describe('reflow', () => {
+  it.each(VIEWPORTS)(
+    'does not scroll the document sideways at %ipx',
+    async (width) => {
+      mount(`
+      <h2>${LONG_WORD}</h2>
+      <p>${DIGEST}</p>
+      <ul><li>${LONG_WORD}</li></ul>
+      <p><a href="/x">https://example.com/${LONG_WORD}</a></p>
+    `);
+      await resize(width);
+
+      // WCAG 1.4.10 is tested at 320px; the rest are here because a fix that
+      // only holds at the tested width is a fix aimed at the test.
+      expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
+    },
+  );
+});
+
+describe('the type scale', () => {
+  it('renders six strictly distinguishable levels', async () => {
+    const prose = mount(
+      [1, 2, 3, 4, 5, 6].map((n) => `<h${n}>Heading ${n}</h${n}>`).join(''),
+    );
+    await resize(1024);
+
+    const seen = [1, 2, 3, 4, 5, 6].map((n) => {
+      const el = prose.querySelector(`h${n}`);
+      if (!(el instanceof HTMLElement)) throw new Error(`no h${n}`);
+      const style = getComputedStyle(el);
+      return {
+        size: Number.parseFloat(style.fontSize),
+        transform: style.textTransform,
+        weight: style.fontWeight,
+      };
+    });
+
+    // h1..h4 strictly descend.
+    for (let i = 1; i < 4; i += 1) {
+      const previous = seen[i - 1];
+      const current = seen[i];
+      if (!previous || !current) throw new Error('missing level');
+      expect(current.size, `h${i + 1} is not smaller than h${i}`).toBeLessThan(
+        previous.size,
+      );
+    }
+
+    // h5/h6 were the same size AND weight as body text, differing only in
+    // colour. They are distinguished on a different axis now, so assert that
+    // axis rather than a fifth size nobody could see.
+    const body = Number.parseFloat(getComputedStyle(prose).fontSize);
+    for (const level of [seen[4], seen[5]]) {
+      if (!level) throw new Error('missing eyebrow level');
+      expect(level.size).toBeLessThan(body);
+      expect(level.transform).toBe('uppercase');
+    }
+  });
+
+  it('keeps an ordinary h1 to two lines on a phone', async () => {
+    const prose = mount('<h1>Getting started with the Wave documentation</h1>');
+    await resize(390);
+
+    const h1 = prose.querySelector('h1');
+    if (!(h1 instanceof HTMLElement)) throw new Error('no h1');
+    const lineHeight = Number.parseFloat(getComputedStyle(h1).lineHeight);
+    expect(h1.getBoundingClientRect().height).toBeLessThanOrEqual(
+      lineHeight * 2,
+    );
+  });
+});
+
+describe('tables', () => {
+  /** The three shapes that behave differently, per the `min-width` finding. */
+  const API = `<table class="wave-docs-table"><thead><tr>
+      <th>Name</th><th>Type</th><th>Default</th><th>Since</th><th>Notes</th><th>Status</th>
+    </tr></thead><tbody><tr>
+      <td>contentDir</td><td>string</td><td>—</td><td>0.1</td><td>Where the markdown lives</td><td>stable</td>
+    </tr></tbody></table>`;
+
+  const LINKS = `<table class="wave-docs-table"><tbody><tr>
+      <td><a href="/a">/api/v1/some/long/path</a></td>
+      <td><a href="/b">/api/v1/another/long/path</a></td>
+      <td><a href="/c">/api/v1/a/third/long/path</a></td>
+    </tr></tbody></table>`;
+
+  const PROSE_CELL = `<table class="wave-docs-table"><tbody><tr>
+      <td>timeout</td>
+      <td>How long the client waits before giving up, in milliseconds, across every retry.</td>
+    </tr></tbody></table>`;
+
+  function mountTable(html: string): HTMLElement {
+    const prose = mount(
+      `<section class="wave-docs-table-scroll" tabindex="0">${html}</section>`,
+    );
+    const scroll = prose.querySelector('.wave-docs-table-scroll');
+    if (!(scroll instanceof HTMLElement)) throw new Error('no scroll region');
+    return scroll;
+  }
+
+  it('scrolls a wide table instead of squeezing it', async () => {
+    const scroll = mountTable(API);
+    await resize(320);
+    // The defect: `width: 100%` plus `overflow-wrap: anywhere` on links let
+    // auto layout floor at ~1ch per column, so the table *fitted* 320px and
+    // rendered rows five lines tall instead of overflowing.
+    expect(scroll.scrollWidth).toBeGreaterThan(scroll.clientWidth);
+  });
+
+  it('scrolls a link-only table too, which used to fit at one character', async () => {
+    const scroll = mountTable(LINKS);
+    await resize(320);
+    expect(scroll.scrollWidth).toBeGreaterThan(scroll.clientWidth);
+  });
+
+  it.each([320, 768, 1024])(
+    'keeps rows shallow at %ipx rather than stacking one word per line',
+    async (width) => {
+      const scroll = mountTable(PROSE_CELL);
+      await resize(width);
+
+      const cell = scroll.querySelector('td');
+      if (!(cell instanceof HTMLElement)) throw new Error('no cell');
+      const lineHeight = Number.parseFloat(getComputedStyle(cell).lineHeight);
+      expect(cell.getBoundingClientRect().height).toBeLessThanOrEqual(
+        lineHeight * 5,
+      );
+    },
+  );
+});
+
+describe('focus indicators', () => {
+  it('draws a real outline on every focusable surface', async () => {
+    const prose = mount('<p><a href="/x">a link</a></p>');
+    await resize(1024);
+
+    const link = prose.querySelector('a');
+    if (!(link instanceof HTMLElement)) throw new Error('no link');
+    link.focus();
+
+    const style = getComputedStyle(link);
+    // The old ring was a `box-shadow` with a transparent `outline`, which
+    // forced-colors mode dropped entirely.
+    expect(style.outlineStyle).not.toBe('none');
+    expect(style.outlineWidth).not.toBe('0px');
+    expect(style.outlineColor).not.toMatch(/transparent|rgba\(0, 0, 0, 0\)/);
+  });
+});

@@ -125,3 +125,71 @@ vi.stubGlobal('IntersectionObserver', MockIntersectionObserver);
 afterEach(() => {
   resetIntersectionObservers();
 });
+
+/* -------------------------------------------------------------------------
+ * `<dialog>`
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Attribute bookkeeping only — deliberately, and this is the important part.
+ *
+ * jsdom 30 ships no `showModal`, no `close`, and no `:modal`, so the drawer's
+ * close-on-navigate effect throws `TypeError` and takes down every test that
+ * mounts a layout. This makes those tests runnable. It does **not** make them
+ * meaningful about behaviour.
+ *
+ * ⚠️ IT MOVES NO FOCUS, HANDLES NO ESCAPE KEY, AND INERTS NOTHING. Those are
+ * exactly the four behaviours that justify `<dialog>` over `popover="auto"`, so
+ * a test asserting any of them here would be asserting that this file works.
+ * Anything about focus, Escape, inertness or scroll locking belongs in
+ * `*.browser.test.ts`, where a real engine answers.
+ *
+ * What it is good for: wiring. That a trigger's `commandfor` matches the
+ * dialog's `id`, that a pathname change calls `close()`, that exactly one
+ * dialog is rendered.
+ */
+if (typeof HTMLDialogElement !== 'undefined') {
+  const proto = HTMLDialogElement.prototype as HTMLDialogElement & {
+    showModal?: () => void;
+    show?: () => void;
+    close?: (returnValue?: string) => void;
+  };
+
+  if (typeof proto.showModal !== 'function') {
+    proto.showModal = function showModal(this: HTMLDialogElement): void {
+      this.setAttribute('open', '');
+      this.dataset.modal = 'true';
+    };
+    proto.show = function show(this: HTMLDialogElement): void {
+      this.setAttribute('open', '');
+    };
+    proto.close = function close(
+      this: HTMLDialogElement,
+      returnValue?: string,
+    ): void {
+      this.removeAttribute('open');
+      delete this.dataset.modal;
+      if (returnValue !== undefined) {
+        this.returnValue = returnValue;
+      }
+      this.dispatchEvent(new Event('close'));
+    };
+  }
+}
+
+/**
+ * A dialog left open leaks into the next test, and the shim has no light
+ * dismiss to close it. Mirrors `resetIntersectionObservers` above.
+ */
+afterEach(() => {
+  const open = document.querySelectorAll('dialog[open]');
+  if (open.length > 0) {
+    for (const dialog of open) {
+      dialog.removeAttribute('open');
+    }
+    throw new Error(
+      `${open.length} dialog(s) left open. Close the drawer in the test, or ` +
+        'assert the behaviour in the browser project instead.',
+    );
+  }
+});

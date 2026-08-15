@@ -633,12 +633,21 @@
      * one sentence.
      *
      * A floor solves both. Below 40rem of available width the table stops
-     * shrinking and the scroll container takes over; above it, the description
-     * column wraps as it should. A consumer with an eight-column monster
-     * overrides `min-width` from their own unlayered rule and wins by the
-     * cascade contract this file already guarantees — so no token for it.
+     * shrinking and the scroll container takes over; above it, `width: 100%`
+     * takes over and the description column wraps as it should.
+     *
+     * `min-width: 40rem`, NOT `min(100%, 40rem)` — that spelling is a no-op at
+     * exactly the widths it is meant to govern, because the `100%` resolves
+     * against the box being floored: in a 318px scroll container it computes to
+     * `min(318px, 640px)` = 318px, i.e. the container's own width, so nothing
+     * ever overflows and the table squeezes exactly as before. The browser tier
+     * caught it at 318 vs 318.
+     *
+     * A consumer with an eight-column monster overrides `min-width` from their
+     * own unlayered rule and wins by the cascade contract this file already
+     * guarantees — so no token for it.
      */
-    min-width: min(100%, 40rem);
+    min-width: 40rem;
     border-collapse: collapse;
     font-variant-numeric: tabular-nums;
     font-size: 0.9375rem;
