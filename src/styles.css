@@ -112,10 +112,23 @@
 
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
-    /* How far below the top of the scrollport an anchored heading parks —
-     * i.e. the height of the host's sticky header. Set it to 0 if there is no
-     * such header; nothing else in this sheet reads it. */
-    --wave-docs-scroll-padding: 4rem;
+    /* The shell, per `docs/adr/001-shell-contract.md`. These four plus
+     * `--wave-docs-measure` are the whole settable layout surface; the gutter
+     * and the drawer width are literals, because each appears once and an
+     * ordinary override is already the cleanest tool for them. */
+    --wave-docs-header-height: 3.5rem;
+    --wave-docs-sidebar-width: 16rem;
+    --wave-docs-toc-width: 15rem;
+    --wave-docs-shell-width: 100rem;
+
+    /* How far below the top of the scrollport an anchored heading parks.
+     *
+     * Derived, not set: it is the sticky header's height plus a rem of air, and
+     * the shell's sticky columns offset by the same token — so a host that
+     * changes the header height moves all three together. An earlier version of
+     * this comment said nothing else in the sheet read it, which stopped being
+     * true the moment the layout landed. */
+    --wave-docs-scroll-padding: calc(var(--wave-docs-header-height) + 1rem);
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
 
@@ -922,6 +935,22 @@
 
   /* Nested levels get a guide rail instead of raw indentation, so a deep tree
    * stays readable at 240px wide. */
+  /*
+   * `__item` and `__group-title` are emitted by `sidebar.tsx` and had no rules
+   * at all — markup with a public class name and no definition, which is the
+   * worst of the three options: a consumer targeting it gets no baseline to
+   * override, and a maintainer cannot tell whether it is a hook or a leftover.
+   * They are hooks: the drawer styles items at a different density, and a group
+   * title is the one place a sidebar needs a label that is not a link.
+   */
+  .wave-docs-sidebar__item {
+    margin-block: 0.125rem;
+  }
+
+  .wave-docs-sidebar__group-title {
+    font-weight: 600;
+  }
+
   .wave-docs-sidebar__list:not([data-depth='0']) {
     margin-inline-start: 0.5rem;
     padding-inline-start: 0.5rem;
@@ -1080,6 +1109,141 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * Layout
+ *
+ * The shell `docs.Layout` renders. Every class here is fixed by
+ * `docs/adr/001-shell-contract.md` and is public API from 0.3.0.
+ *
+ * These are the first width-based media queries in this file. Before them there
+ * were none at all — every `@media` was `prefers-color-scheme`,
+ * `prefers-reduced-motion` or `forced-colors` — so there was no mobile layout,
+ * and no CSS for a layout component to use.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  /*
+   * Mobile first, and single-column by construction: the sidebar and the TOC
+   * are not laid out at all below 64rem, so nothing reserves a track for them.
+   */
+  .wave-docs-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 1.5rem;
+    /* 1rem on a phone, not 1.5rem: 48px of side padding is 15% of a 320px
+     * screen, and it took the reading column to 272px — under the 280px this
+     * package treats as the floor for a usable measure. Measured. */
+    padding-inline: 1rem;
+    /* Without this, `max-width` at the 100rem cap applies to the *content* box
+     * and the shell renders 48px wider than the token says — measured 1648
+     * against a declared 1600. */
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 30rem) {
+    .wave-docs-layout {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  .wave-docs-layout__sidebar,
+  .wave-docs-layout__toc {
+    display: none;
+  }
+
+  /*
+   * ⚠️ `min-width: 0`, AND `minmax(0, 1fr)` ON EVERY CONTENT TRACK BELOW.
+   *
+   * `1fr` is shorthand for `minmax(auto, 1fr)`, and `auto` floors at the
+   * content's min-content width — so a wide table pushes the track past the
+   * viewport and takes the whole document into horizontal scroll. Measured with
+   * both removed: 1048px of document inside a 1024px viewport.
+   *
+   * MEASURED, AND WORTH KNOWING BEFORE YOU DELETE ONE: they are redundant with
+   * each other, not jointly required. Removing `minmax(0, 1fr)` alone passes,
+   * and removing `min-width: 0` alone passes; only removing both reproduces the
+   * overflow. They are kept as a pair because they fail in opposite directions
+   * — the track constraint protects a child that does not carry `min-width`,
+   * and `min-width: 0` protects a track someone respells — and because the one
+   * that is left looks arbitrary without the other beside it.
+   *
+   * No unit test can see any of this: the bug needs a wide child and a real
+   * layout engine, and jsdom reports every width as 0.
+   * `src/styles.browser.test.ts` is what stops a "simplification" here from
+   * reintroducing it silently.
+   */
+  .wave-docs-layout__main {
+    min-width: 0;
+    padding-block: 2rem 4rem;
+  }
+
+  /* 16rem sidebar + 46rem measure + two 1.5rem gutters = 65rem, so the sidebar
+   * arrives when there is room for it and not one pixel sooner. A 60rem
+   * breakpoint introduces it exactly where it starts eating the measure. */
+  @media (min-width: 64rem) {
+    .wave-docs-layout {
+      grid-template-columns: var(--wave-docs-sidebar-width) minmax(0, 1fr);
+    }
+
+    .wave-docs-layout__sidebar {
+      display: block;
+      position: sticky;
+      top: var(--wave-docs-header-height);
+      /* `dvh`, not `vh`: with a mobile URL bar showing, `vh` is taller than the
+       * visible viewport, so the last few nav items sit under the chrome and
+       * cannot be reached. */
+      max-height: calc(100dvh - var(--wave-docs-header-height));
+      overflow-y: auto;
+      /* Without this, reaching the end of the nav keeps scrolling — the article
+       * jumps under the reader's cursor while they are looking at the sidebar. */
+      overscroll-behavior: contain;
+      /* Reserves the scrollbar's width whether or not it is showing, so the
+       * column does not jump when the nav grows past a screen. Costs ~15px on
+       * platforms with classic scrollbars; a jumping column costs more. */
+      scrollbar-gutter: stable;
+      padding-block: 2rem;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    /*
+     * Inside the query on purpose. As a top-level rule this `:has()` reserves
+     * `--wave-docs-toc-width` of nothing at every width — measured at 390px it
+     * squeezed the article to 94px — because the TOC element is in the DOM at
+     * all sizes and only its `display` changes.
+     */
+    .wave-docs-layout:has(.wave-docs-layout__toc) {
+      grid-template-columns:
+        var(--wave-docs-sidebar-width)
+        minmax(0, 1fr)
+        var(--wave-docs-toc-width);
+    }
+
+    .wave-docs-layout__toc {
+      display: block;
+      position: sticky;
+      /* `align-self: start`, or the sticky box stretches to the row height and
+       * has nothing left to travel within. */
+      align-self: start;
+      top: var(--wave-docs-header-height);
+      max-height: calc(100dvh - var(--wave-docs-header-height));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-block: 2rem;
+    }
+  }
+
+  /* One declaration, for the only screenshot anyone takes on a 2560px display:
+   * uncapped, the sidebar pins to the far-left bezel and the TOC to the
+   * far-right, about 1500px apart, with the text floating between them. */
+  @media (min-width: 100rem) {
+    .wave-docs-layout {
+      max-width: var(--wave-docs-shell-width);
+      margin-inline: auto;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
  * Search
  *
  * Classes emitted by `@waveso/docs/react/search-dialog`. The dialog is a
@@ -1143,7 +1307,10 @@
     justify-content: center;
     /* Not centred: a dialog that grows downward from a fixed top does not
      * shift under the reader as results stream in. */
-    padding: 10vh 1rem 1rem;
+    /* `dvh`, not `vh`: on a phone `vh` is the viewport with the URL bar
+     * *retracted*, so a dialog sized against it is taller than what the reader
+     * can actually see and its bottom edge sits under the browser chrome. */
+    padding: 10dvh 1rem 1rem;
     background: oklch(0.2 0.02 265 / 0.5);
     backdrop-filter: blur(2px);
   }
@@ -1153,7 +1320,7 @@
     flex-direction: column;
     width: 100%;
     max-width: 34rem;
-    max-height: min(32rem, 80vh);
+    max-height: min(32rem, 80dvh);
     overflow: hidden;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);

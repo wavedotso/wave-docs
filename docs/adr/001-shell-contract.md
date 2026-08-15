@@ -117,11 +117,14 @@ Every content track is `minmax(0, 1fr)`, and `.wave-docs-layout__main` carries
 `min-width: 0`.
 
 This is load-bearing rather than defensive. A grid track's default `min-width` is
-`auto`, which resolves to the *content's* min-content width — so one long
-unbreakable token, one wide table or one `<pre>` that refuses to shrink pushes the
-track past the viewport and takes the whole page into horizontal scroll. Reflow at
-320px was already a defect once in this package; this is the structural half of the
-fix that `overflow-wrap` alone cannot cover.
+`auto`, which resolves to the *content's* min-content width — so a wide table
+pushes the track past the viewport and takes the whole page into horizontal
+scroll. Measured with both removed: 1048px of document inside a 1024px viewport.
+
+The two are **redundant with each other**, not jointly required — removing either
+one alone still passes; only removing both reproduces the overflow. Keep both
+anyway: they fail in opposite directions, and whichever is left reads as
+arbitrary without the other beside it.
 
 ### Drawer
 

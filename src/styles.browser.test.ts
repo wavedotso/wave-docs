@@ -225,3 +225,114 @@ describe('focus indicators', () => {
     expect(style.outlineColor).not.toMatch(/transparent|rgba\(0, 0, 0, 0\)/);
   });
 });
+
+describe('the responsive shell', () => {
+  /**
+   * The shell as `docs.Layout` renders it, per ADR 001.
+   *
+   * The table is deliberately wide and deliberately inside the scroll wrapper
+   * the pipeline always emits. That is the ONE shape where `minmax(0, 1fr)` and
+   * `min-width: 0` change the outcome: measured, a bare `1fr` floors the track
+   * at the wrapper's min-content and pushes the document to 1048px inside a
+   * 1024px viewport. Every other wide child — a bare table, a fixed-width
+   * image, an unstyled `<pre>` — overflows identically with or without those
+   * two rules, so a fixture built from one of those passes either way and
+   * proves nothing.
+   */
+  function mountShell(): void {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    document.body.innerHTML = `
+      <div class="wave-docs-layout">
+        <div class="wave-docs-layout__sidebar">
+          <nav class="wave-docs-sidebar"><ul class="wave-docs-sidebar__list" data-depth="0">
+            <li class="wave-docs-sidebar__item"><a class="wave-docs-sidebar__link" href="/a">A page</a></li>
+          </ul></nav>
+        </div>
+        <div class="wave-docs-layout__main">
+          <article class="wave-docs-prose">
+            <h1>Title</h1>
+            <p>${DIGEST}</p>
+            <section class="wave-docs-table-scroll" tabindex="0">
+              <table class="wave-docs-table"><tbody><tr>
+                <td>${'x'.repeat(200)}</td>
+                <td><a href="/b">/api/v1/another/long/path</a></td>
+              </tr></tbody></table>
+            </section>
+          </article>
+        </div>
+        <div class="wave-docs-layout__toc"><nav class="wave-docs-toc"><a href="#x">Title</a></nav></div>
+      </div>`;
+  }
+
+  function box(selector: string): DOMRect {
+    const el = document.querySelector(selector);
+    if (!(el instanceof HTMLElement)) throw new Error(`no ${selector}`);
+    return el.getBoundingClientRect();
+  }
+
+  const WIDTHS = [320, 390, 768, 1024, 1440, 2560] as const;
+
+  /**
+   * The defect this shell exists to prevent, measured on the obvious
+   * hand-written version at 390px: 568px of document width — 178px of
+   * horizontal scroll, WCAG 1.4.10 failed — with the prose column computing to
+   * **0**. Not "unstyled on mobile": a blank page.
+   */
+  it.each(WIDTHS)(
+    'fits the viewport and keeps a readable column at %ipx',
+    async (width) => {
+      mountShell();
+      await resize(width);
+
+      expect(
+        document.documentElement.scrollWidth,
+        `document scrolls sideways at ${width}px`,
+      ).toBeLessThanOrEqual(width);
+      expect(
+        box('.wave-docs-prose').width,
+        `prose column collapsed at $widthpx`,
+      ).toBeGreaterThan(280);
+    },
+  );
+
+  it('shows one column on a phone and three on a desktop', async () => {
+    mountShell();
+
+    await resize(390);
+    expect(
+      getComputedStyle(
+        document.querySelector('.wave-docs-layout__sidebar') as HTMLElement,
+      ).display,
+    ).toBe('none');
+    expect(
+      getComputedStyle(
+        document.querySelector('.wave-docs-layout__toc') as HTMLElement,
+      ).display,
+    ).toBe('none');
+
+    await resize(1024);
+    expect(box('.wave-docs-layout__sidebar').width).toBeGreaterThan(0);
+    expect(
+      getComputedStyle(
+        document.querySelector('.wave-docs-layout__toc') as HTMLElement,
+      ).display,
+    ).toBe('none');
+
+    await resize(1440);
+    expect(box('.wave-docs-layout__sidebar').width).toBeGreaterThan(0);
+    expect(box('.wave-docs-layout__toc').width).toBeGreaterThan(0);
+  });
+
+  it('caps the shell so the columns do not pin to the bezels', async () => {
+    mountShell();
+    await resize(2560);
+    // Uncapped, the sidebar and TOC end up ~1500px apart with the text
+    // floating between them.
+    expect(box('.wave-docs-layout').width).toBeLessThanOrEqual(100 * 16);
+  });
+});

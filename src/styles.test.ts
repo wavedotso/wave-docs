@@ -376,7 +376,11 @@ describe('the cascade contract', () => {
     // it only de-animates them when `<html>` carries
     // `data-scroll-behavior="smooth"`, which only the host can set — and
     // `scroll-padding-top` on bare `html` assumed a sticky header we cannot see.
-    expect(sheet).not.toContain('scroll-behavior');
+    //
+    // At a property boundary, not as a substring: `overscroll-behavior`
+    // contains `scroll-behavior` and is a different property doing a different
+    // job — it is what stops the sidebar chaining its scroll into the article.
+    expect(sheet).not.toMatch(/(^|[\s;{])scroll-behavior\s*:/);
 
     const bare = RULES.flatMap((rule) => splitSelectors(rule.prelude)).filter(
       (selector) => selector === 'html' || selector === 'body',
@@ -807,6 +811,120 @@ describe('tables', () => {
   it('shows which way a wide table scrolls, without JavaScript', () => {
     expect(scroll.match(/no-repeat local/g)).toHaveLength(2);
     expect(scroll.match(/no-repeat scroll/g)).toHaveLength(2);
+  });
+});
+
+describe('the responsive shell', () => {
+  const widthQueries = RULES.filter((rule) =>
+    /^@media \(min-width/.test(rule.prelude),
+  ).map((rule) => rule.prelude);
+
+  /**
+   * There were **zero** width-based media queries in this file before the
+   * shell: every `@media` was `prefers-color-scheme`, `prefers-reduced-motion`
+   * or `forced-colors`. So there was no mobile layout, and nothing for a layout
+   * component to use.
+   */
+  it('has breakpoints at all', () => {
+    expect(widthQueries.length).toBeGreaterThanOrEqual(3);
+    for (const prelude of widthQueries) {
+      // `rem`, so a reader who raises their base font size gets the
+      // single-column layout at a proportionally larger viewport.
+      expect(prelude, `${prelude} is not in rem`).toMatch(/\d+rem/);
+    }
+  });
+
+  /**
+   * `1fr` is `minmax(auto, 1fr)`, and `auto` floors at the content's
+   * min-content width — so one wide table pushes the track past the viewport
+   * and takes the document into horizontal scroll, with the prose column
+   * computing to 0. Invisible to every unit test; the browser tier is what
+   * proves the geometry, and this is what stops the shorthand coming back.
+   */
+  it('never sizes a content track with a bare 1fr', () => {
+    const tracks = [...sheet.matchAll(/grid-template-columns:\s*([^;]+);/g)];
+    expect(tracks.length).toBeGreaterThan(0);
+
+    for (const [, value] of tracks) {
+      expect(value, `bare 1fr in "${value?.trim()}"`).toContain(
+        'minmax(0, 1fr)',
+      );
+      // The `1fr` inside `minmax(0, 1fr)` is the correct one, so remove every
+      // minmax before looking for a bare one.
+      const outside = (value ?? '').replace(/minmax\([^)]*\)/g, '');
+      expect(outside, `bare 1fr in "${value?.trim()}"`).not.toContain('1fr');
+    }
+    expect(
+      readBlock(sheet, sheet.indexOf('.wave-docs-layout__main {')),
+    ).toContain('min-width: 0');
+  });
+
+  /**
+   * The TOC element is in the DOM at every width and only its `display`
+   * changes, so a top-level `:has()` reserves a column of nothing on a phone —
+   * measured, it squeezed the article to 94px at 390px.
+   */
+  it('reserves the TOC column only inside its breakpoint', () => {
+    const at = sheet.indexOf('.wave-docs-layout:has(');
+    expect(at, ':has() rule missing').toBeGreaterThan(-1);
+
+    const query = sheet.lastIndexOf('@media (min-width', at);
+    expect(query, ':has() is not inside a width query').toBeGreaterThan(-1);
+    expect(sheet.slice(query, sheet.indexOf('{', query))).toContain('80rem');
+  });
+
+  /**
+   * `vh` is the viewport with a mobile URL bar retracted, so anything sized
+   * against it is taller than what the reader can see: the last nav items sit
+   * under the browser chrome, unreachable.
+   */
+  it('measures the viewport with dvh, never vh', () => {
+    expect(sheet).not.toMatch(/\d\s*vh\b/);
+    expect(sheet).toMatch(/dvh\b/);
+  });
+
+  /** Sticky columns scroll independently, and must not chain into the article. */
+  it('contains the overscroll on both sticky columns', () => {
+    // Anchored to the breakpoint each column appears at, not to "the first
+    // min-width query": both names also appear in the base `display: none`
+    // rule, which is what a looser search finds.
+    for (const [selector, breakpoint] of [
+      ['.wave-docs-layout__sidebar', '@media (min-width: 64rem)'],
+      ['.wave-docs-layout__toc', '@media (min-width: 80rem)'],
+    ] as const) {
+      const query = sheet.indexOf(breakpoint);
+      expect(query, `${breakpoint} missing`).toBeGreaterThan(-1);
+
+      const at = sheet.indexOf(`${selector} {`, query);
+      expect(at, `${selector} not styled inside ${breakpoint}`).toBeGreaterThan(
+        -1,
+      );
+
+      const block = readBlock(sheet, at);
+      expect(block).toContain('position: sticky');
+      expect(block).toContain('overscroll-behavior: contain');
+      // `dvh`, so the last nav items are not under a mobile URL bar.
+      expect(block).toContain('dvh');
+    }
+  });
+
+  /** Public class names with no rules are the worst of the three options. */
+  it('defines every sidebar class the JSX emits', async () => {
+    const jsx = await readFile(
+      path.join(import.meta.dirname, 'react', 'sidebar.tsx'),
+      'utf8',
+    );
+    const emitted = new Set(
+      [...jsx.matchAll(/["'`](wave-docs-sidebar__[a-z-]+)["'`]/g)].map(
+        (match) => match[1],
+      ),
+    );
+    expect(emitted.size).toBeGreaterThan(0);
+
+    const undefinedClasses = [...emitted].filter(
+      (name) => !sheet.includes(`.${name}`),
+    );
+    expect(undefinedClasses).toEqual([]);
   });
 });
 

@@ -118,6 +118,22 @@ There is no root export. Every entry point is a subpath, so an import always nam
 
 The Node-only subpaths carry `"browser": null`, so importing one from client code fails with a located *module not found* rather than quietly bundling `node:fs`.
 
+### Layout tokens
+
+Five custom properties size the shell, all layered so an unlayered `:root` of your own still wins. The full contract is in [`docs/adr/001-shell-contract.md`](./docs/adr/001-shell-contract.md).
+
+| Token | Default | Controls |
+| --- | --- | --- |
+| `--wave-docs-measure` | `46rem` | Prose column width. `none` opts out |
+| `--wave-docs-header-height` | `3.5rem` | Header, and the offset sticky columns park below |
+| `--wave-docs-sidebar-width` | `16rem` | Sidebar track |
+| `--wave-docs-toc-width` | `15rem` | Table-of-contents track |
+| `--wave-docs-shell-width` | `100rem` | Maximum shell width |
+
+The shell has three breakpoints, in `rem` so they scale with the reader's base font size: the sidebar appears at **64rem**, the table of contents at **80rem**, and the whole grid stops growing at **100rem**. 64rem is arithmetic rather than taste — a 16rem sidebar plus a 46rem measure plus two 1.5rem gutters is 65rem, so anything narrower introduces the sidebar exactly where it starts eating the measure it frames.
+
+Set `--wave-docs-font-sans: inherit` to hand the whole package your own typeface.
+
 Every subpath is enumerated in `exports` — there is no wildcard. A name that is not in the table above is not importable, which is what makes "nothing undocumented is exported" a guarantee rather than an intention.
 
 ## Components
