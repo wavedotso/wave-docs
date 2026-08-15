@@ -20,6 +20,22 @@ Skip link, sticky header, sidebar column, mobile drawer and the grid that arrang
 
 **`docs.Page` returns two children now**, the `<article>` and the table of contents, rather than one. They land as direct children of the grid, which is what puts them in separate columns. If you wrapped `docs.Page` in an element expecting a single child, that wrapper needs to go. A page with no headings emits no `<aside>` at all rather than an empty one, because the grid reserves that column with `:has()` and would otherwise give 15rem to nothing.
 
+**The pipeline has plugin slots**, which it did not before — it was frozen end to end, and both apparent escape hatches are useless (`frozen.use()` throws; `frozen().use(p)` appends, so a plugin runs after Shiki and sees token spans where the author's code was):
+
+```ts
+createDocsRoute({
+  contentDir: 'content/docs',
+  remarkPlugins: [remarkMath],
+  rehypePlugins: [rehypeKatex],
+});
+```
+
+`remarkPlugins` run before link resolution, so what they emit is folded, contained and asserted exactly like authored markdown. `rehypePlugins` run after heading ids exist and before Shiki, so a fence is still the author's text. **The table of contents is now captured last**, after your plugins and everything else, so it describes the same document the search index does — a plugin that adds or removes a heading changes both together, and there is no validation pass because there is nothing left to validate.
+
+**`gray-matter` is gone**, replaced by `vfile-matter`. It did a bare `require('fs')` for a method this package never calls — the only gratuitous Node requirement in the whole tree — dragged a second copy of js-yaml, and memoised every file body it ever saw in a cache that is never evicted. Frontmatter parsing is unchanged in behaviour, including the UTF-8 BOM, which this package now strips itself.
+
+**Runtime requirements are documented and asserted.** `render`, `frontmatter`, `highlighter`, `search-index` and the React layer require **no Node builtins at all** — the markdown pipeline runs wherever JavaScript does, and Shiki is loaded through its JavaScript regex engine rather than WASM deliberately. `source` needs `node:fs/promises` and `node:path`; `next` adds `node:crypto`. Every one of those is asserted as an exact set, so a new builtin three modules deep fails CI instead of silently ruling out a runtime.
+
 **Code blocks have a frame, a title bar and a copy button**, which they did not before — a live render was a bare `<pre>` with no wrapper and no control of any kind:
 
 ````md
