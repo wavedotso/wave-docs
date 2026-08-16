@@ -133,7 +133,8 @@
     "version": "changeset version",
     "release": "pnpm run build && changeset publish",
     "test:browser": "vitest run --project browser",
-    "test:smoke": "node smoke/check.ts"
+    "test:smoke": "node smoke/check.ts",
+    "size": "node scripts/size.ts"
   },
   "dependencies": {
     "@shikijs/langs": "4.4.3",
@@ -180,6 +181,7 @@
     "@types/react-dom": "^19.2.4",
     "@vitest/browser": "4.1.10",
     "@vitest/browser-playwright": "^4.1.10",
+    "hast-util-to-html": "^9.0.5",
     "image-size": "^2.0.2",
     "jsdom": "^30.0.1",
     "next": "^16.3.0",

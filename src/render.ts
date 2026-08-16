@@ -372,7 +372,7 @@ function titleHeadingNode(title: string): Element {
  *
  * The tree is the payload: it crosses the RSC boundary, so every byte is
  * shipped to every reader.
- * Positions are 38% of that JSON on a typical page — line and column offsets
+ * Positions are roughly a third of that JSON — line and column offsets
  * into a markdown file the browser does not have and cannot fetch. Nothing
  * downstream reads them: link errors are reported from positions captured
  * during the mdast phase, and the TOC works off ids.

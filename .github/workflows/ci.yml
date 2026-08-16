@@ -121,6 +121,14 @@ jobs:
       - name: Check runtime requirements
         run: pnpm exec vitest run --project node src/entry-runtime.test.ts
 
+      # Must follow the build: it bundles each `'use client'` entry from
+      # dist/ and renders a corpus to compare payload shapes. Every number the
+      # README quotes about size or speed has a budget entry behind it, so a
+      # regression fails here rather than turning a published claim into a
+      # false one.
+      - name: Size and speed budgets
+        run: pnpm run size
+
       # Must follow the build: `attw --pack .` packs the real tarball and
       # resolves every export subpath against dist/.
       - name: Check package (publint + are-the-types-wrong)

@@ -1,0 +1,48 @@
+{
+  "client": {
+    "code-runtime": {
+      "max": 1000,
+      "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. It is one delegated listener and one live region; if this grows past a kilobyte it has stopped being that."
+    },
+    "nav": {
+      "max": 1900,
+      "note": "The drawer: a dialog, a close-on-navigate effect and an eight-line `command` fallback. Growth here means behaviour moved out of the browser and into us, which is the direction to argue about."
+    },
+    "next-nav": {
+      "max": 2000,
+      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it."
+    },
+    "next-search": {
+      "max": 9700,
+      "note": "`search-dialog` plus the Next router wiring. MiniSearch is NOT in here \u2014 it is `import()`ed on hover \u2014 so if this jumps by tens of kilobytes the lazy boundary has been lost."
+    },
+    "search-dialog": {
+      "max": 9600,
+      "note": "The whole keyboard-first dialog: focus trap, combobox wiring, result rendering. The single largest thing this package ships to a browser, and the one worth defending line by line."
+    },
+    "sidebar": {
+      "max": 1400,
+      "note": "A tree with disclosure groups and no router import. If this approaches the dialog, the navigation has grown a feature that belongs on the server."
+    },
+    "toc": {
+      "max": 900,
+      "note": "A list plus one IntersectionObserver. The smallest client component here, and it should stay that way."
+    }
+  },
+  "payload": {
+    "light": {
+      "max": 1.32,
+      "note": "Prose-only pages: hast over the wire costs 20% more brotli than HTML would. This is the honest price of the architecture and the first number a skeptical reviewer asks for. If it exceeds this, restate the architecture argument \u2014 do not raise the budget."
+    },
+    "heavy": {
+      "max": 1.23,
+      "note": "Pages with code, tables and headings: 11.6%. The ratio improves as pages get heavier, because Shiki's token spans dominate both representations equally. Same rule as `light`."
+    }
+  },
+  "render": {
+    "shiki-multiple": {
+      "max": 1.98,
+      "note": "Highlighting costs 1.8x a render with the grammar excluded, measured against the same corpus so the machine cancels out. A jump means a grammar or a transformer got expensive, not that the runner was slow."
+    }
+  }
+}

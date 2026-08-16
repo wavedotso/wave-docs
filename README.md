@@ -55,6 +55,21 @@ That is not a style preference. `.extend()` produces a schema only as trustworth
 
 There is no `image-size` peer either. An `imageResolver` you write is welcome to read dimensions with it — but it is your dependency, in your own `package.json`. Declaring it here installed nothing and did not make `await import('image-size')` resolve for you; it only looked like it helped.
 
+## What it costs
+
+Measured by `pnpm size`, budgeted in `size-budget.json`, and enforced in CI — so every number here is one a build fails over rather than one somebody remembered to update.
+
+| | Measured | Budget |
+| --- | --- | --- |
+| Search dialog, gzipped | 8.47 KB | 9.38 KB |
+| Sidebar, gzipped | 1.24 KB | 1.37 KB |
+| Table of contents, gzipped | 0.78 KB | 0.88 KB |
+| Copy-button runtime, gzipped | 0.88 KB | 0.98 KB |
+| hast over the wire vs HTML, brotli | 1.20× light, 1.12× heavy | 1.32× / 1.23× |
+| Highlighting vs no highlighting | 1.75× | 1.98× |
+
+No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time, and the client entries above are the whole of what a reader downloads from this package. The one honest cost is the middle row: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally.
+
 ## Quick start
 
 **Two route files are required.** `[...slug]` does not match `/docs` itself, so the index needs its own `page.tsx`. An optional catch-all (`[[...slug]]`) does match, but leaves `/docs/index` live and serving byte-identical HTML with no canonical between them.
@@ -782,7 +797,7 @@ try {
 
 | | |
 | --- | --- |
-| Node.js | ≥ 20.19.0 |
+| Node.js | ≥ 22.12.0 |
 | React | 19 |
 | Next.js | 16 (optional peer — only `@waveso/docs/next` needs it) |
 | Module format | **ESM only** |
@@ -837,7 +852,7 @@ It also hardcodes `passNode: true` with no opt-out, so any component you map tha
 
 An HTML string is a dead end: you can only render it with `dangerouslySetInnerHTML`, which forfeits component mapping, makes every element unstyleable except through descendant selectors, and puts the burden of trusting the content on you.
 
-A hast tree is data. It survives `JSON.stringify`, crosses the RSC boundary, caches to disk, and renders through `hast-util-to-jsx-runtime` with your components substituted for whichever elements you care about. The cost is a slightly larger payload; positions are stripped before it ships, which removes about 44% of the JSON on a typical page.
+A hast tree is data. It survives `JSON.stringify`, crosses the RSC boundary, caches to disk, and renders through `hast-util-to-jsx-runtime` with your components substituted for whichever elements you care about. The cost is a slightly larger payload; positions are stripped before it ships, which removes roughly a third of the JSON. Measured at 33% on a mixed page — it rises on short pages, where the offsets are a larger share of a smaller tree. Two figures in this repository disagreed about it (38% in a comment, 44% here) until somebody measured.
 
 </details>
 
