@@ -700,9 +700,23 @@ async function loadIndex(
     fetch(url),
   ]);
   if (!response.ok) {
+    /*
+     * A 404 is not a transient failure, and saying "try again" for one wastes
+     * the author's time on the single most likely mistake: the route file was
+     * never created. The trigger renders from `docs.Layout` whether or not the
+     * index exists, so the first sign of it is a reader's search box that never
+     * works — name the file instead of describing the symptom.
+     */
     throw docsError(
       'search-index-unavailable',
-      `Failed to load the search index from ${url} (HTTP ${response.status}).`,
+      response.status === 404
+        ? `No search index at ${url}. Create the route that serves it:\n` +
+            `\n  // app${url}/route.ts — the whole file\n` +
+            "  import { docs } from '@/lib/docs';\n" +
+            '\n  export const GET = docs.searchIndex;\n' +
+            "  export const dynamic = 'force-static';\n" +
+            '\nOr pass `search={false}` to `docs.Layout` to hide the trigger.'
+        : `Failed to load the search index from ${url} (HTTP ${response.status}).`,
     );
   }
   // The same merge `buildSearchIndex` applies, from the same module: an index

@@ -59,6 +59,10 @@ import type {
   DocsThemes,
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
+// Type-only, so it is erased: `layout.tsx` is a `'use client'` module and this
+// entry point must not put it on `next.config.ts`'s graph. `Layout` reaches the
+// value through the dynamic `import()` below, which is the same reason.
+import type { DocsLayoutSearchProps } from './react/layout.js';
 import { DocsToc } from './react/toc.js';
 import type {
   DocsImageComponent,
@@ -378,8 +382,19 @@ export interface DocsLayoutProps {
   title?: ReactNode;
   /** Header end, after search: a theme toggle, a version switcher, a link. */
   actions?: ReactNode;
-  /** Render the search trigger. Defaults to `true`; the URL is derived. */
-  search?: boolean | undefined;
+  /**
+   * The search trigger. Defaults to on, and the URL is always derived.
+   *
+   * `false` omits it. An object configures the dialog — `placeholder`,
+   * `hotkey`, `miniSearchOptions` and the rest of `DocsSearch`'s surface,
+   * minus `indexUrl`.
+   *
+   * You do not need to pass `miniSearchOptions` here to match what
+   * `createDocsRoute` was given: the route's own value is forwarded, so the
+   * object that built the index is the object that queries it. Pass one only
+   * to override that.
+   */
+  search?: boolean | DocsLayoutSearchProps | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -964,6 +979,29 @@ export function createDocsRoute<
       const { DocsLayoutShell } = await import('./react/layout.js');
 
       /*
+       * ⚠️ THE ROUTE'S `miniSearchOptions` GO TO THE DIALOG FROM HERE, and this
+       * is the only place they can. MiniSearch reads `tokenize` and
+       * `processTerm` when indexing *and* when querying, so the object that
+       * built the index has to be the object that queries it — the warning on
+       * the option itself. While `search` was a bare boolean there was no
+       * channel, so configuring the route and rendering `docs.Layout` (the two
+       * things the README tells you to do) produced an index whose terms no
+       * query could spell: zero results, no error, nothing in the console.
+       *
+       * A host object wins over the route's, because a host that passes one
+       * has said something more specific than the route's default.
+       */
+      const searchProps =
+        search === false
+          ? false
+          : {
+              ...(options.miniSearchOptions === undefined
+                ? {}
+                : { miniSearchOptions: options.miniSearchOptions }),
+              ...(search === true || search === undefined ? {} : search),
+            };
+
+      /*
        * `requestScopedSource`, not `source`: outside a production build this
        * rescans, so adding a page in `next dev` shows up in the drawer. Next
        * does not re-run a layout on every client navigation, so a stale read
@@ -973,9 +1011,9 @@ export function createDocsRoute<
         children,
         nav: await requestScopedSource.nav(),
         searchIndexUrl,
+        search: searchProps,
         ...(title === undefined ? {} : { title }),
         ...(actions === undefined ? {} : { actions }),
-        ...(search === undefined ? {} : { search }),
       });
     },
 

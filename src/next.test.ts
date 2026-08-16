@@ -379,6 +379,66 @@ describe('docs.Layout', () => {
     expect(element.props.searchIndexUrl).toBe('/docs/search-index.json');
   });
 
+  it('hands the dialog the same MiniSearch options it built the index with', async () => {
+    /*
+     * ⚠️ THE SILENT FAILURE THIS WHOLE PROP SHAPE EXISTS FOR. MiniSearch reads
+     * `tokenize` and `processTerm` when indexing *and* when querying, so an
+     * index built with one and queried with another has terms no query can
+     * spell — zero results, no error, nothing in the console.
+     *
+     * `search` was a bare boolean, so there was no channel at all: doing the
+     * two things the README says to do (configure the route, render
+     * `docs.Layout`) produced exactly that, under a docstring warning about
+     * it in capitals.
+     */
+    const processTerm = (term: string): string => term.replace(/-/g, '');
+    const tuned = createDocsRoute({
+      contentDir: BASIC,
+      miniSearchOptions: { processTerm },
+    });
+
+    const element = await tuned.Layout({ children: null });
+    if (!isValidElement<{ search?: unknown }>(element)) {
+      throw new Error('expected `Layout` to return an element');
+    }
+
+    expect(element.props.search).toEqual({
+      miniSearchOptions: { processTerm },
+    });
+  });
+
+  it('lets a host override those options, and still omit the trigger', async () => {
+    const routeTerm = (term: string): string => term;
+    const hostTerm = (term: string): string => term.toUpperCase();
+    const tuned = createDocsRoute({
+      contentDir: BASIC,
+      miniSearchOptions: { processTerm: routeTerm },
+    });
+
+    // More specific wins: a host that passes an object has said something the
+    // route's default did not.
+    const overridden = await tuned.Layout({
+      children: null,
+      search: { miniSearchOptions: { processTerm: hostTerm } },
+    });
+    if (
+      !isValidElement<{ search?: { miniSearchOptions?: unknown } }>(overridden)
+    ) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    expect(overridden.props.search?.miniSearchOptions).toEqual({
+      processTerm: hostTerm,
+    });
+
+    // And `false` still means no trigger, rather than a trigger configured
+    // with the route's options.
+    const off = await tuned.Layout({ children: null, search: false });
+    if (!isValidElement<{ search?: unknown }>(off)) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    expect(off.props.search).toBe(false);
+  });
+
   it('takes four props, and a fifth is a deliberate act', () => {
     /*
      * The count is the point. Fumadocs' layout takes eleven, which promotes

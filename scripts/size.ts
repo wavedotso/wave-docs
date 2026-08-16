@@ -43,6 +43,7 @@ import type { DocFile } from '../dist/types.js';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const BUDGET_FILE = path.join(ROOT, 'size-budget.json');
+const README_FILE = path.join(ROOT, 'README.md');
 
 interface Budget {
   /** The measured ceiling. */
@@ -248,6 +249,159 @@ function compare(
   }
 }
 
+/* -------------------------------------------------------------------------
+ * Axis 4 — the README's own numbers
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Every figure the README publishes about cost, and what measures it.
+ *
+ * ⚠️ THIS AXIS EXISTS BECAUSE THE OTHER THREE DID NOT COVER THE ONE PLACE
+ * ANYONE READS. The README claimed the sidebar was 1.24 KB against a budget of
+ * 1.37 KB; both had been true, and both had been wrong for two commits by the
+ * time anyone looked — under a sentence promising that "every number here is
+ * one a build fails over rather than one somebody remembered to update". No
+ * test read the table, so the rot the sentence ruled out had already happened.
+ *
+ * The published figure is a **ceiling**, not a snapshot: the check is
+ * `measured <= published <= budget`. That is the direction that matters — a
+ * README may not understate what this package costs — and it means an ordinary
+ * dependency patch that shaves 40 bytes does not force a documentation commit.
+ * Comparison is at the published precision, so a figure of `1.20×` is not
+ * breached by `1.2000001`.
+ */
+interface ReadmeClaim {
+  /** The row's first cell, verbatim. */
+  label: string;
+  axis: 'client' | 'payload' | 'render';
+  /** Budget keys this row covers; more than one means the row is their sum. */
+  names: string[];
+  unit: 'kb' | 'ratio';
+}
+
+const README_CLAIMS: ReadmeClaim[] = [
+  {
+    label: 'Everything the quick start ships, gzipped',
+    axis: 'client',
+    names: ['next-search', 'next-nav', 'toc', 'code-runtime'],
+    unit: 'kb',
+  },
+  {
+    label: 'Search dialog and router wiring',
+    axis: 'client',
+    names: ['next-search'],
+    unit: 'kb',
+  },
+  {
+    label: 'Navigation: sidebar and mobile drawer',
+    axis: 'client',
+    names: ['next-nav'],
+    unit: 'kb',
+  },
+  { label: 'Table of contents', axis: 'client', names: ['toc'], unit: 'kb' },
+  {
+    label: 'Copy-button runtime',
+    axis: 'client',
+    names: ['code-runtime'],
+    unit: 'kb',
+  },
+  {
+    label: 'hast over the wire vs HTML, prose page',
+    axis: 'payload',
+    names: ['light'],
+    unit: 'ratio',
+  },
+  {
+    label: 'hast over the wire vs HTML, code and tables',
+    axis: 'payload',
+    names: ['heavy'],
+    unit: 'ratio',
+  },
+  {
+    label: 'Highlighting vs no highlighting',
+    axis: 'render',
+    names: ['shiki-multiple'],
+    unit: 'ratio',
+  },
+];
+
+/** The published figure for a row, or `undefined` when the row is missing. */
+function publishedFigure(
+  readme: string,
+  claim: ReadmeClaim,
+): number | undefined {
+  const escaped = claim.label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const row = new RegExp(`^\\| ${escaped} \\| ([^|]+) \\|`, 'm').exec(readme);
+  if (row === null) return undefined;
+  const value = Number.parseFloat((row[1] as string).trim());
+  return Number.isNaN(value) ? undefined : value;
+}
+
+function checkReadme(measured: {
+  client: Record<string, number>;
+  payload: Record<string, number>;
+  render: Record<string, number>;
+}): void {
+  const readme = readFileSync(README_FILE, 'utf8');
+  console.log('\nreadme (published ceilings)');
+
+  for (const claim of README_CLAIMS) {
+    const published = publishedFigure(readme, claim);
+    if (published === undefined) {
+      failures.push(
+        `readme/${claim.label}: no row in the "What it costs" table — ` +
+          'a figure this script checks was deleted or retitled',
+      );
+      console.log(`  ✗ ${claim.label} — no such row`);
+      continue;
+    }
+
+    // A ratio row can only be a single key; only bytes are summed.
+    const raw = claim.names.reduce(
+      (total, name) => total + (measured[claim.axis][name] ?? Number.NaN),
+      0,
+    );
+    const actual =
+      claim.unit === 'kb'
+        ? Number((raw / 1024).toFixed(1))
+        : Number(raw.toFixed(2));
+    const budget = claim.names.reduce(
+      (total, name) => total + (budgets[claim.axis][name]?.max ?? Number.NaN),
+      0,
+    );
+    const ceiling =
+      claim.unit === 'kb'
+        ? Number((budget / 1024).toFixed(1))
+        : Number(budget.toFixed(2));
+    const unit = claim.unit === 'kb' ? ' KB' : '×';
+
+    if (actual > published) {
+      failures.push(
+        `readme/${claim.label}: measured ${actual}${unit} exceeds the published ` +
+          `${published}${unit}. The README may not understate what this costs — ` +
+          'raise the published figure, deliberately.',
+      );
+      console.log(
+        `  ✗ ${claim.label}: ${actual}${unit} > published ${published}${unit}`,
+      );
+      continue;
+    }
+    if (published > ceiling) {
+      failures.push(
+        `readme/${claim.label}: the published ${published}${unit} is above the ` +
+          `budget's ${ceiling}${unit}, so the table promises worse than the build enforces`,
+      );
+      console.log(
+        `  ✗ ${claim.label}: published ${published}${unit} > budget ${ceiling}${unit}`,
+      );
+      continue;
+    }
+    console.log(
+      `  ✓ ${claim.label.padEnd(42)} ${`${actual}${unit}`.padStart(9)} ≤ published ${published}${unit}`,
+    );
+  }
+}
+
 const budgets = JSON.parse(readFileSync(BUDGET_FILE, 'utf8')) as BudgetFile;
 
 const measured = {
@@ -294,6 +448,7 @@ compare(
   budgets.render,
   (value) => `${value.toFixed(2)}×`,
 );
+checkReadme(measured);
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} budget failure(s):`);

@@ -22,10 +22,20 @@
 import type { ReactNode } from 'react';
 
 import type { DocNavNode } from '../types.js';
+import type { DocsSearchProps } from './next-search.js';
 import { DocsSearch } from './next-search.js';
 import { DocsNextNav } from './next-nav.js';
 import { DOCS_NAV_ID } from './nav.js';
 import { SkipLink } from './skip-link.js';
+
+/**
+ * What a host may say about the search trigger, minus the URL.
+ *
+ * `indexUrl` is derived from `basePath` and is not negotiable here: the whole
+ * reason `docs.Layout` exists is that nobody should have to know the index's
+ * address, and a hand-passed one is wrong under every non-root `basePath`.
+ */
+export type DocsLayoutSearchProps = Omit<DocsSearchProps, 'indexUrl'>;
 
 export interface DocsLayoutShellProps {
   children: ReactNode;
@@ -33,7 +43,19 @@ export interface DocsLayoutShellProps {
   searchIndexUrl: string;
   title?: ReactNode;
   actions?: ReactNode;
-  search?: boolean | undefined;
+  /**
+   * `false` to omit the trigger; an object to configure it.
+   *
+   * ⚠️ AN OBJECT IS WHAT MAKES `miniSearchOptions` REACHABLE. MiniSearch reads
+   * `tokenize` and `processTerm` both when indexing and when querying, so the
+   * object `createDocsRoute` built the index with has to be the object the
+   * dialog queries it with — and while this was a bare boolean there was no
+   * channel for it at all. Configuring the route and rendering `docs.Layout`
+   * produced an index whose terms no query could spell: zero results, no error,
+   * nothing in the console, and the option's own docstring warning about
+   * exactly that.
+   */
+  search?: boolean | DocsLayoutSearchProps | undefined;
 }
 
 export function DocsLayoutShell({
@@ -86,12 +108,13 @@ export function DocsLayoutShell({
             <div className="wave-docs-layout__title">{title}</div>
           )}
 
-          {search ? (
+          {search === false ? null : (
             <DocsSearch
               indexUrl={searchIndexUrl}
               className="wave-docs-layout__search"
+              {...(search === true ? {} : search)}
             />
-          ) : null}
+          )}
 
           {actions === undefined ? null : (
             <div className="wave-docs-layout__actions">{actions}</div>

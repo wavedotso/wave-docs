@@ -57,22 +57,28 @@ There is no `image-size` peer either. An `imageResolver` you write is welcome to
 
 ## What it costs
 
-Measured by `pnpm size`, budgeted in `size-budget.json`, and enforced in CI — so every number here is one a build fails over rather than one somebody remembered to update.
+Every figure below is a **ceiling**, and `pnpm size` fails the build if the measurement passes it — in CI and again in `prepublishOnly`. So these are numbers this package is held to, not numbers somebody remembered to update.
 
-| | Measured | Budget |
-| --- | --- | --- |
-| Search dialog, gzipped | 8.47 KB | 9.38 KB |
-| Sidebar, gzipped | 1.24 KB | 1.37 KB |
-| Table of contents, gzipped | 0.78 KB | 0.88 KB |
-| Copy-button runtime, gzipped | 0.88 KB | 0.98 KB |
-| hast over the wire vs HTML, brotli | 1.20× light, 1.12× heavy | 1.32× / 1.23× |
-| Highlighting vs no highlighting | 1.75× | 1.98× |
+| | At most |
+| --- | --- |
+| Everything the quick start ships, gzipped | 13.0 KB |
+| Search dialog and router wiring | 9.0 KB |
+| Navigation: sidebar and mobile drawer | 2.2 KB |
+| Table of contents | 0.9 KB |
+| Copy-button runtime | 0.9 KB |
+| hast over the wire vs HTML, prose page | 1.20× |
+| hast over the wire vs HTML, code and tables | 1.12× |
+| Highlighting vs no highlighting | 1.80× |
 
-No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time, and the client entries above are the whole of what a reader downloads from this package. The one honest cost is the middle row: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 13 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+
+The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
+
+`size-budget.json` holds a second, looser ceiling per entry with a note explaining what to do when it is hit — and a build fails if the table above ever promises worse than that file enforces.
 
 ## Quick start
 
-**Two route files are required.** `[...slug]` does not match `/docs` itself, so the index needs its own `page.tsx`. An optional catch-all (`[[...slug]]`) does match, but leaves `/docs/index` live and serving byte-identical HTML with no canonical between them.
+**Three route files, and each one earns its place.** `[...slug]` does not match `/docs` itself, so the index needs its own `page.tsx` — an optional catch-all (`[[...slug]]`) does match, but leaves `/docs/index` live and serving byte-identical HTML with no canonical between them. The third serves the search index, which the layout's search trigger reads.
 
 Create the route once, in a module every route file imports:
 
@@ -109,6 +115,14 @@ import { docs } from '@/lib/docs';
 export default docs.Layout;
 ```
 
+```ts
+// app/docs/search-index.json/route.ts
+import { docs } from '@/lib/docs';
+
+export const GET = docs.searchIndex;
+export const dynamic = 'force-static';
+```
+
 ```
 content/docs/
   index.md
@@ -118,7 +132,9 @@ content/docs/
     authentication.md
 ```
 
-That is a working documentation site: routing, a navigation sidebar, a table of contents, syntax highlighting, a mobile drawer and a skip link. [Add search](#search) with one more file.
+That is a working documentation site: routing, a navigation sidebar, a table of contents, syntax highlighting, search, a mobile drawer and a skip link.
+
+The search route is in the quick start rather than in a section further down because `docs.Layout` renders the search trigger by default — leave the route out and a reader gets a control that opens onto "Search is unavailable". If you genuinely do not want search, `export default function Layout(props) { return docs.Layout({ ...props, search: false }) }` drops both the trigger and this file. See [Search](#search) for tuning.
 
 > [!IMPORTANT]
 > `dynamicParams` must be written out as `false`. Route segment config is parsed statically before the module runs, so `export const dynamicParams = docs.dynamicParams` fails `next build`. Without it, Next invokes the route on a server at request time for every unlisted URL, to produce a 404 that was already knowable at build time — and `output: 'export'` refuses to build at all.
@@ -558,17 +574,9 @@ To restyle rather than retheme, override the classes — `.wave-docs-prose`,
 
 Build-time index, client-side dialog, MiniSearch. Records are section-scoped — one per `h2`–`h6` — so a hit deep-links to the right heading instead of dropping the reader at the top of a 2,000-word page.
 
-Two files. The index is a route, so it is rebuilt by the same `next build` that builds your pages, and in `next dev` it re-reads the disk per request — a page you add is searchable on the next keystroke, with no restart and no script to remember.
+Nothing to set up: `docs.Layout` renders the trigger, and the [route file in the quick start](#quick-start) serves the index. The index is a route rather than a build script, so it is rebuilt by the same `next build` that builds your pages, and in `next dev` it re-reads the disk per request — a page you add is searchable on the next keystroke, with no restart and no script to remember.
 
-```ts
-// app/docs/search-index.json/route.ts
-import { docs } from '@/lib/docs';
-
-export const GET = docs.searchIndex;
-export const dynamic = 'force-static'; // a literal, see below
-```
-
-And `<DocsSearch indexUrl={docs.searchIndexUrl} />` wherever the trigger belongs — it is in the [layout above](#layout). `DocsSearch` carries its own `'use client'` boundary, so the layout stays a Server Component.
+Outside `docs.Layout`, `<DocsSearch indexUrl={docs.searchIndexUrl} />` puts the trigger wherever it belongs. `DocsSearch` carries its own `'use client'` boundary, so the layout around it stays a Server Component.
 
 `docs.searchIndexUrl` is derived from your `basePath`, so it is right whether the docs are mounted at `/`, at `/docs` or under a nested prefix. Pass it rather than a literal.
 
