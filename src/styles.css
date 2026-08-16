@@ -110,6 +110,19 @@
     --wave-docs-callout-caution: oklch(0.55 0.2 24);
     --wave-docs-callout-caution-bg: oklch(0.97 0.025 24);
 
+    /* The table's "there is more this way" shadow.
+     *
+     * A token, not a literal: it was a hardcoded `oklch(0 0 0 / 0.12)`, and
+     * black at 12% over a `0.19` background is invisible — so in dark mode the
+     * one affordance telling a reader a table scrolls sideways was not there at
+     * all. A shadow darkens a light page and lightens a dark one; it cannot be
+     * a single colour. */
+    --wave-docs-scroll-shadow: oklch(0 0 0 / 0.12);
+    /* Elevation, for the one element that floats over the page. Same
+     * reasoning as `scroll-shadow`: a black shadow over a dark surface is
+     * no shadow, so the dark ramp deepens it rather than reusing it. */
+    --wave-docs-shadow: oklch(0 0 0 / 0.3);
+
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
     /* The shell, per `docs/adr/001-shell-contract.md`. These four plus
@@ -178,6 +191,9 @@
       --wave-docs-accent-fg: oklch(0.18 0.02 265);
       --wave-docs-accent-subtle: oklch(0.26 0.06 248);
 
+      --wave-docs-scroll-shadow: oklch(1 0 0 / 0.16);
+      --wave-docs-shadow: oklch(0 0 0 / 0.6);
+
       --wave-docs-code-bg: oklch(0.26 0.016 265);
       --wave-docs-code-fg: oklch(0.86 0.04 300);
       --wave-docs-code-block-bg: oklch(0.17 0.015 265);
@@ -217,6 +233,9 @@
     --wave-docs-accent-hover: oklch(0.8 0.12 248);
     --wave-docs-accent-fg: oklch(0.18 0.02 265);
     --wave-docs-accent-subtle: oklch(0.26 0.06 248);
+
+    --wave-docs-scroll-shadow: oklch(1 0 0 / 0.16);
+    --wave-docs-shadow: oklch(0 0 0 / 0.6);
 
     --wave-docs-code-bg: oklch(0.26 0.016 265);
     --wave-docs-code-fg: oklch(0.86 0.04 300);
@@ -610,11 +629,15 @@
         2rem 100% no-repeat local,
       linear-gradient(to left, var(--wave-docs-bg) 30%, transparent) right /
         2rem 100% no-repeat local,
-      radial-gradient(farthest-side at 0 50%, oklch(0 0 0 / 0.12), transparent)
+      radial-gradient(
+          farthest-side at 0 50%,
+          var(--wave-docs-scroll-shadow),
+          transparent
+        )
         left / 0.75rem 100% no-repeat scroll,
       radial-gradient(
           farthest-side at 100% 50%,
-          oklch(0 0 0 / 0.12),
+          var(--wave-docs-scroll-shadow),
           transparent
         )
         right / 0.75rem 100% no-repeat scroll;
@@ -1773,7 +1796,7 @@
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
     background: var(--wave-docs-bg);
-    box-shadow: 0 24px 48px -12px oklch(0 0 0 / 0.3);
+    box-shadow: 0 24px 48px -12px var(--wave-docs-shadow);
   }
 
   .wave-docs-search-input-row {

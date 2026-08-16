@@ -310,6 +310,14 @@ describe('createDocsRenderer', () => {
     expect(code?.properties.className).toEqual(['language-mermaid']);
     // The disguise the exclusion is built on must never reach the output.
     expect(JSON.stringify(rendered.hast)).not.toContain('excluded-pre');
+    /*
+     * Untouched by the highlighter, but not left unreachable. The stylesheet
+     * gives this block `overflow-x: auto` like every other one, and a
+     * scrollable region with no `tabindex` is one no keyboard can scroll
+     * (WCAG 2.1.1) — Shiki adds this to every `<pre>` it emits, and this is the
+     * one `<pre>` Shiki never sees.
+     */
+    expect(pre?.properties.tabIndex).toBe(0);
   });
 
   /**

@@ -99,6 +99,21 @@ export const rehypeRestoreExcludedCode: Plugin<[], Root> = () => {
     visit(tree, 'element', (node) => {
       if (node.tagName === EXCLUDED_PRE_TAG) {
         node.tagName = 'pre';
+        /*
+         * ⚠️ AND THE `tabindex` SHIKI WOULD HAVE ADDED. The stylesheet gives an
+         * excluded fence the same surface as a highlighted one, `overflow-x:
+         * auto` included — and a scrollable region that cannot be focused is
+         * one no keyboard can scroll (WCAG 2.1.1). Shiki puts `tabindex="0"` on
+         * every `<pre>` it emits for exactly this reason; this block is the one
+         * it never saw, so it was the one block on the page a keyboard reader
+         * could not read the right-hand side of.
+         *
+         * `role`/`aria-label` deliberately not added: a bare focusable `<pre>`
+         * is what Shiki produces and what every other code block here is, and
+         * one block announcing itself differently from its neighbours is worse
+         * than the small imperfection they share.
+         */
+        node.properties = { ...node.properties, tabIndex: 0 };
       }
     });
     return undefined;

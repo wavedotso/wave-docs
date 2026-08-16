@@ -334,6 +334,81 @@ describe.each(BLOCK_SELECTORS)('tokens in %s', (selector) => {
   );
 });
 
+describe('the dark ramp', () => {
+  /**
+   * ⚠️ EVERY COLOUR TOKEN THE LIGHT BLOCK DEFINES, REDEFINED IN BOTH DARK
+   * BLOCKS. Nothing checked this, and the way the gap showed up was not a
+   * missing token at all — the table's horizontal-scroll shadow was written as
+   * a literal `oklch(0 0 0 / 0.12)` inside the rule, so there was no token to
+   * miss. Black at 12% over a `0.19` background is invisible, which left a dark
+   * reader with no indication that a wide table scrolled sideways.
+   *
+   * Making it a token fixed that instance. This is what stops the next one:
+   * a colour that only exists in the light block is a colour some reader sees
+   * the light version of.
+   */
+  const light = readTokens(sheet, ':root {');
+
+  it.each([":root[data-theme='system']", ":root[data-theme='dark']"])(
+    '%s redefines every colour token the light block sets',
+    (selector) => {
+      const dark = readTokens(sheet, selector);
+      const missing = [...light.keys()].filter((name) => !dark.has(name));
+
+      // The guard on the guard: an empty light ramp would make this vacuous.
+      expect(light.size).toBeGreaterThan(20);
+      expect(missing).toEqual([]);
+    },
+  );
+
+  /**
+   * Literal colours that are right in both themes, each for a stated reason.
+   *
+   * An allowlist rather than an exemption for whole rules: a new literal has to
+   * be argued for here, which is the conversation the table's invisible shadow
+   * never had.
+   */
+  const THEME_INDEPENDENT: ReadonlySet<string> = new Set([
+    // Player chrome, over a video thumbnail rather than over the page. A
+    // letterbox is black, YouTube's play badge is dark grey with a white
+    // arrow, and it turns YouTube red on hover — in every theme, because the
+    // reader is looking at a video, not at the page.
+    'oklch(0 0 0)',
+    'oklch(0.3 0 0 / 0.75)',
+    'oklch(1 0 0)',
+    'oklch(0.55 0.22 27)',
+    // Modal scrims, for the drawer and the search dialog. A scrim dims what is
+    // behind it, and dimming is dark on a light page and dark on a dark one —
+    // inverting it on the dark ramp would brighten the page under a modal.
+    'oklch(0.2 0.02 262 / 0.55)',
+    'oklch(0.2 0.02 265 / 0.5)',
+  ]);
+
+  it('leaves no bare oklch() outside the token blocks', () => {
+    /*
+     * The rule that actually bit. A literal colour in a component rule cannot
+     * respond to the theme, so it is right in exactly one of them — and the
+     * test above cannot see it, because it is not a token.
+     *
+     * `transparent`, `currentColor` and `color-mix()` are all theme-following
+     * and stay allowed; this is only about a fixed `oklch()`.
+     */
+    const blocks = BLOCK_SELECTORS.map((selector) =>
+      readBlock(sheet, sheet.indexOf(selector)),
+    );
+    const outside = blocks.reduce(
+      (rest, block) => rest.replace(block, ''),
+      sheet,
+    );
+
+    const literals = [...outside.matchAll(/oklch\([^)]*\)/g)]
+      .map((match) => match[0])
+      .filter((colour) => !THEME_INDEPENDENT.has(colour));
+
+    expect(literals).toEqual([]);
+  });
+});
+
 describe('the cascade contract', () => {
   it('declares nothing outside a @layer', () => {
     const top = RULES.filter((rule) => rule.depth === 0);
