@@ -130,7 +130,9 @@
     "release": "pnpm run build && changeset publish",
     "test:browser": "vitest run --project browser",
     "test:smoke": "node smoke/check.ts",
-    "size": "node scripts/size.ts"
+    "size": "node scripts/size.ts",
+    "build:site": "next build site",
+    "dev:site": "next dev site"
   },
   "dependencies": {
     "@shikijs/langs": "4.4.3",

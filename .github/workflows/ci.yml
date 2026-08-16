@@ -103,6 +103,15 @@ jobs:
       - name: Smoke build (a real Next app, both output modes)
         run: pnpm run test:smoke
 
+      # Must follow the build, and is the acceptance harness for `docs.Layout`:
+      # six markdown files and five route files with no CSS of their own. A
+      # documentation site built by the people who wrote the package will
+      # always work — unless it is forbidden from patching around a defect,
+      # which `src/site-budget.test.ts` is what enforces. `output: 'export'`
+      # deliberately, so a route that quietly went dynamic fails here.
+      - name: Build the documentation site
+        run: pnpm run build:site
+
       # Must follow the build: the examples import `@waveso/docs/*` by name,
       # which Node self-references through the real `exports` map into dist/.
       # Two README examples shipped not compiling because nothing had ever

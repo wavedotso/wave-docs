@@ -15,8 +15,9 @@ package-lock.json
 **/__screenshots__
 .vitest-attachments
 
-# Static export output from the smoke app.
+# Static export output from the smoke app and the documentation site.
 smoke/out
+site/out
 next-env.d.ts
 
 # Scratch project the README example type-check assembles.
