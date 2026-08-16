@@ -268,6 +268,25 @@
    * `src/styles.test.ts` a fact about the shipped page rather than about a
    * background nobody declared.
    */
+  /*
+   * ⚠️ `.wave-docs-layout` IS IN THIS LIST, AND IT WAS NOT. Painting only the
+   * three content containers left the grid's own gutters — 1.5rem between each
+   * column, plus the inline padding — showing whatever the browser paints the
+   * canvas, because `body` is deliberately never touched.
+   *
+   * In light mode that is white against a white token and invisible. In dark
+   * mode the UA canvas and `--wave-docs-bg` are two different darks, so the
+   * sidebar and the table of contents rendered as slightly lighter panels
+   * floating on a darker page. Caught by looking at a screenshot of the real
+   * site; every contrast ratio in `styles.test.ts` was correct throughout,
+   * because each one was a fact about a container that *was* painted.
+   *
+   * The grid is a container this package owns, so painting it breaks no rule
+   * — `body` still belongs to the host, and a host whose page is a different
+   * colour overrides the token rather than fighting a `body` rule they did not
+   * write.
+   */
+  .wave-docs-layout,
   .wave-docs-prose,
   .wave-docs-sidebar,
   .wave-docs-toc {
@@ -805,6 +824,28 @@
    * only ever appears inside it: `styles.test.ts` requires every `.shiki` rule
    * to name the prose scope, so the package can never style a code block it
    * did not render. One form for that invariant is worth the extra selector. */
+  /*
+   * ⚠️ THE `<pre>`'s USER-AGENT MARGIN, WHICH UNDID THE FRAME.
+   *
+   * A `<pre>` defaults to `margin-block: 1em`, and at this block's 0.875rem
+   * that is 14px — measured in Chromium on the real site, not reasoned about.
+   * So the title bar dropped its bottom border and squared its bottom corners
+   * to join the code below it, and then the browser pushed the two 14px apart:
+   * a caption floating over a gap, which is the one arrangement the frame was
+   * designed not to be.
+   *
+   * It mis-seated the copy button too. The button is positioned against the
+   * `<figure>`, so on a fence with no title the margin slid the code down out
+   * from under it.
+   *
+   * Invisible to every test here before the site existed: jsdom has no layout,
+   * and `styles.test.ts` reads rules as text. It took a screenshot of a real
+   * page to see it.
+   */
+  .wave-docs-prose .wave-docs-code .shiki {
+    margin: 0;
+  }
+
   .wave-docs-prose .wave-docs-code:has(.wave-docs-code__title) .shiki {
     border-start-start-radius: 0;
     border-start-end-radius: 0;

@@ -132,7 +132,8 @@
     "test:smoke": "node smoke/check.ts",
     "size": "node scripts/size.ts",
     "build:site": "next build site",
-    "dev:site": "next dev site"
+    "dev:site": "next dev site",
+    "shoot": "node scripts/shoot.ts"
   },
   "dependencies": {
     "@shikijs/langs": "4.4.3",

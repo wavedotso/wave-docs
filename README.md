@@ -11,6 +11,35 @@
 
 </div>
 
+<br />
+
+<!--
+  ⚠️ ABSOLUTE `raw.githubusercontent.com` URLS, PINNED TO A TAG.
+
+  npm rewrites relative markdown image paths onto its own CDN, but it does NOT
+  rewrite `<source srcset>` inside a `<picture>` — so a relative path here shows
+  a broken image on npmjs.com. And pinning to `main` rather than a tag means an
+  old version's README displays a future product: someone reading 0.3.0 in 2027
+  would see whatever the shell looks like then.
+
+  `pnpm shoot` regenerates these from the real site build; CI runs
+  `pnpm shoot --check` on any pull request touching the stylesheet, the React
+  layer or the site.
+-->
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.3.0/docs/media/hero-dark.png"
+  />
+  <img
+    src="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.3.0/docs/media/hero-light.png"
+    alt="A documentation page rendered by @waveso/docs: a navigation sidebar, prose with syntax-highlighted code frames, and a table of contents."
+    width="100%"
+  />
+</picture>
+
+<p align="center"><em>The default page, with no CSS of your own. <a href="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.3.0/docs/media/search.png">Search dialog →</a></em></p>
+
 ---
 
 ## Why Wave Docs

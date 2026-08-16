@@ -155,3 +155,70 @@ describe('the copy button once it is live', () => {
     expect(computed.paddingLeft).not.toBe('0px');
   });
 });
+
+describe('the frame is one object', () => {
+  /**
+   * ⚠️ FOUND BY A SCREENSHOT, NOT BY A TEST. The title bar drops its bottom
+   * border and squares its bottom corners so it joins the code below it — and
+   * a `<pre>`'s user-agent `margin-block: 1em` then pushed the two 14px apart,
+   * leaving a caption hovering over a gap. The stylesheet's intent was in the
+   * file the whole time; the browser simply disagreed.
+   *
+   * Nothing here could see it. jsdom has no layout at all, and
+   * `styles.test.ts` reads the sheet as text — the rules it checked were all
+   * present and all correct. It took rendering a real page and looking at it.
+   */
+  it('leaves no gap between the title bar and the code', () => {
+    mount(frame({ title: 'app/page.tsx' }));
+
+    const caption = document.querySelector(
+      '.wave-docs-code__title',
+    ) as HTMLElement;
+    const pre = document.querySelector('pre') as HTMLElement;
+
+    const gap =
+      pre.getBoundingClientRect().top - caption.getBoundingClientRect().bottom;
+
+    // Exactly zero: they share an edge, which is the whole point of the title
+    // bar dropping its bottom border.
+    expect(gap).toBe(0);
+  });
+
+  it('seats the copy button on the code, with or without a title', () => {
+    /*
+     * The same margin slid an untitled fence's code out from under its button,
+     * because the button is positioned against the `<figure>` and the `<pre>`
+     * was no longer at the top of it.
+     */
+    for (const options of [{}, { title: 'app/page.tsx' }]) {
+      document.body.innerHTML = '';
+      mount(frame(options));
+
+      const figure = document.querySelector('.wave-docs-code') as HTMLElement;
+      const box = button().getBoundingClientRect();
+      const frameBox = figure.getBoundingClientRect();
+
+      // Inside the frame, both edges — a button hanging off the top is the
+      // symptom the margin produced.
+      expect(box.top).toBeGreaterThanOrEqual(frameBox.top);
+      expect(box.bottom).toBeLessThanOrEqual(frameBox.bottom);
+    }
+  });
+
+  it('keeps the frame clear of the paragraph above it', () => {
+    // The margin was doing one useful thing — separating the block from
+    // surrounding prose — and removing it must not cost that. The spacing now
+    // comes from `.wave-docs-prose > * + *` on the figure, which is where it
+    // belongs, because the figure is the block.
+    document.body.innerHTML = '';
+    mount(`<p>Before.</p>${frame({ title: 'app/page.tsx' })}`);
+
+    const paragraph = document.querySelector('p') as HTMLElement;
+    const figure = document.querySelector('.wave-docs-code') as HTMLElement;
+
+    expect(
+      figure.getBoundingClientRect().top -
+        paragraph.getBoundingClientRect().bottom,
+    ).toBeGreaterThan(8);
+  });
+});

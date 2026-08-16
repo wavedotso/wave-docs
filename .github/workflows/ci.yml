@@ -112,6 +112,16 @@ jobs:
       - name: Build the documentation site
         run: pnpm run build:site
 
+      # The README's screenshots, re-shot from the site that was just built and
+      # compared byte for byte. A stylesheet change that reflows the shell
+      # should fail on the pull request that made it — not be discovered in a
+      # README six releases later, which is how the 14px gap between a code
+      # frame's title bar and its own body survived to a screenshot.
+      #
+      # Chromium is already installed above for the browser tier.
+      - name: Check the README screenshots
+        run: pnpm run shoot -- --check
+
       # Must follow the build: the examples import `@waveso/docs/*` by name,
       # which Node self-references through the real `exports` map into dist/.
       # Two README examples shipped not compiling because nothing had ever

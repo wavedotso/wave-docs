@@ -336,6 +336,51 @@ describe('the responsive shell', () => {
     expect(box('.wave-docs-layout__toc').width).toBeGreaterThan(0);
   });
 
+  it('paints one surface, not islands on a canvas nobody declared', async () => {
+    /*
+     * ⚠️ FOUND IN A SCREENSHOT, AND ONLY IN DARK MODE.
+     *
+     * This sheet paints its own containers and never `body`, deliberately — a
+     * contrast ratio is only a fact if the background under it is one, and the
+     * host owns `body`. What that left unpainted was the *grid*: 1.5rem of
+     * gutter between each column, plus the inline padding.
+     *
+     * Light mode hid it, because the browser's canvas and `--wave-docs-bg` are
+     * both white. In dark mode they are two different darks, so the sidebar and
+     * the table of contents rendered as slightly lighter panels floating on a
+     * darker page — while every contrast assertion in `styles.test.ts` stayed
+     * green, each one a correct fact about a container that was painted.
+     *
+     * Same colour everywhere, not "the right colour": the token is the token's
+     * business, and a host is free to override it. What must hold is that the
+     * shell is one surface.
+     */
+    mountShell();
+    await resize(1440);
+    document.documentElement.dataset.theme = 'dark';
+
+    try {
+      const painted = [
+        '.wave-docs-layout',
+        '.wave-docs-prose',
+        '.wave-docs-sidebar',
+        '.wave-docs-toc',
+      ].map((selector) => {
+        const element = document.querySelector(selector);
+        if (!(element instanceof HTMLElement)) {
+          throw new Error(`the shell fixture has no ${selector}`);
+        }
+        return getComputedStyle(element).backgroundColor;
+      });
+
+      // The guard on the guard: four transparents would also be "all equal".
+      expect(painted[0]).not.toBe('rgba(0, 0, 0, 0)');
+      expect(new Set(painted).size).toBe(1);
+    } finally {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  });
+
   it('caps the shell so the columns do not pin to the bezels', async () => {
     mountShell();
     await resize(2560);
