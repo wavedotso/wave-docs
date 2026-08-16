@@ -756,16 +756,34 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
 }
 
 /**
- * Page title first, then the ancestor headings: `ancestors` deliberately excludes
- * the page title so the index does not carry it twice.
+ * The second line of a result: where the thing on the first line lives.
+ *
+ * For a section hit that is the page, then any enclosing headings — `ancestors`
+ * deliberately excludes the page title so the index does not carry it twice.
+ *
+ * ## The page's own record
  *
  * A page's lead record carries `heading === title` and no ancestors (see
- * `extractSearchRecords`), so its trail would be the one string already printed
- * above it. "Installation" over "Installation" is not a path, it is a bug that
- * reads as a rendering glitch — such a hit gets no trail at all.
+ * `extractSearchRecords`), so a trail built the same way would repeat the one
+ * string already printed above it. "Installation" over "Installation" is not a
+ * path, it is a rendering glitch.
+ *
+ * ⚠️ THE ANSWER TO THAT WAS "NO SECOND LINE", AND IT WAS WRONG. Six of this
+ * site's twenty-nine records are lead records, so a search showed a list where
+ * some rows had two lines and some had one — ragged, and worse, the bare rows
+ * were the ones that said least: a row reading only "Wave Docs" gives a reader
+ * no idea what it opens.
+ *
+ * So a lead record gets the route instead. It is the honest answer to the
+ * question the second line is asking, it costs the index nothing (`href` is
+ * already stored), and it is the one row where a path is genuinely more useful
+ * than a title — the reader is being offered the top of a page rather than a
+ * place inside one.
  */
 function toBreadcrumbs(hit: SearchHit): Array<{ key: string; text: string }> {
-  if (hit.ancestors.length === 0 && hit.heading === hit.title) return [];
+  if (hit.ancestors.length === 0 && hit.heading === hit.title) {
+    return [{ key: hit.href, text: hit.href }];
+  }
 
   let trail = '';
   return [hit.title, ...hit.ancestors].map((text) => {

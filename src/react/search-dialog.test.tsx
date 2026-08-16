@@ -561,19 +561,53 @@ describe('SearchDialog', () => {
       expect(crumbs).toEqual(['Installation', '›Requirements']);
     });
 
-    it('gives a page’s lead hit no trail, which would only repeat it', async () => {
-      // `extractSearchRecords` emits one record per page whose heading *is* the
-      // page title, with no ancestors. Its trail is the string already printed
-      // above it: "Installation" over "Installation" reads as a rendering bug,
-      // and a screen reader announced the option twice over.
+    it('gives a page’s lead hit its route, not a repeat of its own title', async () => {
+      /*
+       * `extractSearchRecords` emits one record per page whose heading *is* the
+       * page title, with no ancestors. A trail built the ordinary way would be
+       * the string already printed above it — "Installation" over
+       * "Installation" reads as a rendering bug, and announced the option
+       * twice over.
+       *
+       * ⚠️ THE ANSWER USED TO BE "NO TRAIL", AND THAT WAS ITS OWN DEFECT. Six
+       * of a six-page site's twenty-nine records are lead records, so a search
+       * showed a list where some rows had two lines and some had one — and the
+       * one-line rows were the ones saying least. A row reading only "Wave
+       * Docs" tells a reader nothing about what it opens.
+       *
+       * The route answers exactly that, costs the index nothing (`href` is
+       * stored already), and is the one row where a path beats a title: the
+       * reader is being offered the top of a page rather than a place inside
+       * one.
+       */
       const { user, trigger } = renderDialog();
       await search(user, trigger, 'install');
 
-      const lead = screen.getByRole('option', { name: 'Installation' });
-      expect(
-        lead.querySelectorAll('.wave-docs-search-result-crumb'),
-      ).toHaveLength(0);
-      expect(lead).toHaveTextContent(/^Installation$/);
+      const lead = screen.getByRole('option', {
+        name: 'Installation, /docs/guide/install',
+      });
+      const crumbs = [
+        ...lead.querySelectorAll('.wave-docs-search-result-crumb'),
+      ].map((crumb) => crumb.textContent);
+
+      expect(crumbs).toEqual(['/docs/guide/install']);
+    });
+
+    it('gives every row a second line, so the list is not ragged', async () => {
+      // The property behind the test above, stated as the invariant: whatever
+      // a row is, it says where it lives. A mixture of one- and two-line rows
+      // is what made the bare ones look broken rather than merely brief.
+      const { user, trigger } = renderDialog();
+      await search(user, trigger, 'install');
+
+      const options = screen.getAllByRole('option');
+      expect(options.length).toBeGreaterThan(1);
+
+      for (const option of options) {
+        expect(
+          option.querySelectorAll('.wave-docs-search-result-crumb').length,
+        ).toBeGreaterThan(0);
+      }
     });
 
     it('caps the list at maxResults', async () => {
