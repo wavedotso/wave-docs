@@ -122,6 +122,7 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/react/<name>` | Browser + RSC | Nine components, one per subpath — see [Components](#components) |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
+| `@waveso/docs/errors` | Any | `DocsErrorCode`, `DocsError`, `isDocsError` |
 | `@waveso/docs/styles.css` | — | The stylesheet |
 
 The Node-only subpaths carry `"browser": null`, so importing one from client code fails with a located *module not found* rather than quietly bundling `node:fs`.
@@ -731,6 +732,51 @@ What each entry point *requires*, measured by bundling it with no runtime assume
 The markdown pipeline needs no filesystem and no `.wasm` — Shiki is loaded through its JavaScript regex engine deliberately, not its WASM one. So parsing and highlighting run wherever JavaScript does; only reading a directory of `.md` files needs Node, which is what `source` is for.
 
 That is a statement about requirements and not a blessing. A bundle that resolves is not a runtime, and this package is tested on Node. If you run it elsewhere, note that `render` bundles to roughly 2.8 MB with all eighteen grammars inlined — narrow `langs` for anything with a size limit, since grammars are dynamic imports.
+
+## Errors
+
+Every failure this package raises carries a `code`, so a host can branch on the kind of thing that went wrong rather than on message text:
+
+```ts
+import { isDocsError } from '@waveso/docs/errors';
+import { docs } from '@/lib/docs';
+
+try {
+  await docs.renderAll();
+} catch (error) {
+  if (isDocsError(error) && error.code === 'draft-link') {
+    console.warn(error.message);
+  } else {
+    throw error;
+  }
+}
+```
+
+`DocsErrorCode` is exported as a union, so a `switch` over it is exhaustive and a typo is a compile error. No error class is exported, deliberately: `instanceof` against a copy of a module resolved twice — two versions in a monorepo, a bundler that duplicates it — silently answers `false`, and a string code with a structural guard has no such failure mode.
+
+### Troubleshooting
+
+| Code | What happened | What to do |
+| --- | --- | --- |
+| `broken-link` | A markdown link resolves to a route no published page owns. | Fix the link, or add an `aliases` entry to the page that moved. |
+| `draft-link` | A link points at a page that exists but is `draft: true`. | Publish the page, or drop the link until it ships. |
+| `alias-link` | A link points at an alias, which is a redirect and not a page. | Link the page the alias redirects to — the error names it. |
+| `invalid-alias` | An `aliases` entry is empty, escapes the content root, or is not URL-safe. | Write it as a root-relative path, e.g. `/docs/old-name`. |
+| `alias-collision` | Two pages claim one alias, or an alias shadows a real route. | Remove one of them; a redirect cannot have two destinations. |
+| `route-collision` | Two files resolve to the same route. | Usually `about.md` beside `about/index.md`. Keep one. |
+| `invalid-frontmatter` | A page has no frontmatter block, or the schema rejected it. | Every page needs at least `title`. The message names the file and the field. |
+| `invalid-meta` | A `meta.json` is malformed, or names a page that is not there. | Check the filename spelling — entries are filenames without the extension. |
+| `invalid-config` | An option passed to this package cannot be used as given. | The message names the option. `siteUrl` must be an absolute origin with no path. |
+| `missing-content-dir` | `contentDir` does not point at a readable directory. | It resolves against `process.cwd()`, which is your project root under `next build`. |
+| `broken-symlink` | A markdown page is reachable only through a broken symbolic link. | Repoint or delete the link; skipping it would silently drop a route. |
+| `invalid-image` | A relative image needs an `imageResolver`, or one returned an unusable shape. | Pass `imageResolver`, or use an absolute `/path` the browser can resolve. |
+| `unknown-theme` | A theme name outside the supported set. | Pass a `highlighter` of your own if you need a theme this package does not load. |
+| `unknown-language` | A fence language outside the loaded set. | Add it to `langs`, or accept the plain-text fallback. |
+| `missing-peer` | `next` is absent, or not the shape this adapter expects. | Install `next`, or build pages from `@waveso/docs/react/*` with your own loader. |
+| `search-index-unavailable` | The dialog could not fetch or parse the index. | Check `indexUrl` — pass `docs.searchIndexUrl`, and prefix it yourself under a Next `basePath`. |
+| `search-index-dynamic` | The search-index route ran at request time instead of prerendering. | Add `export const dynamic = 'force-static'` to the route file. It must be a literal. |
+| `invalid-code-meta` | A fence's `title=` cannot be read. | Quote it: ```` ```ts title="app/page.tsx" ````. |
+| `internal` | A plugin ran without context this package always supplies. | This one is a bug here. Please report it with the stack trace. |
 
 ## Requirements
 

@@ -1,7 +1,7 @@
 {
   "name": "@waveso/docs",
   "version": "0.2.0",
-  "description": "Markdown documentation for Next.js — parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "description": "Markdown documentation for Next.js \u2014 parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -34,6 +34,10 @@
     "./types": {
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
     },
     "./frontmatter": {
       "types": "./dist/frontmatter.d.ts",
