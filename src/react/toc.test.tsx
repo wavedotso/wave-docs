@@ -265,10 +265,31 @@ describe('DocsToc structure', () => {
     mountHeadings();
     render(<DocsToc entries={entries} />);
 
+    // Scoped to the entries: the rail also ends with a back-to-top link, which
+    // is not a heading and carries no depth.
     const depths = screen
       .getAllByRole('link')
+      .filter((link) => link.classList.contains('wave-docs-toc__link'))
       .map((link) => link.getAttribute('data-depth'));
     expect(depths).toEqual(['2', '3', '3', '2']);
+  });
+
+  it('ends with a back-to-top link that moves focus, not just the scroll', () => {
+    /*
+     * A fragment link rather than a `scrollTo(0)` button, and that is the whole
+     * point: `docs.Page` puts `tabIndex={-1}` on the article this targets, so
+     * following it moves FOCUS as well as the page. A floating scroll button
+     * returns the view to the top and strands the keyboard caret at the bottom
+     * of the document — which is worse than not offering one.
+     *
+     * The href comes from the same constant `SkipLink` and `docs.Page` use, so
+     * the three cannot drift into pointing at different ids.
+     */
+    mountHeadings();
+    render(<DocsToc entries={entries} />);
+
+    const top = screen.getByRole('link', { name: 'Back to top' });
+    expect(top).toHaveAttribute('href', '#docs-content');
   });
 
   it('names the landmark, and takes a custom name', () => {

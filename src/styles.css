@@ -1264,6 +1264,30 @@
     padding-inline-start: 1.5rem;
   }
 
+  /* The back-to-top link, styled as a peer of the entries rather than as a
+   * floating control — it is the last stop in the rail's reading order. */
+  .wave-docs-toc__top {
+    display: inline-block;
+    margin-block-start: 0.75rem;
+    padding-inline-start: 0.75rem;
+    border-inline-start: 2px solid transparent;
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.8125rem;
+    text-decoration: none;
+  }
+
+  .wave-docs-toc__top:hover {
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-sidebar__external {
+    /* Baseline-ish against the label, and never a flex item that grows. */
+    margin-inline-start: 0.25rem;
+    flex: none;
+    vertical-align: -0.05em;
+    color: var(--wave-docs-fg-subtle);
+  }
+
   .wave-docs-toc__link:hover {
     color: var(--wave-docs-fg);
     border-inline-start-color: var(--wave-docs-border-strong);

@@ -176,6 +176,10 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   // a code frame — exporting it would publish a second way to mount it, which
   // is the way that double-announces to a screen reader.
   'code-runtime',
+  // The scroll geometry behind the sidebar's scroll-into-view. Pure, and
+  // separate from the component so it can be tested exhaustively — jsdom
+  // reports every rectangle as zero, so nothing driving the effect could.
+  'nearest-scroll-top',
 ]);
 
 describe('exports map', () => {

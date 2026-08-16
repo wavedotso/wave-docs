@@ -7,7 +7,7 @@
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DocNavNode } from '../types.js';
 import type { DocsLinkProps } from './markdown-components.js';
@@ -100,6 +100,65 @@ function RecordingLink({
       {children}
     </a>
   );
+}
+
+/**
+ * A container that behaves like a scrolling column.
+ *
+ * jsdom reports every dimension as zero and lays nothing out, so a nav mounted
+ * plainly has no scrollable ancestor and the scroll effect correctly does
+ * nothing. Stubbing the four numbers it reads is the only way to exercise the
+ * path at all — and without it the `scrollIntoView` spy below is a test that
+ * cannot fail.
+ */
+let scrollportCleanup: (() => void) | undefined;
+
+function scrollport(): HTMLElement {
+  const element = document.createElement('div');
+  element.style.overflowY = 'auto';
+  document.body.append(element);
+
+  const define = (name: string, value: number): void => {
+    Object.defineProperty(element, name, { value, configurable: true });
+  };
+  define('clientHeight', 300);
+  define('scrollHeight', 2000);
+  define('offsetTop', 0);
+
+  // Every descendant needs an offset too, or the active item reports 0 and is
+  // "already visible" whatever the scroll position.
+  const proto = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'offsetTop',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
+    get(this: HTMLElement) {
+      return this === element ? 0 : 900;
+    },
+    configurable: true,
+  });
+  const heightProto = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'offsetHeight',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    get: () => 40,
+    configurable: true,
+  });
+
+  scrollportCleanup = () => {
+    if (proto) Object.defineProperty(HTMLElement.prototype, 'offsetTop', proto);
+    if (heightProto) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', heightProto);
+    }
+    element.remove();
+  };
+  return element;
+}
+
+function restoreScrollport(): void {
+  scrollportCleanup?.();
+  scrollportCleanup = undefined;
 }
 
 describe('DocsSidebar node types', () => {
@@ -358,6 +417,125 @@ describe('DocsSidebar injected Link', () => {
     // Warm links are the minority, always — that is the entire budget.
     expect(warm.length).toBeGreaterThan(0);
     expect(warm.length).toBeLessThan(internal.length);
+  });
+
+  it('keeps every link an ordinary tab stop, and uses no tree roles', () => {
+    /*
+     * The APG **Disclosure Navigation** pattern, pinned so it survives the
+     * next person reaching for the aria role that sounds closest.
+     *
+     * `role="tree"` replaces the tab order with a single roving tabstop — so a
+     * reader who tabs into the navigation can no longer tab through it — and
+     * announces "tree item, level 3" for what is, to the person hearing it, a
+     * link to a page. A docs sidebar is not a file explorer.
+     */
+    // Both link branches: the plain `<a>` fallback AND the injected component.
+    // Checking one leaves the other free to grow a `tabindex` unnoticed, which
+    // is exactly what happened when this was first written.
+    for (const Link of [undefined, RecordingLink]) {
+      const { container, unmount } = render(
+        <DocsSidebar
+          nav={nav}
+          pathname="/docs/api/authentication"
+          {...(Link === undefined ? {} : { Link })}
+        />,
+      );
+
+      expect(container.querySelectorAll('[tabindex]')).toHaveLength(0);
+      for (const role of ['tree', 'treeitem', 'group', 'menu', 'menuitem']) {
+        expect(container.querySelectorAll(`[role="${role}"]`)).toHaveLength(0);
+      }
+      unmount();
+    }
+  });
+
+  it('does not re-scroll when the reader expands a group', async () => {
+    /*
+     * The effect is keyed on `pathname` alone, and that is the point. Keying it
+     * on the toggle state as well would yank the column every time a group was
+     * expanded — pulling the list out from under the hand that just clicked,
+     * which is worse than never scrolling at all.
+     */
+    const user = userEvent.setup();
+    const port = scrollport();
+    try {
+      render(<DocsSidebar nav={nav} pathname="/docs/api/authentication" />, {
+        container: port,
+      });
+      port.scrollTop = 0;
+
+      await user.click(screen.getByRole('button', { name: 'Guides' }));
+
+      expect(port.scrollTop).toBe(0);
+    } finally {
+      restoreScrollport();
+    }
+  });
+
+  it('moves focus to the toggle when a group collapses under it', async () => {
+    /*
+     * Collapsing a group unmounts its children. If focus was on one of them it
+     * would land on `<body>`, which drops a keyboard reader at the top of the
+     * document — the same failure the YouTube facade and the code copy button
+     * each had to avoid. Here the control that did the collapsing is the
+     * natural place for it, and the browser does it because the toggle is what
+     * was activated.
+     */
+    const user = userEvent.setup();
+    render(<DocsSidebar nav={nav} pathname="/docs/api/authentication" />);
+
+    const toggle = screen.getByRole('button', { name: /Collapse API/ });
+    await user.click(toggle);
+
+    expect(document.activeElement).toBe(toggle);
+    expect(screen.queryByRole('link', { name: 'Authentication' })).toBeNull();
+  });
+
+  it('never calls scrollIntoView, on any render', () => {
+    /*
+     * ⚠️ A TEST FOR THE API DELIBERATELY NOT USED, and the only thing that
+     * stops the bug being reintroduced by someone simplifying the code.
+     *
+     * `element.scrollIntoView({ block: 'nearest' })` is what anyone reaches
+     * for here, and it scrolls **every** scrollable ancestor including the
+     * document — so bringing the sidebar item into view also jumps the article
+     * the reader came to read, on the one navigation where they know exactly
+     * what they asked for. The component walks to the nearest scrollable
+     * ancestor and assigns `scrollTop` instead.
+     */
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+
+    try {
+      const port = scrollport();
+      const { rerender } = render(
+        <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+        { container: port },
+      );
+      rerender(<DocsSidebar nav={nav} pathname="/docs/guides/caching" />);
+
+      // The scrollport is what makes this able to fail: without one the effect
+      // returns before it could reach for either API, and the assertion would
+      // pass against an implementation that called `scrollIntoView` happily.
+      expect(spy).not.toHaveBeenCalled();
+      expect(port.scrollTop).toBeGreaterThan(0);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+      restoreScrollport();
+    }
+  });
+
+  it('scrolls nothing when there is no scrollport', () => {
+    // jsdom reports every dimension as zero, which is also what a nav shorter
+    // than its column looks like. Neither may produce a scroll.
+    const { container } = render(
+      <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+    );
+
+    for (const element of container.querySelectorAll('*')) {
+      expect(element.scrollTop).toBe(0);
+    }
   });
 
   it('warms nothing at all when the reader is on no page in the tree', () => {

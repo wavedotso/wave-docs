@@ -5,12 +5,12 @@
       "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. It is one delegated listener and one live region; if this grows past a kilobyte it has stopped being that."
     },
     "nav": {
-      "max": 1900,
-      "note": "The drawer: a dialog, a close-on-navigate effect and an eight-line `command` fallback. Growth here means behaviour moved out of the browser and into us, which is the direction to argue about."
+      "max": 2200,
+      "note": "The drawer: a dialog, a close-on-navigate effect and an eight-line `command` fallback, plus the sidebar it wraps \u2014 so it moves whenever the sidebar does. Growth beyond that means behaviour moved out of the browser and into us, which is the direction to argue about."
     },
     "next-nav": {
-      "max": 2000,
-      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it."
+      "max": 2300,
+      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper."
     },
     "next-search": {
       "max": 9700,
@@ -21,8 +21,8 @@
       "note": "The whole keyboard-first dialog: focus trap, combobox wiring, result rendering. The single largest thing this package ships to a browser, and the one worth defending line by line."
     },
     "sidebar": {
-      "max": 1400,
-      "note": "A tree with disclosure groups and no router import. If this approaches the dialog, the navigation has grown a feature that belongs on the server."
+      "max": 1800,
+      "note": "A tree with disclosure groups and no router import. Raised from 1.37 KB when scroll-into-view and the external-link icon landed \u2014 the first change after this budget existed, and it caught it. Both are client-only by necessity: the scroll needs layout, and the icon is markup. If this approaches the dialog's 9 KB, the navigation has grown a feature that belongs on the server."
     },
     "toc": {
       "max": 900,
