@@ -85,7 +85,18 @@ function RecordingLink({
   ...rest
 }: DocsLinkProps): ReactNode {
   return (
-    <a {...rest} href={href} data-prefetch={String(prefetch)}>
+    /*
+     * The attribute is ABSENT when `prefetch` is `undefined`, rather than the
+     * string `"undefined"`. That is what `wrapNextLink` does with it, and it
+     * is the difference the whole prefetch policy turns on: `undefined` means
+     * "Next decides", `false` means "never". Stringifying flattened the two
+     * into a value nobody passes.
+     */
+    <a
+      {...rest}
+      href={href}
+      data-prefetch={prefetch === undefined ? undefined : String(prefetch)}
+    >
       {children}
     </a>
   );
@@ -310,7 +321,17 @@ describe('DocsSidebar collapse state', () => {
 });
 
 describe('DocsSidebar injected Link', () => {
-  it('routes every internal link through it with prefetch off', () => {
+  it("warms the reader's own section, and nothing else", () => {
+    /*
+     * `prefetch={false}` used to be on every link, on Pages-Router reasoning
+     * that does not hold in the App Router: there it disables the hover and
+     * touch paths as well as the viewport one, so the most-clicked control in
+     * a docs site made every navigation a cold round-trip.
+     *
+     * Nearby is the list that directly holds the current page, plus the
+     * heading of the group the reader is inside. Everything else stays off,
+     * which is the half of the old comment that was right.
+     */
     render(
       <DocsSidebar
         nav={nav}
@@ -319,12 +340,36 @@ describe('DocsSidebar injected Link', () => {
       />,
     );
 
+    const prefetchOf = (name: string | RegExp): string | null =>
+      screen.getByRole('link', { name }).getAttribute('data-prefetch');
+
+    // The active page itself, and the heading of the group holding it.
+    expect(prefetchOf('Authentication')).toBeNull();
+    expect(prefetchOf('API')).toBeNull();
+    // The root list does not hold the active page, so nothing in it is warm.
+    expect(prefetchOf('Introduction')).toBe('false');
+
+    const internal = screen
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('href')?.startsWith('/') === true);
+    const warm = internal.filter(
+      (link) => link.getAttribute('data-prefetch') === null,
+    );
+    // Warm links are the minority, always — that is the entire budget.
+    expect(warm.length).toBeGreaterThan(0);
+    expect(warm.length).toBeLessThan(internal.length);
+  });
+
+  it('warms nothing at all when the reader is on no page in the tree', () => {
+    render(
+      <DocsSidebar nav={nav} pathname="/somewhere/else" Link={RecordingLink} />,
+    );
+
     const internal = screen
       .getAllByRole('link')
       .filter((link) => link.getAttribute('href')?.startsWith('/') === true);
     expect(internal.length).toBeGreaterThan(0);
     for (const link of internal) {
-      // A full-tree sidebar otherwise asks Next to prefetch every route in it.
       expect(link).toHaveAttribute('data-prefetch', 'false');
     }
   });

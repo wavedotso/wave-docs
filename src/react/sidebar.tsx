@@ -56,9 +56,28 @@ function containsActive(node: DocNavNode, pathname: string): boolean {
 /**
  * The docs navigation tree.
  *
- * Prefetch is off by default on the injected link. A full-tree sidebar on a
- * few hundred pages otherwise asks Next to prefetch every route in it —
- * ~1.8 KB brotli each, all of it wasted on the routes nobody clicks.
+ * ## Prefetch
+ *
+ * Nearby links prefetch; the rest do not. Nearby means the list that directly
+ * contains the current page, plus the heading link of the group the reader is
+ * inside — 5 to 15 warm links on a real sidebar rather than 400 or none.
+ *
+ * ⚠️ THE PREVIOUS NOTE HERE WAS WRONG, AND THE RETRACTION IS THE POINT. It
+ * said prefetch was off because a full-tree sidebar otherwise asks Next to
+ * prefetch every route in it, ~1.8 KB brotli each. That reasoning is correct
+ * for the Pages Router and wrong for the App Router:
+ * `next/dist/client/app-dir/link.js` computes
+ * `const prefetchEnabled = prefetchProp !== false`, and BOTH the hover path
+ * and the touch path bail on it, while the IntersectionObserver is only
+ * registered when it is true. So `prefetch={false}` did not trade viewport
+ * prefetching for hover prefetching — it turned off both, and made every
+ * navigation from the most-clicked control in a docs site a cold RSC
+ * round-trip.
+ *
+ * ⚠️ AND IT IS UNOBSERVABLE IN `next dev`. The same file guards the hover path
+ * with `if (!prefetchEnabled || process.env.NODE_ENV === 'development')`, so
+ * nothing prefetches locally whatever this says. Do not "fix" it back because
+ * the network tab looks the same.
  */
 export function DocsSidebar({
   nav,
@@ -124,6 +143,19 @@ function NavList({
   onToggle,
   id,
 }: NavListProps): ReactNode {
+  /*
+   * One decision for the whole list: is the reader's own page in it? If so
+   * every link here is a plausible next click — the sibling pages of the
+   * section they are reading. Anywhere else in a few-hundred-page tree is not,
+   * and prefetching it would be the bandwidth the old comment was worried
+   * about, correctly.
+   */
+  const holdsActive = nodes.some(
+    (node) =>
+      (node.type === 'page' || (node.type === 'link' && !node.external)) &&
+      isActiveHref(pathname, node.href),
+  );
+
   return (
     <ul id={id} className="wave-docs-sidebar__list" data-depth={depth}>
       {/* Positional keys: the tree is authored on disk and read at build time,
@@ -148,6 +180,7 @@ function NavList({
                   href={node.href}
                   isExternal={node.external}
                   isActive={!node.external && isActiveHref(pathname, node.href)}
+                  isNearby={holdsActive}
                   Link={Link}
                 >
                   {node.title}
@@ -161,6 +194,7 @@ function NavList({
                   href={node.href}
                   isExternal={false}
                   isActive={isActiveHref(pathname, node.href)}
+                  isNearby={holdsActive}
                   Link={Link}
                 >
                   {node.title}
@@ -237,6 +271,9 @@ function NavGroup({
               href={node.href}
               isExternal={false}
               isActive={isGroupActive}
+              // The heading of the group the reader is inside: the one link
+              // that reliably gets clicked on the way back out.
+              isNearby={hasActive}
               Link={Link}
             >
               {node.title}
@@ -276,6 +313,8 @@ interface NavLinkProps {
   href: string;
   isExternal: boolean;
   isActive: boolean;
+  /** Close enough to the reader's position to be worth a warm route. */
+  isNearby?: boolean | undefined;
   Link: DocsLinkComponent | undefined;
   children: ReactNode;
 }
@@ -284,6 +323,7 @@ function NavLink({
   href,
   isExternal,
   isActive,
+  isNearby = false,
   Link,
   children,
 }: NavLinkProps): ReactNode {
@@ -319,7 +359,10 @@ function NavLink({
     <Link
       className={className}
       href={href}
-      prefetch={false}
+      // `undefined`, not `true`: it is omitted from the element entirely, so
+      // Next applies its own default rather than this component pinning a
+      // policy it has no information to pin.
+      prefetch={isNearby ? undefined : false}
       aria-current={isActive ? 'page' : undefined}
     >
       {children}

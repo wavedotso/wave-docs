@@ -35,8 +35,26 @@ declare module 'vfile' {
   }
 }
 
-/** `h2`–`h6`. `h1` is the page title and never appears in a TOC. */
-const HEADING = /^h([2-6])$/;
+/**
+ * `h2` and `h3`. `h1` is the page title, and h4–h6 are too deep to navigate.
+ *
+ * Measured on a synthetic API page — 8 methods, 3 overloads each, 3
+ * subsections apiece — capturing h2–h6 gave **104 entries and 6,797 bytes** of
+ * flight payload against **32 entries and 2,321 bytes** capped at h3. A rail
+ * with a hundred entries is not a table of contents; it is the page again, in
+ * a narrower column.
+ *
+ * Stripe, Linear, Mintlify, Fumadocs and Docusaurus all cap at h2+h3 —
+ * Docusaurus's defaults are literally 2 and 3.
+ *
+ * Nothing becomes unreachable by cutting here. `rehype-slug` and
+ * `rehype-autolink-headings` still give every h4–h6 an id and a permalink, so
+ * they are still linkable and still land in the search index, which opens
+ * sections on its own walk. There is deliberately no `maxDepth` option: the
+ * escape hatch is `rehypePlugins`, where a plugin writing its own
+ * `file.data.toc` is about forty lines.
+ */
+const HEADING = /^h([23])$/;
 
 /**
  * Drop the permalink anchor `rehype-autolink-headings` appends.

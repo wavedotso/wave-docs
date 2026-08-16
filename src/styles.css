@@ -1232,17 +1232,12 @@
     text-decoration: none;
   }
 
-  /* Indent by heading depth rather than by nesting, so an h4 under an h2 with
-   * no h3 between them still lines up. */
+  /* Indent by heading depth rather than by nesting, so the rule survives a
+   * document that skips a level. Only depth 3 exists — `rehypeCaptureToc`
+   * captures h2 and h3 and nothing deeper, so the rules for 4, 5 and 6 that
+   * used to sit here styled entries that can no longer be produced. */
   .wave-docs-toc__link[data-depth='3'] {
     padding-inline-start: 1.5rem;
-  }
-  .wave-docs-toc__link[data-depth='4'] {
-    padding-inline-start: 2.25rem;
-  }
-  .wave-docs-toc__link[data-depth='5'],
-  .wave-docs-toc__link[data-depth='6'] {
-    padding-inline-start: 3rem;
   }
 
   .wave-docs-toc__link:hover {
