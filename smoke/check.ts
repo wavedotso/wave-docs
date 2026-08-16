@@ -218,7 +218,14 @@ async function checkShell(): Promise<void> {
     ['the drawer', /<dialog[^>]*id="wave-docs-nav"/],
     ['light dismiss on the drawer', /closedby="any"/],
     ['a declarative trigger', /command="show-modal"/],
-    ['the article in the main track', /wave-docs-layout__main/],
+    // The element, not only the class: this is the page's `main` landmark, and
+    // it shipped as an `<article>` — a shell with a banner, a navigation and a
+    // complementary and nothing for a screen-reader user to jump to.
+    ['a main landmark', /<main[^>]*class="wave-docs-layout__main"/],
+    [
+      'exactly one of it',
+      /^(?:(?!<main[\s>]).)*<main[\s>](?:(?!<main[\s>]).)*$/s,
+    ],
     ['the search trigger', /wave-docs-search-trigger/],
   ] as Array<[string, RegExp]>) {
     check(`the shell rendered ${label}`, pattern.test(html));

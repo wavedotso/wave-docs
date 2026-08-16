@@ -238,27 +238,36 @@ describe('createDocsRoute', () => {
     });
   });
 
-  it('gives the article the id the skip link targets, and makes it focusable', async () => {
-    // The literal, not the constant the adapter imports: this is the published
-    // default, and `SkipLink`'s own test pins the same string on the `href`. Both
-    // now derive from `DOCS_CONTENT_ID`, so the pair cannot drift apart — but a
-    // change to the value itself is a breaking change and has to fail here.
-    //
-    // `tabIndex` matters as much as the id: a fragment link moves the scroll
-    // position and not always the focus, so an unfocusable target leaves a
-    // keyboard reader at the top of the sidebar they were trying to skip.
-    const [article] = pageChildren(
+  it('renders the content as the main landmark, focusable and with the skip target', async () => {
+    /*
+     * `main`, and this is the assertion that keeps it one. The shell renders a
+     * `banner`, a `navigation` and a `complementary`; with an `<article>` here
+     * it rendered no `main` at all, so a screen-reader user navigating by
+     * landmark — the way you skip a hundred-link sidebar without tabbing — had
+     * nothing to jump to. The skip link covered the keyboard case and hid the
+     * gap behind it.
+     *
+     * The id is the literal, not the constant the adapter imports: this is the
+     * published default, and `SkipLink`'s own test pins the same string on the
+     * `href`. Both derive from `DOCS_CONTENT_ID`, so the pair cannot drift
+     * apart — but a change to the value itself is breaking and has to fail here.
+     *
+     * `tabIndex` matters as much as the id: a fragment link moves the scroll
+     * position and not always the focus, so an unfocusable target leaves a
+     * keyboard reader at the top of the sidebar they were trying to skip.
+     */
+    const [main] = pageChildren(
       await route.Page({
         params: Promise.resolve({ slug: ['getting-started'] }),
       }),
     );
 
-    if (!isValidElement<{ id?: string; tabIndex?: number }>(article)) {
+    if (!isValidElement<{ id?: string; tabIndex?: number }>(main)) {
       throw new Error('expected the first child to be an element');
     }
-    expect(article.type).toBe('article');
-    expect(article.props.id).toBe('docs-content');
-    expect(article.props.tabIndex).toBe(-1);
+    expect(main.type).toBe('main');
+    expect(main.props.id).toBe('docs-content');
+    expect(main.props.tabIndex).toBe(-1);
   });
 
   it('leaves the prose class to DocContent, exactly once', async () => {
@@ -268,26 +277,26 @@ describe('createDocsRoute', () => {
      * nested, the measure applies at two levels and `.wave-docs-prose > * + *`
      * starts matching the wrapper as well as the content.
      */
-    const [article] = pageChildren(
+    const [main] = pageChildren(
       await route.Page({
         params: Promise.resolve({ slug: ['getting-started'] }),
       }),
     );
 
-    if (!isValidElement<{ className?: string }>(article)) {
-      throw new Error('expected an article element');
+    if (!isValidElement<{ className?: string }>(main)) {
+      throw new Error('expected a main element');
     }
-    expect(article.props.className).toBe('wave-docs-layout__main');
+    expect(main.props.className).toBe('wave-docs-layout__main');
 
-    const rendered = renderToStaticMarkup(article);
+    const rendered = renderToStaticMarkup(main);
     expect(rendered.split('wave-docs-prose')).toHaveLength(2);
   });
 
-  it('emits the article and the TOC as siblings, not as a nested pair', async () => {
+  it('emits the main landmark and the TOC as siblings, not as a nested pair', async () => {
     /*
      * Both have to be DIRECT children of `.wave-docs-layout`, or
      * `grid-template-columns` cannot put them in separate tracks — the TOC
-     * would render inside the article's column while the third track sits
+     * would render inside the main column while the third track sits
      * empty above 80rem. `docs.Layout` renders `{children}` with no wrapper
      * and Next adds none of its own, so the only thing that could break this
      * is a wrapper added here.

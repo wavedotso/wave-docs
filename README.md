@@ -173,7 +173,7 @@ Every component takes data as props and imports nothing from `next/*` — the ad
 | `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap. Host-agnostic |
 | `Callout` | `react/callout` | Note · tip · important · warning · caution |
 | `YouTube` | `react/youtube` | Click-to-load facade |
-| `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<article>`. `docs.Layout` renders one |
+| `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<main>`. `docs.Layout` renders one |
 | `createMarkdownComponents` | `react/markdown-components` | The element → component map |
 
 ### Layout
@@ -233,16 +233,24 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
 
   return (
     <>
-      <article id="docs-content" tabIndex={-1}>
+      <main className="wave-docs-layout__main" id="docs-content" tabIndex={-1}>
         <DocContent hast={doc.hast} />
-      </article>
-      <DocsToc entries={doc.toc} />
+      </main>
+      {doc.toc.length === 0 ? null : (
+        <aside className="wave-docs-layout__toc">
+          <DocsToc entries={doc.toc} />
+        </aside>
+      )}
     </>
   );
 }
 ```
 
-`docs.Page` returns exactly this shape: the `<article>` and the table of contents as **two siblings**, not one wrapped element. They land as direct children of the grid, which is what puts them in separate columns — so if you compose your own page inside `docs.Layout`, return a fragment rather than a wrapper. A page with no headings emits no `<aside>` at all rather than an empty one, because the grid reserves the column with `:has()` and would otherwise give 15rem to nothing.
+`docs.Page` returns exactly this shape: the `<main>` and the table of contents as **two siblings**, not one wrapped element. They land as direct children of the grid, which is what puts them in separate columns — so if you compose your own page inside `docs.Layout`, return a fragment rather than a wrapper.
+
+**The two class names are load-bearing**, and they are the part of this that is easy to leave off. `wave-docs-layout__main` carries `min-width: 0`, without which a wide table pushes the whole document into horizontal scroll (measured: 1048px of document inside a 1024px viewport). `wave-docs-layout__toc` is what the grid reserves its third track with, via `:has()` — unclassed, the table of contents auto-places into the next row underneath the sidebar above 80rem, and renders inline on a phone instead of being hidden. Both are frozen in [`docs/adr/001-shell-contract.md`](docs/adr/001-shell-contract.md), so they are safe to write by hand.
+
+The `null` is load-bearing too: `:has()` matches an empty `<aside>` exactly as well as a full one, so a page with no headings would give up 15rem to nothing.
 
 ## Frontmatter
 
@@ -689,7 +697,7 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
 
 `titleHeading` defaults on because a document with no `h1` has a broken heading outline and fails every accessibility audit. Turn it off if your layout renders the title itself.
 
-The `<article>` always carries `id="docs-content"`, which is what `SkipLink` targets by default — there is no option to change it, because there was no matching option on `SkipLink` to follow it with, so changing it silently pointed the skip link at nothing. Outside `NODE_ENV=production` the content directory is always re-scanned per request; `docs.source.invalidate()` is the escape hatch if you need to force one.
+The `<main>` always carries `id="docs-content"`, which is what `SkipLink` targets by default — there is no option to change it, because there was no matching option on `SkipLink` to follow it with, so changing it silently pointed the skip link at nothing. Outside `NODE_ENV=production` the content directory is always re-scanned per request; `docs.source.invalidate()` is the escape hatch if you need to force one.
 
 ### Redirects and sitemap
 

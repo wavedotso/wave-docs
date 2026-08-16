@@ -33,7 +33,7 @@ header   .wave-docs-layout__header
            └── .wave-docs-layout__header-inner
 grid     .wave-docs-layout
 columns    ├── .wave-docs-layout__sidebar   wraps <DocsSidebar>
-           ├── .wave-docs-layout__main      wraps {children}
+           ├── main.wave-docs-layout__main  the page's main landmark
            └── .wave-docs-layout__toc       rendered by docs.Page, placed by the grid
 drawer   dialog.wave-docs-layout__drawer
 ```
@@ -41,7 +41,7 @@ drawer   dialog.wave-docs-layout__drawer
 `__toc` is rendered by `docs.Page` rather than by `Layout`, because a Next layout
 receives `{children, params}` and cannot see `doc.toc`.
 
-**`__main` is emitted by `docs.Page` too, on the `<article>` itself** — `Layout`
+**`__main` is emitted by `docs.Page` too, on the `<main>` itself** — `Layout`
 renders `{children}` straight into the grid with no wrapper of its own. An
 earlier draft of this table said "wraps `{children}`", which is not
 implementable: a wrapper would make the TOC a child of the main column instead

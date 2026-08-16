@@ -1055,6 +1055,63 @@
     white-space: nowrap;
   }
 
+  /*
+   * ⚠️ AND VISIBLE AGAIN THE MOMENT IT HAS FOCUS. The rule above ran
+   * unconditionally, so a keyboard reader who pressed Enter to start the video
+   * was left holding focus on a 1×1 clipped element: the focus indicator
+   * disappeared from the page entirely (WCAG 2.4.7), with no way to see that
+   * the next Enter would collapse the player again. `youtube.browser.test.tsx`
+   * asserts focus deliberately *stays* here, which made the hiding rule a
+   * guaranteed failure rather than a possible one.
+   *
+   * Same shape as the skip link: off-screen until focused, a real control when
+   * focused. It overlays the player rather than displacing it, because the
+   * `<details>` has a fixed aspect ratio and reflowing the video under the
+   * reader's cursor to reveal a button is its own defect.
+   *
+   * `:focus-visible` here, where the skip link 700 lines up deliberately uses
+   * `:focus` — the divergence is the point. Clicking the thumbnail focuses this
+   * summary as a side effect of opening the player, and a mouse user does not
+   * want a "Hide video" control appearing over the video they just started.
+   * The reader who needs it is the one who pressed Enter, which is exactly what
+   * `:focus-visible` matches. Unlike the skip link, this element is also inert
+   * to a pointer while hidden — it is 1px, under nothing — so there is no
+   * unreachable-focused-control case to guard against.
+   */
+  .wave-docs-youtube[open] .wave-docs-youtube__facade:focus-visible {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 0.5rem;
+    inset-inline-start: 0.5rem;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    overflow: visible;
+    clip-path: none;
+    border-radius: var(--wave-docs-radius-sm);
+    outline: 2px solid var(--wave-docs-accent);
+    /* Inside, not outside: this control is inset 0.5rem over a black player,
+     * and an offset ring would be drawn half onto the video and half off the
+     * rounded corner of the frame. */
+    outline-offset: -2px;
+    background: var(--wave-docs-bg);
+    color: var(--wave-docs-fg);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /*
+   * The label follows the action. A `<summary>` that reads "Play video" while
+   * activating it *stops* the video is a control that lies about what it does,
+   * and the state is in the DOM already — no script needed to keep the two in
+   * step.
+   */
+  .wave-docs-youtube[open] .wave-docs-youtube__label-play,
+  .wave-docs-youtube:not([open]) .wave-docs-youtube__label-hide {
+    display: none;
+  }
+
   .wave-docs-youtube__thumbnail {
     width: 100%;
     height: 100%;

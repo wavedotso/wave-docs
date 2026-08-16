@@ -885,7 +885,19 @@ export function createDocsRoute<
       Fragment,
       null,
       createElement(
-        'article',
+        /*
+         * ⚠️ `main`, NOT `article`. This is the page's main landmark, and it
+         * was an `<article>` — which gave the shell a `banner`, a `navigation`
+         * and a `complementary` and no `main` at all. A screen-reader user
+         * navigating by landmark, which is how they skip a hundred-link
+         * sidebar without tabbing, had nothing to jump to; the skip link
+         * covered the keyboard case and hid the missing landmark behind it.
+         *
+         * One `<main>` per document is the constraint, and this satisfies it:
+         * `docs.Layout` renders the header and the navigation and nothing that
+         * competes for the role, and `docs.Page` is the only thing inside it.
+         */
+        'main',
         {
           // `wave-docs-prose` is NOT here: `DocContent` owns it, so the one
           // hand-rolled path in the README cannot forget it.

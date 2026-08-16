@@ -104,7 +104,19 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
             />
           </svg>
         </span>
-        <span className="wave-docs-sr-only">{`Play video: ${label}`}</span>
+        {/*
+         * Both labels ship, and CSS shows one. The control said "Play video"
+         * in every state, including the state where activating it stops the
+         * video — a control that misreports what it does, to precisely the
+         * reader who cannot see that the player is already open. The open/closed
+         * state is in the DOM, so `[open]` picks the right one and no script is
+         * involved; `display: none` is what keeps the other out of the
+         * accessibility tree rather than merely off-screen.
+         */}
+        <span className="wave-docs-sr-only wave-docs-youtube__label-play">
+          {`Play video: ${label}`}
+        </span>
+        <span className="wave-docs-youtube__label-hide">{`Hide video: ${label}`}</span>
       </summary>
       <iframe
         className="wave-docs-youtube__frame"
