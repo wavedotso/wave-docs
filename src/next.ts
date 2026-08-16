@@ -78,6 +78,7 @@ import { createDocsRenderer } from './render.js';
 import type { DocsSource } from './source.js';
 import { createDocsSource, resolveDocsConfig } from './source.js';
 import { toAliasRoute } from './route-path.js';
+import { sitemapLimitWarning } from './sitemap-limit.js';
 import type {
   DocFile,
   DocFrontmatter,
@@ -103,9 +104,6 @@ export type { DocsLang, DocsTheme, DocsThemes };
  * worth of trees and network calls in flight simultaneously.
  */
 const RENDER_CONCURRENCY = 16;
-
-/** Google's per-sitemap URL cap. */
-const SITEMAP_URL_LIMIT = 50_000;
 
 /* -------------------------------------------------------------------------
  * Lazily-loaded `next` modules
@@ -1127,16 +1125,10 @@ export async function createDocsSitemap<
   const files = await source.all();
 
   // Google rejects a sitemap above 50,000 URLs or 50 MB uncompressed, and Next
-  // neither chunks nor warns. Splitting belongs to the caller — `generateSitemaps`
-  // plus a slice of this array is three lines — but silently emitting a file
-  // no crawler will read is not something to discover from Search Console.
-  if (files.length > SITEMAP_URL_LIMIT) {
-    console.warn(
-      `@waveso/docs: this sitemap has ${files.length} URLs, above Google's ` +
-        `limit of ${SITEMAP_URL_LIMIT}. Split it with Next's ` +
-        '`generateSitemaps` and slice the array this returns.',
-    );
-  }
+  // neither chunks nor warns. The wording and the arithmetic live in
+  // `sitemap-limit.ts` so they are reachable without writing 50,001 files.
+  const oversized = sitemapLimitWarning(files.length);
+  if (oversized !== undefined) console.warn(oversized);
   // Annotated because the two branches have different parameter types, and a
   // union of signatures is not callable: `readMtime` reads nothing outside
   // `DocFrontmatter`, so it accepts the narrower file too.

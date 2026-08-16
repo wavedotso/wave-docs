@@ -173,27 +173,54 @@ describe('DocsCodeRuntime', () => {
     expect(writeText).toHaveBeenCalledWith('first line  \nsecond line');
   });
 
-  it('copies an excluded fence, which has no line spans at all', async () => {
+  it('gives an excluded fence no button, even beside a framed one', async () => {
     /*
-     * `mermaid` never reaches Shiki, so its `<pre>` has no `.line` children —
-     * the walk finds nothing and the `textContent` fallback is the only thing
-     * that returns the diagram source rather than an empty string.
+     * ⚠️ RENAMED, BECAUSE THE OLD NAME DESCRIBED SOMETHING THIS CANNOT DO. It
+     * was "copies an excluded fence, which has no line spans at all", and it
+     * clicked the *TypeScript* fence's button and asserted the TypeScript
+     * source — because an excluded fence is deliberately unframed and so has no
+     * button to click. The `textContent` fallback it claimed to cover was never
+     * reached; the test below reaches it.
+     *
+     * What this genuinely pins is the pairing: one frame, one button, and the
+     * mermaid block beside it carrying none.
      */
     const user = setupUser();
-    render(<DocContent hast={trees.mermaid as never} />);
-
-    // Excluded fences are not framed, so there is no button of ours; drive the
-    // reader through a frame that shares the page instead.
     const both = await renderDoc(`${SOURCE}\n\n${MERMAID}`);
-    document.body.innerHTML = '';
     render(<DocContent hast={both.hast as never} />);
 
-    await user.click(copyButton());
-    expect(writeText).toHaveBeenCalledWith('const a = 1;\n\nexport default a;');
     expect(screen.getAllByRole('button', { name: /^Copy code/ })).toHaveLength(
       1,
     );
+
+    await user.click(copyButton());
+    expect(writeText).toHaveBeenCalledWith('const a = 1;\n\nexport default a;');
   }, 30_000);
+
+  it('falls back to the text when a <pre> carries no line spans', async () => {
+    /*
+     * The branch the test above claimed. `readCode` walks `.line` children
+     * because `pre.textContent` stops being right the moment a transformer adds
+     * a gutter or a line that should not be copied — and it falls back to
+     * `textContent` when there are no lines to walk.
+     *
+     * A `rehypePlugins` entry that rewrites a fence's innards is exactly what
+     * produces that shape, so this strips the spans out of a real Shiki frame
+     * rather than hand-building one: the frame, the button and the wiring stay
+     * the pipeline's, and only the thing under test is changed.
+     */
+    const user = setupUser();
+    render(<DocContent hast={trees.plain as never} />);
+
+    const pre = document.querySelector('pre');
+    if (pre === null) throw new Error('the frame rendered no <pre>');
+    pre.innerHTML = '<code>graph TD;\n  A--&gt;B;</code>';
+    expect(pre.querySelectorAll('.line')).toHaveLength(0);
+
+    await user.click(copyButton());
+
+    expect(writeText).toHaveBeenCalledWith('graph TD;\n  A-->B;');
+  });
 
   it('announces once, and copies once, with two DocContents mounted', async () => {
     /*

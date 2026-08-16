@@ -131,11 +131,43 @@ describe('frontmatter parsing', () => {
     expect((failure as { cause?: unknown }).cause).toBeInstanceOf(Error);
   });
 
-  it('keeps a --- separator inside the block out of the data', async () => {
-    // A second document in the same YAML stream. Whatever the parser does with
-    // it, the first document's `title` must survive.
-    const page = await readPage('---\ntitle: Auth\n---\n\nBody.\n');
+  it('ends the block at the first closing fence, whatever follows', async () => {
+    /*
+     * ⚠️ THE FIXTURE WAS THE ORDINARY CASE. This test claimed to cover "a second
+     * document in the same YAML stream" against
+     * `'---\ntitle: Auth\n---\n\nBody.\n'` — a plain single-document block,
+     * byte-identical in shape to the happy path two tests up. It asserted
+     * nothing the rest of the file did not already.
+     *
+     * What is actually at stake: a `---` after the closing fence must be body,
+     * not more frontmatter. A parser that consumed the YAML *stream* rather
+     * than the fenced block would swallow the reader's horizontal rule and the
+     * prose behind it.
+     */
+    const page = await readPage(
+      '---\ntitle: Auth\n---\n\nIntro.\n\n---\n\nAfter the rule.\n',
+    );
 
     expect(page.frontmatter.title).toBe('Auth');
+    expect(page.content).toContain('Intro.');
+    expect(page.content).toContain('After the rule.');
+    // The separator itself survives into the body, so it renders as the
+    // thematic break the author typed.
+    expect(page.content).toContain('---');
+    // And it did not become data.
+    expect(Object.keys(page.frontmatter)).toEqual(['title']);
+  });
+
+  it('leaves a --- inside a quoted value alone', async () => {
+    // The fence-matching is line-based, so a value that merely contains the
+    // three characters must not truncate the block. `description` is the field
+    // most likely to hold one.
+    const page = await readPage(
+      '---\ntitle: Auth\ndescription: "before --- after"\n---\n\nBody.\n',
+    );
+
+    expect(page.frontmatter.title).toBe('Auth');
+    expect(page.frontmatter.description).toBe('before --- after');
+    expect(page.content).toContain('Body.');
   });
 });

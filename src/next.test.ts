@@ -485,11 +485,22 @@ describe('docs.searchIndex', () => {
       true,
     );
     expect(hits.map((hit) => hit.href)).toContain('/docs/api/authentication');
-    // A draft is not a page; indexing one leaks unpublished prose into a
-    // dialog that then navigates to a hard 404.
-    expect(
-      index.search('changelog').every((hit) => hit.href !== '/docs/changelog'),
-    ).toBe(true);
+    /*
+     * A draft is not a page; indexing one leaks unpublished prose into a
+     * dialog that then navigates to a hard 404.
+     *
+     * ⚠️ ASSERT AN EMPTY RESULT, NOT A PROPERTY OF ONE. This read
+     * `index.search('changelog').every((hit) => hit.href !== '/docs/changelog')`
+     * and could not fail for two independent reasons: `every` on an empty array
+     * is `true`, and the draft's href is `/docs/changelog-draft`, so even a
+     * fully leaked index satisfied it. Search the draft's own prose, and prove
+     * the query is live by finding the same words on a published page.
+     */
+    expect(index.search('final').map((hit) => hit.href)).toEqual([]);
+    expect(index.search('unreleased').map((hit) => hit.href)).toEqual([]);
+    // The control: the index is loaded and answering, so the two empties above
+    // are the draft's absence rather than a dead query.
+    expect(index.search('install').length).toBeGreaterThan(0);
   });
 
   it('is byte-identical to the documented escape hatch', async () => {
@@ -957,7 +968,16 @@ describe('adapter wiring the renderer depends on', () => {
     expect(JSON.stringify(doc?.hast)).not.toContain('shiki');
   });
 
-  it('warns rather than silently emitting an oversized sitemap', async () => {
+  it('stays quiet about a sitemap that fits', async () => {
+    /*
+     * Renamed to what it asserts. It was called "warns rather than silently
+     * emitting an oversized sitemap" while building a one-page site and
+     * asserting the warning did *not* fire — a name describing the opposite of
+     * the assertion under it, and a branch reachable only by writing 50,001
+     * files. The warning itself is `sitemap-limit.test.ts` now; this keeps the
+     * integration half, which is a real guard against an inverted comparison
+     * making every ordinary build noisy.
+     */
     const contentDir = await makeContentDir({
       'index.md': '---\ntitle: Home\n---\n',
     });
