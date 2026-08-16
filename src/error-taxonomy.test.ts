@@ -64,6 +64,31 @@ function thrownCodes(): Set<string> {
   return found;
 }
 
+/**
+ * Every option in the bug form's error-code dropdown, in file order.
+ *
+ * Parsed rather than imported: it is a YAML file GitHub reads, so there is no
+ * module to import and nothing else in the repository would notice it going
+ * stale. The two trailing "no error" entries are the form's own and are not
+ * codes.
+ */
+function dropdownOptions(): string[] {
+  const form = readFileSync(
+    path.join(ROOT, '.github', 'ISSUE_TEMPLATE', 'bug.yml'),
+    'utf8',
+  );
+  const block = form.slice(
+    form.indexOf('      options:'),
+    form.indexOf('    validations:', form.indexOf('      options:')),
+  );
+  return [...block.matchAll(/^ {8}- (.+)$/gm)].map((match) =>
+    (match[1] as string).trim(),
+  );
+}
+
+/** The two entries for "nothing threw", which every report needs a way to say. */
+const NO_ERROR_OPTIONS = ['no error — wrong output', 'no error — wrong types'];
+
 describe('the error taxonomy', () => {
   it('parses the union at all', () => {
     // The guard on the guard: every assertion below compares against this
@@ -92,6 +117,38 @@ describe('the error taxonomy', () => {
      * surface or a call site that lost its code in a refactor.
      */
     expect(unused).toEqual([]);
+  });
+
+  it("offers every code in the bug form, in the union's own order", () => {
+    /*
+     * The dropdown is the first field of the bug form, and picking the right
+     * code is the single most useful thing a report can carry — so a code
+     * missing from it is a report that arrives without the one fact that would
+     * have routed it.
+     *
+     * Order matters as well as membership: the union is grouped by area
+     * (links, then content, then config, then runtime), and a dropdown sorted
+     * differently makes a reporter scan the whole list instead of the four
+     * entries near the one they want.
+     */
+    const options = dropdownOptions();
+
+    // The guard on the guard: a parse that returned nothing would make every
+    // assertion below vacuous.
+    expect(options.length).toBeGreaterThan(10);
+    expect(options.slice(0, -NO_ERROR_OPTIONS.length)).toEqual(unionMembers());
+  });
+
+  it('keeps a way to report something that threw nothing', () => {
+    /*
+     * A required dropdown with only error codes forces a wrong answer out of
+     * anyone whose bug is wrong output or wrong types — and a wrong code is
+     * worse than none, because it routes the issue confidently to the wrong
+     * place.
+     */
+    expect(dropdownOptions().slice(-NO_ERROR_OPTIONS.length)).toEqual(
+      NO_ERROR_OPTIONS,
+    );
   });
 
   it('exports the union as a type a switch can be exhaustive over', () => {
