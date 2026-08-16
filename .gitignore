@@ -15,6 +15,13 @@ package-lock.json
 **/__screenshots__
 .vitest-attachments
 
+# Next 16 writes these into any app directory it runs in. Both configs set
+# `agentRules: false`, so this is a belt on top of braces — a CLAUDE.md inside
+# smoke/ or site/ would override this project's own instructions.
+**/AGENTS.md
+smoke/CLAUDE.md
+site/CLAUDE.md
+
 # Static export output from the smoke app and the documentation site.
 smoke/out
 site/out
