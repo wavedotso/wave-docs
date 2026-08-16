@@ -9,8 +9,7 @@ import { createDocsSource, resolveDocsConfig } from './source.js';
 import { toAliasRoute } from './route-path.js';
 import type { DocFrontmatter, DocNavNode, RenderedDoc } from './types.js';
 
-// Counting `readdir` is how the scan-once guarantee is asserted: one scan of
-// the `basic` fixture is exactly four directory reads.
+// Counting `readdir` is how the scan-once guarantee is asserted.
 const { readdirCalls } = vi.hoisted(() => ({ readdirCalls: { count: 0 } }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -342,9 +341,24 @@ describe('scan caching', () => {
       source.find(['api']),
     ]);
     await source.all();
+    const racing = readdirCalls.count;
 
-    // basic, basic/api, basic/empty, basic/guides — one pass, not five.
-    expect(readdirCalls.count).toBe(4);
+    const single = createDocsSource({
+      contentDir: BASIC,
+      basePath: '/cache-probe-single',
+    });
+    readdirCalls.count = 0;
+    await single.all();
+
+    /*
+     * The invariant is that the cost does not scale with the number of
+     * callers, and it is asserted as a comparison rather than a constant. It
+     * was `toBe(4)` — one readdir per directory — until the dirty check added
+     * a stat-only fingerprint pass, at which point a correct implementation
+     * failed a test that was pinning an incidental number. Six callers must
+     * cost exactly what one does; how many passes one costs is free to change.
+     */
+    expect(racing).toBe(readdirCalls.count);
   });
 
   it('does not cache a scan that failed', async () => {

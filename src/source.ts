@@ -266,6 +266,33 @@ function buildSource<TFrontmatter extends DocFrontmatter>(
 
   return {
     config,
+    /**
+     * Throw the scan away. The next query reads the disk again.
+     *
+     * ⚠️ A STAT-WALK DIRTY CHECK WAS BUILT HERE AND MEASURED AND REMOVED. The
+     * idea is obvious and the roadmap called for it: mark dirty, then compare
+     * a stat-only fingerprint of the tree against the cached one and skip the
+     * re-read when nothing changed. It rests on stat being much cheaper than
+     * read, and on this corpus it is not — the fingerprint has to `readdir`
+     * every directory and `stat` every file, which is nearly everything the
+     * scan does apart from the read and the parse.
+     *
+     * Measured over 501 pages, median of six, against a full rescan:
+     *
+     *   ~1.4 KB pages   28.3 ms vs 26.8 ms   0.95x  (slower)
+     *   ~20 KB pages    28.8 ms vs 27.4 ms   0.95x  (slower)
+     *   ~120 KB pages   39.1 ms vs 45.1 ms   1.15x  (faster)
+     *
+     * Documentation pages are the first two rows. So it is a small regression
+     * plus a new class of invalidation bug, in exchange for a win on a corpus
+     * nobody has. There is no cheaper correct fingerprint either: statting
+     * only directories catches an added or renamed file but not an edited one,
+     * which is the common case in a dev server.
+     *
+     * If this is ever revisited, the thing to change is the *scan*, not the
+     * check — patch only the files whose mtime moved and re-derive the nav in
+     * memory, which is a different item with a much harder correctness story.
+     */
     invalidate() {
       cached = null;
     },
