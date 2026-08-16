@@ -179,31 +179,57 @@ async function measurePayload(): Promise<Record<string, number>> {
  * Axis 3 — render cost
  * ---------------------------------------------------------------------- */
 
-async function timeRender(exclude: readonly string[]): Promise<number> {
-  const renderer = createDocsRenderer({
-    config: { basePath: '/docs', assertLinks: false },
-    excludeLangs: exclude,
-  });
-  const docs = Array.from({ length: 30 }, (_, index) => page(index, true));
-
-  await renderer.render(docs[0] as DocFile); // warm the highlighter
-
-  const runs: number[] = [];
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const started = performance.now();
-    for (const doc of docs) await renderer.render(doc);
-    runs.push((performance.now() - started) / docs.length);
-  }
-  runs.sort((a, b) => a - b);
-  return runs[2] as number;
+/** Milliseconds per page for one pass over the corpus. */
+async function timeOnce(
+  renderer: ReturnType<typeof createDocsRenderer>,
+  docs: DocFile[],
+): Promise<number> {
+  const started = performance.now();
+  for (const doc of docs) await renderer.render(doc);
+  return (performance.now() - started) / docs.length;
 }
 
+/**
+ * Highlighting's share of a render, as a ratio so the machine cancels out.
+ *
+ * ⚠️ THE TWO HALVES ARE INTERLEAVED, AND THAT IS THE WHOLE DESIGN. They used to
+ * be timed in separate blocks — five runs with Shiki, then five without — and a
+ * ratio built that way only cancels the machine out if the machine was the same
+ * for both blocks. It is not: measured on an idle machine this reported
+ * 1.71–1.86×, and on the same machine while a build was running, 2.03× — over
+ * the 1.98× budget, from a code change that touched nothing on this path. A
+ * contended CI runner is the normal case, so that is a gate that fails for
+ * reasons the author cannot act on, which is the fastest way to teach everyone
+ * to raise a budget without reading it.
+ *
+ * Timed back to back within an attempt, a load spike lands on both halves and
+ * divides out. The median of the per-attempt *ratios* is then the answer, not
+ * the ratio of two independently-median times.
+ */
 async function measureRender(): Promise<Record<string, number>> {
-  const withShiki = await timeRender([]);
-  // The same corpus with the highlighter switched off, so the ratio is the
-  // highlighter's share and the machine cancels out.
-  const without = await timeRender(['ts', 'typescript']);
-  return { 'shiki-multiple': withShiki / without };
+  const docs = Array.from({ length: 30 }, (_, index) => page(index, true));
+  const build = (exclude: readonly string[]) =>
+    createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+      excludeLangs: exclude,
+    });
+
+  const shiki = build([]);
+  const plain = build(['ts', 'typescript']);
+
+  // Warm both highlighters before anything is timed: the first render of each
+  // loads grammars, and charging that to attempt one skews the median.
+  await shiki.render(docs[0] as DocFile);
+  await plain.render(docs[0] as DocFile);
+
+  const ratios: number[] = [];
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const withShiki = await timeOnce(shiki, docs);
+    const without = await timeOnce(plain, docs);
+    ratios.push(withShiki / without);
+  }
+  ratios.sort((a, b) => a - b);
+  return { 'shiki-multiple': ratios[2] as number };
 }
 
 /* -------------------------------------------------------------------------

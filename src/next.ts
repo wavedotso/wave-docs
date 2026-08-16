@@ -63,6 +63,7 @@ import { DocContent } from './react/doc-content.js';
 // entry point must not put it on `next.config.ts`'s graph. `Layout` reaches the
 // value through the dynamic `import()` below, which is the same reason.
 import type { DocsLayoutSearchProps } from './react/layout.js';
+import type { DocsLabels } from './react/shell-labels.js';
 import { DocsToc } from './react/toc.js';
 import type {
   DocsImageComponent,
@@ -393,6 +394,16 @@ export interface DocsLayoutProps {
    * to override that.
    */
   search?: boolean | DocsLayoutSearchProps | undefined;
+  /**
+   * The four strings the shell renders itself: the navigation landmark's name,
+   * the drawer's open and close buttons, and the skip link.
+   *
+   * Everything else a reader sees is your markdown or your `title`. This is the
+   * whole of what a non-English site has to say — and it is the fifth prop,
+   * added deliberately: a documentation shell nobody can translate is not a
+   * shell for the whole ecosystem.
+   */
+  labels?: DocsLabels | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -966,6 +977,7 @@ export function createDocsRoute<
       title,
       actions,
       search,
+      labels,
     }: DocsLayoutProps): Promise<ReactNode> {
       /*
        * Lazy, and load-bearing. The shell reaches `next/navigation` and
@@ -1012,6 +1024,7 @@ export function createDocsRoute<
         search: searchProps,
         ...(title === undefined ? {} : { title }),
         ...(actions === undefined ? {} : { actions }),
+        ...(labels === undefined ? {} : { labels }),
       });
     },
 

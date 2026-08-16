@@ -180,6 +180,12 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   // separate from the component so it can be tested exhaustively — jsdom
   // reports every rectangle as zero, so nothing driving the effect could.
   'nearest-scroll-top',
+  // The shell's four strings and their defaults. The *type* is public, through
+  // `DocsLayoutProps['labels']`; the module is not, because the merge is an
+  // implementation detail of `docs.Layout` and a second caller would be a
+  // second set of defaults — which is the bug it was written to end, not one
+  // to publish a new way of having.
+  'shell-labels',
 ]);
 
 describe('exports map', () => {

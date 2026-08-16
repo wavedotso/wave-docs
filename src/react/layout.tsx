@@ -24,6 +24,8 @@ import type { ReactNode } from 'react';
 import type { DocNavNode } from '../types.js';
 import type { DocsSearchProps } from './next-search.js';
 import { DocsSearch } from './next-search.js';
+import type { DocsLabels } from './shell-labels.js';
+import { resolveLabels } from './shell-labels.js';
 import { DocsNextNav } from './next-nav.js';
 import { DOCS_NAV_ID } from './nav.js';
 import { SkipLink } from './skip-link.js';
@@ -56,6 +58,14 @@ export interface DocsLayoutShellProps {
    * exactly that.
    */
   search?: boolean | DocsLayoutSearchProps | undefined;
+  /**
+   * The four strings the chrome renders, for a site that is not in English.
+   *
+   * `DocsNav` declared `label` and `closeLabel`, documented them and defaulted
+   * them — and this component, the only thing that renders `DocsNav`, never
+   * passed either. Configuration that could not be configured.
+   */
+  labels?: DocsLabels | undefined;
 }
 
 export function DocsLayoutShell({
@@ -65,16 +75,19 @@ export function DocsLayoutShell({
   title,
   actions,
   search = true,
+  labels,
 }: DocsLayoutShellProps): ReactNode {
+  const text = resolveLabels(labels);
+
   return (
     <>
-      <SkipLink />
+      <SkipLink>{text.skipToContent}</SkipLink>
       <header className="wave-docs-layout__header">
         <div className="wave-docs-layout__header-inner">
           <button
             type="button"
             className="wave-docs-layout__nav-trigger"
-            aria-label="Open navigation"
+            aria-label={text.openNav}
             /*
              * Server-rendered and declarative: `command` opens the dialog with
              * no JavaScript of ours involved, so the drawer works on the first
@@ -124,7 +137,7 @@ export function DocsLayoutShell({
 
       <div className="wave-docs-layout">
         <div className="wave-docs-layout__sidebar">
-          <DocsNextNav nav={nav} />
+          <DocsNextNav nav={nav} label={text.nav} closeLabel={text.closeNav} />
         </div>
         {children}
       </div>

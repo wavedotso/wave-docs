@@ -128,9 +128,24 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
          * component exists to avoid, now invisible in review.
          */
         loading="lazy"
-        // `youtube-nocookie.com` defers the tracking cookie until playback,
-        // which is what makes this embeddable without a consent banner.
-        src={`https://www.youtube-nocookie.com/embed/${safeId}?rel=0`}
+        /*
+         * `youtube-nocookie.com` defers the tracking cookie until playback,
+         * which is what makes this embeddable without a consent banner.
+         *
+         * `autoplay=1` because the reader has already asked. A click-to-load
+         * facade whose click only *loads* costs two clicks to watch a video —
+         * the reader presses play, gets a player showing a play button, and
+         * presses play again. That is the one interaction this component
+         * exists to own, and getting it wrong makes the facade feel like a
+         * bug rather than a courtesy.
+         *
+         * It is not an autoplaying embed: the iframe does not exist until the
+         * `<details>` opens, so nothing plays until someone opens it. Browsers
+         * gate unmuted autoplay on a user gesture, and opening the disclosure
+         * *is* that gesture — which is exactly why this is allowed here and
+         * would not be on a page-load embed.
+         */
+        src={`https://www.youtube-nocookie.com/embed/${safeId}?rel=0&autoplay=1`}
         title={label}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen

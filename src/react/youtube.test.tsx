@@ -135,6 +135,30 @@ describe('YouTube', () => {
     expect(src.startsWith('https://www.youtube-nocookie.com/embed/')).toBe(
       true,
     );
+    // Encoded, so the crafted parameters are path characters rather than
+    // query. `autoplay` is ours and appears once; `evil` never becomes one.
+    const query = new URL(src).searchParams;
+    expect(query.get('autoplay')).toBe('1');
+    expect(query.has('evil')).toBe(false);
+  });
+
+  it('asks the player to start, because the reader already pressed play', () => {
+    /*
+     * Without `autoplay=1` a click-to-load facade costs two clicks: the reader
+     * presses play, gets a player showing a play button, and presses play
+     * again. This is the one interaction the component owns.
+     *
+     * Not an autoplaying embed — the iframe is inside a closed `<details>`
+     * with `loading="lazy"`, so nothing is fetched, let alone played, until
+     * someone opens it. That opening is the user gesture browsers gate unmuted
+     * autoplay on, which is why it is allowed here and would not be on a
+     * page-load embed.
+     */
+    render(<YouTube id={VIDEO_ID} />);
+
+    expect(new URL(getFrame().src).searchParams.get('autoplay')).toBe('1');
+    expect(getFrame().getAttribute('loading')).toBe('lazy');
+    expect(getFrame().closest('details')?.open).toBe(false);
   });
 
   it('renders nothing when the pipeline emitted no id', () => {

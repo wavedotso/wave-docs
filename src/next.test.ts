@@ -439,17 +439,41 @@ describe('docs.Layout', () => {
     expect(off.props.search).toBe(false);
   });
 
-  it('takes four props, and a fifth is a deliberate act', () => {
+  it('takes five props, and a sixth is a deliberate act', () => {
     /*
-     * The count is the point. Fumadocs' layout takes eleven, which promotes
-     * its internal anatomy to semver-frozen API — two node props can become a
-     * slots map later, a slots map cannot become two props. This fails when
-     * someone adds the fifth, which is exactly when the conversation should
-     * happen.
+     * The count is the point. Fumadocs' layout takes eleven, which promotes its
+     * internal anatomy to semver-frozen API — two node props can become a slots
+     * map later, a slots map cannot become two props. This fails when someone
+     * adds the next one, which is exactly when the conversation should happen.
+     *
+     * It fired once, for `labels`, and the answer was yes. The shell renders
+     * four strings of its own — the navigation landmark's name, the drawer's
+     * open and close buttons, the skip link — and every one was hardcoded
+     * English with no route to it: `DocsNav` declared `label` and `closeLabel`
+     * props, documented them, defaulted them, and the layout that is the only
+     * caller never passed either. A documentation shell nobody can translate is
+     * not one for the whole ecosystem, and four strings behind one prop is the
+     * smallest thing that fixes it.
      */
     expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
-      'children' | 'title' | 'actions' | 'search'
+      'children' | 'title' | 'actions' | 'search' | 'labels'
     >();
+  });
+
+  it('passes labels through to the shell', async () => {
+    const labels = {
+      nav: 'Documenta\u00e7\u00e3o',
+      openNav: 'Abrir navega\u00e7\u00e3o',
+    };
+    const element = await route.Layout({ children: null, labels });
+
+    if (!isValidElement<{ labels?: unknown }>(element)) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    // That the four strings actually reach a reader — through three components
+    // and two client boundaries — is `layout.test.tsx`, which can mount them.
+    // The shell needs `next/navigation`, so this half stops at the handoff.
+    expect(element.props.labels).toEqual(labels);
   });
 });
 

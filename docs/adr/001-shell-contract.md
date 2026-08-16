@@ -178,9 +178,20 @@ Unscoped, a consumer's own modal would lock our scroll and vice versa.
 
 ### Pipeline step numbering
 
-For anyone citing pipeline positions in a comment or a commit message: the TOC
+~~For anyone citing pipeline positions in a comment or a commit message: the TOC
 capture is **step 10**, after `rehypeSlug` and before `rehypeAutolinkHeadings`.
-An earlier draft of the roadmap called it step 11.
+An earlier draft of the roadmap called it step 11.~~
+
+**Superseded, and the number was the mistake.** The TOC capture is now the
+**last** step in the pipeline — after the host's `rehypePlugins`, after Shiki,
+after `rehypeFlattenRoots` — so it describes the same document the search index
+does. A plugin that adds or removes a heading changes both together, and there
+is nothing left to validate afterwards.
+
+Cite the position by what it is adjacent to, not by an index. This section
+existed to stop two drafts disagreeing about "step 10" versus "step 11", and
+what it actually produced was a frozen number that went stale the moment the
+step moved. `src/render.ts` is the order of record.
 
 ## What this does not fix
 

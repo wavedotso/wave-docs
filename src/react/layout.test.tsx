@@ -181,3 +181,78 @@ describe('DocsLayoutShell', () => {
     ).toBeTruthy();
   });
 });
+
+describe('the shell in another language', () => {
+  /**
+   * The four strings `docs.Layout` renders itself, and the only test that can
+   * see all four: they pass through `SkipLink`, the header button and
+   * `DocsNextNav` into `DocsNav`, and a props assertion on the outermost
+   * element proves none of that journey.
+   *
+   * ⚠️ THEY WERE UNREACHABLE. `DocsNav` declared `label` and `closeLabel`,
+   * documented them and gave them defaults — and this shell, the only thing
+   * that renders `DocsNav`, passed neither, while `DocsLayoutProps` had no way
+   * to say them. Configuration that could not be configured, and a package
+   * whose whole chrome was hardcoded English.
+   */
+  const LABELS = {
+    nav: 'Documentação',
+    openNav: 'Abrir navegação',
+    closeNav: 'Fechar navegação',
+    skipToContent: 'Ir para o conteúdo',
+  };
+
+  it('renders every one of them, and none of the defaults', () => {
+    renderShell({ labels: LABELS });
+
+    expect(
+      screen.getByRole('link', { name: LABELS.skipToContent }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: LABELS.openNav })).toBeTruthy();
+    /*
+     * `hidden: true` for everything inside the drawer. A closed `<dialog>` is
+     * out of the accessibility tree — correct, and it means the default query
+     * cannot see the close button in *either* direction, so asserting the
+     * English default's absence without this flag would be an assertion that
+     * could not fail.
+     */
+    expect(
+      screen.getByRole('button', { name: LABELS.closeNav, hidden: true }),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByRole('navigation', { name: LABELS.nav, hidden: true })
+        .length,
+    ).toBeGreaterThan(0);
+
+    for (const english of [
+      'Skip to content',
+      'Open navigation',
+      'Close navigation',
+      'Documentation',
+    ]) {
+      expect(
+        screen.queryByRole('button', { name: english, hidden: true }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('link', { name: english, hidden: true }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('navigation', { name: english, hidden: true }),
+      ).toBeNull();
+    }
+  });
+
+  it('falls back per string, so a partial map is not a half-English shell', () => {
+    renderShell({ labels: { openNav: 'Abrir navegação' } });
+
+    expect(
+      screen.getByRole('button', { name: 'Abrir navegação' }),
+    ).toBeTruthy();
+    // The rest keep their defaults rather than becoming `undefined`, which
+    // would leave a button with no accessible name at all.
+    expect(screen.getByRole('link', { name: 'Skip to content' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Close navigation', hidden: true }),
+    ).toBeTruthy();
+  });
+});

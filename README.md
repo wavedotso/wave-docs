@@ -68,7 +68,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | Copy-button runtime | 0.9 KB |
 | hast over the wire vs HTML, prose page | 1.20× |
 | hast over the wire vs HTML, code and tables | 1.12× |
-| Highlighting vs no highlighting | 1.80× |
+| Highlighting vs no highlighting | 2.00× |
 
 The first row is the honest total: a reader who lands on a page of your documentation downloads under 13 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
@@ -156,7 +156,11 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/errors` | Any | `DocsErrorCode`, `DocsError`, `isDocsError`, `DOCS_ERROR_PREFIX` |
 | `@waveso/docs/styles.css` | — | The stylesheet |
 
-The Node-only subpaths carry `"browser": null`, so importing one from client code fails with a located *module not found* rather than quietly bundling `node:fs`.
+The Node-only subpaths carry `"browser": null`, so importing one from client code fails with a located *module not found* rather than resolving.
+
+That is about **weight, not about `node:fs`** — and the distinction matters, because three of the five would bundle perfectly happily. `render`, `highlighter` and `search-index` require no Node builtins at all; the markdown pipeline runs wherever JavaScript does, and Shiki is loaded through its JavaScript regex engine rather than WASM on purpose. What a bundler would do with them is succeed, and ship `unified`, `remark-parse` and every Shiki grammar to a reader — the exact outcome this package exists to prevent, arriving with no error to notice. Only `source` and `next` genuinely need the filesystem.
+
+`entry-runtime.test.ts` asserts each set exactly, so a new builtin three modules deep fails the build instead of silently ruling out a non-Node runtime.
 
 ### Layout tokens
 
@@ -221,9 +225,36 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
 | --- | --- | --- | --- |
 | `title` | `ReactNode` | — | Brand, at the header start |
 | `actions` | `ReactNode` | — | Header end, after search |
-| `search` | `boolean` | `true` | Render the search trigger |
+| `search` | `boolean \| DocsSearchProps` | `true` | The search trigger. An object configures the dialog |
+| `labels` | `DocsLabels` | English | The four strings the shell renders itself |
 
-Four props, and one of them is a boolean. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. The header bar was the one region nothing else could reach — hence `actions`. Two node props can become a slots map later; a slots map cannot become two props.
+Five props, and two of them are small objects. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. The header bar was the one region nothing else could reach — hence `actions`. Two node props can become a slots map later; a slots map cannot become two props.
+
+`search` takes anything `DocsSearch` takes except `indexUrl`, which stays derived from your `basePath`. You do not need to repeat `miniSearchOptions` here to match `createDocsRoute` — the route's own value is forwarded, so the object that built the index is the object that queries it.
+
+`labels` is the whole of what a site not in English has to say to the shell; everything else a reader sees is your markdown or your `title`.
+
+The same `app/docs/layout.tsx` as the quick start, written out instead of re-exported, because passing a prop needs a function:
+
+```tsx
+import type { ReactNode } from 'react';
+import '@waveso/docs/styles.css';
+import { docs } from '@/lib/docs';
+
+export default function Layout(props: { children: ReactNode }) {
+  return docs.Layout({
+    ...props,
+    labels: {
+      nav: 'Documentação',
+      openNav: 'Abrir navegação',
+      closeNav: 'Fechar navegação',
+      skipToContent: 'Ir para o conteúdo',
+    },
+  });
+}
+```
+
+Each key falls back on its own, so a partial map is not a half-translated shell.
 
 #### The mobile drawer
 
