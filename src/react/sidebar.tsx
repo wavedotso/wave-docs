@@ -143,8 +143,28 @@ export function DocsSidebar({
     // browser. Either way there is nothing to do — and nothing to do wrongly.
     if (port === null) return;
 
+    /*
+     * ⚠️ RECTANGLES, NOT `offsetTop`. `active.offsetTop - port.offsetTop` reads
+     * as the obvious way to get an item's position inside its scrollport and is
+     * wrong here, because `offsetTop` is measured from the nearest *positioned*
+     * ancestor — and the scrollport is `position: sticky`, so it IS that
+     * ancestor. `active.offsetTop` is therefore already the number wanted, and
+     * subtracting the port's own offset takes off the header height a second
+     * time. Measured in Chromium at 1280×800: the active item scrolled to 206
+     * where 265 was correct, which put a 1024–1055 item inside a 206–1014
+     * viewport — entirely below the fold, the exact failure this effect exists
+     * to prevent.
+     *
+     * The rect difference is right whether or not the port is the offsetParent,
+     * and `+ port.scrollTop` converts it from viewport-relative back to
+     * content-relative, which is what `nearestScrollTop` documents itself to
+     * take.
+     */
     const next = nearestScrollTop({
-      itemTop: active.offsetTop - port.offsetTop,
+      itemTop:
+        active.getBoundingClientRect().top -
+        port.getBoundingClientRect().top +
+        port.scrollTop,
       itemHeight: active.offsetHeight,
       viewHeight: port.clientHeight,
       scrollTop: port.scrollTop,

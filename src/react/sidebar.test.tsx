@@ -107,11 +107,24 @@ function RecordingLink({
  *
  * jsdom reports every dimension as zero and lays nothing out, so a nav mounted
  * plainly has no scrollable ancestor and the scroll effect correctly does
- * nothing. Stubbing the four numbers it reads is the only way to exercise the
- * path at all — and without it the `scrollIntoView` spy below is a test that
- * cannot fail.
+ * nothing. Stubbing the numbers it reads is the only way to exercise the path
+ * at all — and without it the `scrollIntoView` spy below is a test that cannot
+ * fail.
+ *
+ * ⚠️ THE RECTANGLES MOVE WITH `scrollTop`, because that is the one property of
+ * a real scrollport this fixture has to model. An earlier version stubbed
+ * `offsetTop` as a constant on the prototype, which made the item's position
+ * independent of the scroll position *and* made a double-subtraction bug in the
+ * component invisible — `0 - 0` is `0` however wrong the arithmetic around it
+ * is. That bug shipped, and only Chromium could see it. Anchoring the item at a
+ * fixed content offset and deriving the rect from it is what keeps the two
+ * honest.
  */
 let scrollportCleanup: (() => void) | undefined;
+
+/** Where the active item sits in the scrollport's content, in fixture pixels. */
+const ITEM_CONTENT_TOP = 900;
+const ITEM_HEIGHT = 40;
 
 function scrollport(): HTMLElement {
   const element = document.createElement('div');
@@ -123,31 +136,40 @@ function scrollport(): HTMLElement {
   };
   define('clientHeight', 300);
   define('scrollHeight', 2000);
-  define('offsetTop', 0);
 
-  // Every descendant needs an offset too, or the active item reports 0 and is
-  // "already visible" whatever the scroll position.
-  const proto = Object.getOwnPropertyDescriptor(
+  const rectProto = Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
-    'offsetTop',
+    'getBoundingClientRect',
   );
-  Object.defineProperty(HTMLElement.prototype, 'offsetTop', {
-    get(this: HTMLElement) {
-      return this === element ? 0 : 900;
+  Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+    value(this: HTMLElement) {
+      // The port sits at the viewport origin; a descendant sits at its content
+      // offset shifted up by however far the port is scrolled, which is what a
+      // browser reports.
+      const top = this === element ? 0 : ITEM_CONTENT_TOP - element.scrollTop;
+      return { ...EMPTY_RECT, top, bottom: top + ITEM_HEIGHT };
     },
     configurable: true,
+    writable: true,
   });
+
   const heightProto = Object.getOwnPropertyDescriptor(
     HTMLElement.prototype,
     'offsetHeight',
   );
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
-    get: () => 40,
+    get: () => ITEM_HEIGHT,
     configurable: true,
   });
 
   scrollportCleanup = () => {
-    if (proto) Object.defineProperty(HTMLElement.prototype, 'offsetTop', proto);
+    if (rectProto) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'getBoundingClientRect',
+        rectProto,
+      );
+    }
     if (heightProto) {
       Object.defineProperty(HTMLElement.prototype, 'offsetHeight', heightProto);
     }
@@ -155,6 +177,16 @@ function scrollport(): HTMLElement {
   };
   return element;
 }
+
+const EMPTY_RECT = {
+  x: 0,
+  y: 0,
+  left: 0,
+  right: 0,
+  width: 0,
+  height: ITEM_HEIGHT,
+  toJSON: () => ({}),
+} as const;
 
 function restoreScrollport(): void {
   scrollportCleanup?.();
@@ -522,6 +554,45 @@ describe('DocsSidebar injected Link', () => {
       expect(port.scrollTop).toBeGreaterThan(0);
     } finally {
       Element.prototype.scrollIntoView = original;
+      restoreScrollport();
+    }
+  });
+
+  it('measures the item from the top of the content, not from a positioned ancestor', () => {
+    /*
+     * ⚠️ EXACT NUMBERS, DELIBERATELY. The assertion this replaces was
+     * `expect(port.scrollTop).toBeGreaterThan(0)`, which passes for every
+     * arithmetic that scrolls *somewhere* — and the arithmetic that shipped
+     * scrolled the active item entirely below the fold, because it subtracted
+     * the port's own `offsetTop` from an `offsetTop` already measured against
+     * that same port (the column is `position: sticky`, so it is the
+     * offsetParent). Chromium caught it; `toBeGreaterThan(0)` could not.
+     *
+     * Fixture geometry: item at 900 in a 2000px content, 300px viewport, so
+     * bringing its bottom into view with the 16px margin is
+     * `900 + 40 - 300 + 16`.
+     */
+    const port = scrollport();
+    try {
+      const { rerender } = render(
+        <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+        { container: port },
+      );
+
+      expect(port.scrollTop).toBe(ITEM_CONTENT_TOP + ITEM_HEIGHT - 300 + 16);
+
+      /*
+       * And the case that pins the `+ port.scrollTop` term specifically: with
+       * the column already scrolled so the item is comfortably in view, the
+       * right answer is to leave it alone. Drop that term and the item's
+       * viewport-relative `100` reads as "above the fold", and the column jumps
+       * backwards to 84 on a navigation that should not have moved it.
+       */
+      port.scrollTop = 800;
+      rerender(<DocsSidebar nav={nav} pathname="/docs/guides/caching" />);
+
+      expect(port.scrollTop).toBe(800);
+    } finally {
       restoreScrollport();
     }
   });
