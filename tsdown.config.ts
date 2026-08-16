@@ -12,9 +12,10 @@ import { defineConfig } from 'tsdown';
  * bundling into shared chunks would smear the Node half into modules the
  * browser condition is supposed to reach.
  *
- * `./markdown-links` deliberately does NOT carry it: `remark-doc-links` imports
- * nothing from `node:`, and claiming otherwise would break a host reusing
- * `resolveMarkdownLink` or `foldSegments` on the client.
+ * (`./markdown-links` was the exception here, on the grounds that
+ * `remark-doc-links` imports nothing from `node:`. The subpath was removed in
+ * 0.3.0 — `resolveMarkdownLink` is reachable through `./render` — so the
+ * exception went with it.)
  *
  * (This list named `./vite` before a Vite adapter existed. It still does not
  * exist; when it does, it belongs in the Node-only set above.)

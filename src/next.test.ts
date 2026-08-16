@@ -1,16 +1,31 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { isValidElement } from 'react';
-import { afterAll, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import MiniSearch from 'minisearch';
+import type { ReactNode } from 'react';
+import { Fragment, isValidElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import {
+  afterAll,
+  afterEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+} from 'vitest';
 import { z } from 'zod';
 
 import { docFrontmatterSchema } from './frontmatter.js';
+import type { DocsLayoutProps } from './next.js';
 import {
   createDocsRedirects,
   createDocsRoute,
   createDocsSitemap,
 } from './next.js';
+import { buildSearchIndex, extractSearchRecords } from './search-index.js';
+import { mergeSearchOptions } from './search-options.js';
+import type { SearchRecord } from './types.js';
 
 const BASIC = path.join(import.meta.dirname, '__fixtures__', 'source', 'basic');
 
@@ -50,6 +65,25 @@ afterAll(async () => {
     tempDirs.map((dir) => rm(dir, { recursive: true, force: true })),
   );
 });
+
+/**
+ * The children of the fragment `docs.Page` returns, with the `null` the TOC
+ * slot holds on a page with no headings already dropped.
+ *
+ * `Children.toArray` is deliberately not used: it discards nulls *and*
+ * flattens, so the "no empty aside" assertion could not tell an absent TOC
+ * from one nested somewhere unexpected.
+ */
+function pageChildren(page: ReactNode): ReactNode[] {
+  if (!isValidElement<{ children?: ReactNode }>(page)) {
+    throw new Error('expected `Page` to return an element');
+  }
+  expect(page.type).toBe(Fragment);
+  const children = page.props.children;
+  return (Array.isArray(children) ? children : [children]).filter(
+    (child) => child !== null && child !== undefined,
+  );
+}
 
 describe('createDocsRoute', () => {
   const route = createDocsRoute({ contentDir: BASIC });
@@ -204,62 +238,100 @@ describe('createDocsRoute', () => {
     });
   });
 
-  it('reads the tree once when the rescan is off', async () => {
-    const dir = await makeContentDir({
-      'index.md': '---\ntitle: Home\n---\n\nOriginal body.\n',
-    });
-    const built = createDocsRoute({
-      contentDir: dir,
-      basePath: '/built-docs',
-      rescanPerRequest: false,
-    });
-
-    expect(JSON.stringify(await built.getPage([]))).toContain('Original body');
-    await writeFile(
-      path.join(dir, 'index.md'),
-      '---\ntitle: Home\n---\n\nEdited body.\n',
-      'utf8',
+  it('renders the content as the main landmark, focusable and with the skip target', async () => {
+    /*
+     * `main`, and this is the assertion that keeps it one. The shell renders a
+     * `banner`, a `navigation` and a `complementary`; with an `<article>` here
+     * it rendered no `main` at all, so a screen-reader user navigating by
+     * landmark — the way you skip a hundred-link sidebar without tabbing — had
+     * nothing to jump to. The skip link covered the keyboard case and hid the
+     * gap behind it.
+     *
+     * The id is the literal, not the constant the adapter imports: this is the
+     * published default, and `SkipLink`'s own test pins the same string on the
+     * `href`. Both derive from `DOCS_CONTENT_ID`, so the pair cannot drift
+     * apart — but a change to the value itself is breaking and has to fail here.
+     *
+     * `tabIndex` matters as much as the id: a fragment link moves the scroll
+     * position and not always the focus, so an unfocusable target leaves a
+     * keyboard reader at the top of the sidebar they were trying to skip.
+     */
+    const [main] = pageChildren(
+      await route.Page({
+        params: Promise.resolve({ slug: ['getting-started'] }),
+      }),
     );
-    // A production build must not re-read the tree between pages; the content
-    // cannot change while it runs, and caching is the whole point.
-    expect(JSON.stringify(await built.getPage([]))).toContain('Original body');
+
+    if (!isValidElement<{ id?: string; tabIndex?: number }>(main)) {
+      throw new Error('expected the first child to be an element');
+    }
+    expect(main.type).toBe('main');
+    expect(main.props.id).toBe('docs-content');
+    expect(main.props.tabIndex).toBe(-1);
   });
 
-  it('gives the article the id the skip link targets, and makes it focusable', async () => {
-    // The literal, not the constant the adapter imports: this is the published
-    // default, and `SkipLink`'s own test pins the same string on the `href`. Both
-    // now derive from `DOCS_CONTENT_ID`, so the pair cannot drift apart — but a
-    // change to the value itself is a breaking change and has to fail here.
-    //
-    // `tabIndex` matters as much as the id: a fragment link moves the scroll
-    // position and not always the focus, so an unfocusable target leaves a
-    // keyboard reader at the top of the sidebar they were trying to skip.
-    const page = await route.Page({
-      params: Promise.resolve({ slug: ['getting-started'] }),
-    });
+  it('leaves the prose class to DocContent, exactly once', async () => {
+    /*
+     * `DocContent` owns `.wave-docs-prose` so the hand-rolled route in the
+     * README cannot forget it. That only helps if this stops emitting it too:
+     * nested, the measure applies at two levels and `.wave-docs-prose > * + *`
+     * starts matching the wrapper as well as the content.
+     */
+    const [main] = pageChildren(
+      await route.Page({
+        params: Promise.resolve({ slug: ['getting-started'] }),
+      }),
+    );
 
-    if (!isValidElement<{ id?: string; tabIndex?: number }>(page)) {
-      throw new Error('expected `Page` to return an element');
+    if (!isValidElement<{ className?: string }>(main)) {
+      throw new Error('expected a main element');
     }
-    expect(page.type).toBe('article');
-    expect(page.props.id).toBe('docs-content');
-    expect(page.props.tabIndex).toBe(-1);
+    expect(main.props.className).toBe('wave-docs-layout__main');
+
+    const rendered = renderToStaticMarkup(main);
+    expect(rendered.split('wave-docs-prose')).toHaveLength(2);
   });
 
-  it('renders no id at all when the consumer turns it off', async () => {
-    const bare = createDocsRoute({ contentDir: BASIC, contentId: false });
+  it('emits the main landmark and the TOC as siblings, not as a nested pair', async () => {
+    /*
+     * Both have to be DIRECT children of `.wave-docs-layout`, or
+     * `grid-template-columns` cannot put them in separate tracks — the TOC
+     * would render inside the main column while the third track sits
+     * empty above 80rem. `docs.Layout` renders `{children}` with no wrapper
+     * and Next adds none of its own, so the only thing that could break this
+     * is a wrapper added here.
+     */
+    const children = pageChildren(
+      await route.Page({
+        params: Promise.resolve({ slug: ['getting-started'] }),
+      }),
+    );
 
-    const page = await bare.Page({
-      params: Promise.resolve({ slug: ['getting-started'] }),
-    });
-
-    if (!isValidElement<{ id?: string; tabIndex?: number }>(page)) {
-      throw new Error('expected `Page` to return an element');
+    expect(children).toHaveLength(2);
+    const toc = children[1];
+    if (!isValidElement<{ className?: string }>(toc)) {
+      throw new Error('expected a TOC element');
     }
-    // Both halves go together: an id with no `tabIndex` is the stranded-focus
-    // case above, and a `tabIndex` with no id is a tab stop pointing nowhere.
-    expect(page.props.id).toBeUndefined();
-    expect(page.props.tabIndex).toBeUndefined();
+    expect(toc.type).toBe('aside');
+    expect(toc.props.className).toBe('wave-docs-layout__toc');
+  });
+
+  it('emits no aside at all for a page with no headings', async () => {
+    /*
+     * Not an empty one. The grid reserves its TOC track with
+     * `:has(.wave-docs-layout__toc)`, and `:has()` matches an empty aside just
+     * as happily — so a page without headings would give up 15rem to nothing.
+     * V-4 measured that exact defect with the sidebar.
+     */
+    const dir = await makeContentDir({
+      'index.md': '---\ntitle: Flat\n---\n\nProse, and not one heading.\n',
+    });
+    const flat = createDocsRoute({ contentDir: dir });
+
+    const children = pageChildren(await flat.IndexPage());
+
+    expect(children).toHaveLength(1);
+    expect(children.filter((child) => child !== null)).toHaveLength(1);
   });
 
   it('calls `notFound()` for an unknown slug', async () => {
@@ -271,6 +343,288 @@ describe('createDocsRoute', () => {
     await expect(
       route.Page({ params: Promise.resolve({ slug: ['nope'] }) }),
     ).rejects.toThrow(/NEXT_HTTP_ERROR_FALLBACK;404/);
+  });
+});
+
+describe('docs.Layout', () => {
+  const route = createDocsRoute({ contentDir: BASIC });
+
+  it('is callable with the props Next actually passes', async () => {
+    /*
+     * Next hands a layout `{ children, params }`. `DocsLayoutProps` declares
+     * only `children`, and the extra is ignored — which is the whole reason
+     * `export default docs.Layout` works as a one-liner. If this ever needed a
+     * wrapper, that one-liner stops being the headline of the README.
+     */
+    const element = await route.Layout({
+      children: null,
+      ...({ params: Promise.resolve({}) } as Record<string, unknown>),
+    });
+
+    expect(isValidElement(element)).toBe(true);
+  });
+
+  it('reads the nav itself, so a consumer never fetches one', async () => {
+    const element = await route.Layout({ children: null });
+
+    if (
+      !isValidElement<{ nav?: unknown[]; searchIndexUrl?: string }>(element)
+    ) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    // Both are derived rather than props on purpose: a nav passed in is a nav
+    // that can disagree with the routes, and a hand-written index URL is wrong
+    // under every non-default `basePath`.
+    expect(element.props.nav?.length).toBeGreaterThan(0);
+    expect(element.props.searchIndexUrl).toBe('/docs/search-index.json');
+  });
+
+  it('hands the dialog the same MiniSearch options it built the index with', async () => {
+    /*
+     * ⚠️ THE SILENT FAILURE THIS WHOLE PROP SHAPE EXISTS FOR. MiniSearch reads
+     * `tokenize` and `processTerm` when indexing *and* when querying, so an
+     * index built with one and queried with another has terms no query can
+     * spell — zero results, no error, nothing in the console.
+     *
+     * `search` was a bare boolean, so there was no channel at all: doing the
+     * two things the README says to do (configure the route, render
+     * `docs.Layout`) produced exactly that, under a docstring warning about
+     * it in capitals.
+     */
+    const processTerm = (term: string): string => term.replace(/-/g, '');
+    const tuned = createDocsRoute({
+      contentDir: BASIC,
+      miniSearchOptions: { processTerm },
+    });
+
+    const element = await tuned.Layout({ children: null });
+    if (!isValidElement<{ search?: unknown }>(element)) {
+      throw new Error('expected `Layout` to return an element');
+    }
+
+    expect(element.props.search).toEqual({
+      miniSearchOptions: { processTerm },
+    });
+  });
+
+  it('lets a host override those options, and still omit the trigger', async () => {
+    const routeTerm = (term: string): string => term;
+    const hostTerm = (term: string): string => term.toUpperCase();
+    const tuned = createDocsRoute({
+      contentDir: BASIC,
+      miniSearchOptions: { processTerm: routeTerm },
+    });
+
+    // More specific wins: a host that passes an object has said something the
+    // route's default did not.
+    const overridden = await tuned.Layout({
+      children: null,
+      search: { miniSearchOptions: { processTerm: hostTerm } },
+    });
+    if (
+      !isValidElement<{ search?: { miniSearchOptions?: unknown } }>(overridden)
+    ) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    expect(overridden.props.search?.miniSearchOptions).toEqual({
+      processTerm: hostTerm,
+    });
+
+    // And `false` still means no trigger, rather than a trigger configured
+    // with the route's options.
+    const off = await tuned.Layout({ children: null, search: false });
+    if (!isValidElement<{ search?: unknown }>(off)) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    expect(off.props.search).toBe(false);
+  });
+
+  it('takes five props, and a sixth is a deliberate act', () => {
+    /*
+     * The count is the point. Fumadocs' layout takes eleven, which promotes its
+     * internal anatomy to semver-frozen API — two node props can become a slots
+     * map later, a slots map cannot become two props. This fails when someone
+     * adds the next one, which is exactly when the conversation should happen.
+     *
+     * It fired once, for `labels`, and the answer was yes. The shell renders
+     * four strings of its own — the navigation landmark's name, the drawer's
+     * open and close buttons, the skip link — and every one was hardcoded
+     * English with no route to it: `DocsNav` declared `label` and `closeLabel`
+     * props, documented them, defaulted them, and the layout that is the only
+     * caller never passed either. A documentation shell nobody can translate is
+     * not one for the whole ecosystem, and four strings behind one prop is the
+     * smallest thing that fixes it.
+     */
+    expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
+      'children' | 'title' | 'actions' | 'search' | 'labels'
+    >();
+  });
+
+  it('passes labels through to the shell', async () => {
+    const labels = {
+      nav: 'Documenta\u00e7\u00e3o',
+      openNav: 'Abrir navega\u00e7\u00e3o',
+    };
+    const element = await route.Layout({ children: null, labels });
+
+    if (!isValidElement<{ labels?: unknown }>(element)) {
+      throw new Error('expected `Layout` to return an element');
+    }
+    // That the four strings actually reach a reader — through three components
+    // and two client boundaries — is `layout.test.tsx`, which can mount them.
+    // The shell needs `next/navigation`, so this half stops at the handoff.
+    expect(element.props.labels).toEqual(labels);
+  });
+});
+
+describe('docs.searchIndex', () => {
+  const route = createDocsRoute({ contentDir: BASIC });
+
+  it('derives its URL from the base path, root mount included', () => {
+    expect(route.searchIndexUrl).toBe('/docs/search-index.json');
+    expect(
+      createDocsRoute({ contentDir: BASIC, basePath: '/' }).searchIndexUrl,
+    ).toBe('/search-index.json');
+    expect(
+      createDocsRoute({ contentDir: BASIC, basePath: '/product/docs' })
+        .searchIndexUrl,
+    ).toBe('/product/docs/search-index.json');
+  });
+
+  it('serves an index the dialog can load, hit and deep-link from', async () => {
+    const response = await route.searchIndex();
+    expect(response.headers.get('content-type')).toBe('application/json');
+
+    // Loaded exactly as `search-dialog.tsx` loads it: the same merged options,
+    // or the terms in the index are ones no query can spell.
+    const index = MiniSearch.loadJSON<SearchRecord>(
+      await response.text(),
+      mergeSearchOptions(),
+    );
+    const hits = index.search('authentication');
+
+    expect(hits.length).toBeGreaterThan(0);
+    // `basePath` reaches the href, so a hit navigates somewhere that exists.
+    expect(hits.every((hit) => String(hit.href).startsWith('/docs'))).toBe(
+      true,
+    );
+    expect(hits.map((hit) => hit.href)).toContain('/docs/api/authentication');
+    /*
+     * A draft is not a page; indexing one leaks unpublished prose into a
+     * dialog that then navigates to a hard 404.
+     *
+     * ⚠️ ASSERT AN EMPTY RESULT, NOT A PROPERTY OF ONE. This read
+     * `index.search('changelog').every((hit) => hit.href !== '/docs/changelog')`
+     * and could not fail for two independent reasons: `every` on an empty array
+     * is `true`, and the draft's href is `/docs/changelog-draft`, so even a
+     * fully leaked index satisfied it. Search the draft's own prose, and prove
+     * the query is live by finding the same words on a published page.
+     */
+    expect(index.search('final').map((hit) => hit.href)).toEqual([]);
+    expect(index.search('unreleased').map((hit) => hit.href)).toEqual([]);
+    // The control: the index is loaded and answering, so the two empties above
+    // are the draft's absence rather than a dead query.
+    expect(index.search('install').length).toBeGreaterThan(0);
+  });
+
+  it('is byte-identical to the documented escape hatch', async () => {
+    // The handler is a convenience over `renderAll()` + these two functions,
+    // and this is what pins it there: if it ever grows its own opinion about
+    // records or options, anyone who built the index by hand — because they
+    // needed a step the handler cannot express — gets a different artifact
+    // than their dialog was configured for.
+    const byHand = buildSearchIndex(
+      (await route.renderAll()).flatMap((doc) => extractSearchRecords(doc)),
+    );
+
+    expect(await (await route.searchIndex()).text()).toBe(byHand);
+  });
+
+  it('applies miniSearchOptions to the index it builds', async () => {
+    const custom = createDocsRoute({
+      contentDir: BASIC,
+      miniSearchOptions: { storeFields: ['href'] },
+    });
+    const record = JSON.parse(await (await custom.searchIndex()).text()) as {
+      storedFields: Record<string, Record<string, unknown>>;
+    };
+
+    // `storeFields` is applied at build time and cannot be recovered on the
+    // client, so an override that never reached the index would fail silently.
+    expect(Object.keys(Object.values(record.storedFields)[0] ?? {})).toEqual([
+      'href',
+    ]);
+  });
+
+  describe('the force-static guard', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('refuses to render the corpus at request time in production', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('NEXT_PHASE', undefined);
+
+      await expect(route.searchIndex()).rejects.toMatchObject({
+        code: 'search-index-dynamic',
+      });
+      // The message has to name the file to edit — the whole failure is one
+      // missing line in a route file nobody looks at twice.
+      await expect(route.searchIndex()).rejects.toThrow(
+        /app\/docs\/search-index\.json\/route\.ts/,
+      );
+    });
+
+    it('allows the prerender that writes the file', async () => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('NEXT_PHASE', 'phase-production-build');
+
+      expect((await route.searchIndex()).status).toBe(200);
+    });
+
+    it('stays out of the way in development', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      vi.stubEnv('NEXT_PHASE', undefined);
+
+      expect((await route.searchIndex()).status).toBe(200);
+    });
+  });
+
+  describe('cache headers', () => {
+    it('replaces a year of s-maxage with a validator', async () => {
+      // Next's default for a `force-static` route is
+      // `s-maxage=31536000, stale-while-revalidate` with nothing to revalidate
+      // *against*, so a CDN pins one index to a URL that never changes.
+      const headers = (await route.searchIndex()).headers;
+
+      expect(headers.get('cache-control')).toBe(
+        'public, max-age=0, must-revalidate',
+      );
+      expect(headers.get('etag')).toMatch(/^"[0-9a-f]{40}"$/);
+    });
+
+    it('holds the ETag still while the corpus does, and moves it when it does not', async () => {
+      const dir = await makeContentDir({
+        'index.md': '---\ntitle: Home\n---\n\nOriginal body.\n',
+      });
+      const dev = createDocsRoute({ contentDir: dir });
+      const etag = async (): Promise<string | null> =>
+        (await dev.searchIndex()).headers.get('etag');
+
+      const first = await etag();
+      // The stable half is the load-bearing one: `buildSearchIndex` promises
+      // byte-stable output, and an ETag that churned would quietly disprove it
+      // while turning every revalidation into a full download.
+      expect(await etag()).toBe(first);
+
+      await writeFile(
+        path.join(dir, 'index.md'),
+        '---\ntitle: Home\n---\n\nEdited body.\n',
+        'utf8',
+      );
+
+      expect(await etag()).not.toBe(first);
+    });
   });
 });
 
@@ -551,7 +905,7 @@ describe('the source handed to layouts', () => {
     const contentDir = await makeContentDir({
       'index.md': '---\ntitle: Home\n---\n',
     });
-    const docs = createDocsRoute({ contentDir, rescanPerRequest: true });
+    const docs = createDocsRoute({ contentDir });
     const titles = async (): Promise<string[]> =>
       (await docs.source.nav()).map((node) => node.title);
 
@@ -564,23 +918,6 @@ describe('the source handed to layouts', () => {
     );
 
     expect(await titles()).toContain('Added');
-  });
-
-  it('does not rescan when the route is configured not to', async () => {
-    const contentDir = await makeContentDir({
-      'index.md': '---\ntitle: Home\n---\n',
-    });
-    const docs = createDocsRoute({ contentDir, rescanPerRequest: false });
-    const titles = async (): Promise<string[]> =>
-      (await docs.source.nav()).map((node) => node.title);
-
-    expect(await titles()).not.toContain('Added');
-    await writeFile(
-      path.join(contentDir, 'added.md'),
-      '---\ntitle: Added\n---\n',
-      'utf8',
-    );
-    expect(await titles()).not.toContain('Added');
   });
 });
 
@@ -605,25 +942,6 @@ describe('createDocsSitemap staleness', () => {
     );
 
     expect(await createDocsSitemap({ contentDir, siteUrl })).toHaveLength(2);
-  });
-
-  it('honours rescanPerRequest: false', async () => {
-    const contentDir = await makeContentDir({
-      'index.md': '---\ntitle: Home\n---\n',
-    });
-    const options = {
-      contentDir,
-      siteUrl: 'https://example.com',
-      rescanPerRequest: false,
-    };
-
-    expect(await createDocsSitemap(options)).toHaveLength(1);
-    await writeFile(
-      path.join(contentDir, 'second.md'),
-      '---\ntitle: Second\n---\n',
-      'utf8',
-    );
-    expect(await createDocsSitemap(options)).toHaveLength(1);
   });
 });
 
@@ -674,7 +992,16 @@ describe('adapter wiring the renderer depends on', () => {
     expect(JSON.stringify(doc?.hast)).not.toContain('shiki');
   });
 
-  it('warns rather than silently emitting an oversized sitemap', async () => {
+  it('stays quiet about a sitemap that fits', async () => {
+    /*
+     * Renamed to what it asserts. It was called "warns rather than silently
+     * emitting an oversized sitemap" while building a one-page site and
+     * asserting the warning did *not* fire — a name describing the opposite of
+     * the assertion under it, and a branch reachable only by writing 50,001
+     * files. The warning itself is `sitemap-limit.test.ts` now; this keeps the
+     * integration half, which is a real guard against an inverted comparison
+     * making every ordinary build noisy.
+     */
     const contentDir = await makeContentDir({
       'index.md': '---\ntitle: Home\n---\n',
     });

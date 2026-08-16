@@ -7,7 +7,7 @@
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DocNavNode } from '../types.js';
 import type { DocsLinkProps } from './markdown-components.js';
@@ -85,10 +85,112 @@ function RecordingLink({
   ...rest
 }: DocsLinkProps): ReactNode {
   return (
-    <a {...rest} href={href} data-prefetch={String(prefetch)}>
+    /*
+     * The attribute is ABSENT when `prefetch` is `undefined`, rather than the
+     * string `"undefined"`. That is what `wrapNextLink` does with it, and it
+     * is the difference the whole prefetch policy turns on: `undefined` means
+     * "Next decides", `false` means "never". Stringifying flattened the two
+     * into a value nobody passes.
+     */
+    <a
+      {...rest}
+      href={href}
+      data-prefetch={prefetch === undefined ? undefined : String(prefetch)}
+    >
       {children}
     </a>
   );
+}
+
+/**
+ * A container that behaves like a scrolling column.
+ *
+ * jsdom reports every dimension as zero and lays nothing out, so a nav mounted
+ * plainly has no scrollable ancestor and the scroll effect correctly does
+ * nothing. Stubbing the numbers it reads is the only way to exercise the path
+ * at all — and without it the `scrollIntoView` spy below is a test that cannot
+ * fail.
+ *
+ * ⚠️ THE RECTANGLES MOVE WITH `scrollTop`, because that is the one property of
+ * a real scrollport this fixture has to model. An earlier version stubbed
+ * `offsetTop` as a constant on the prototype, which made the item's position
+ * independent of the scroll position *and* made a double-subtraction bug in the
+ * component invisible — `0 - 0` is `0` however wrong the arithmetic around it
+ * is. That bug shipped, and only Chromium could see it. Anchoring the item at a
+ * fixed content offset and deriving the rect from it is what keeps the two
+ * honest.
+ */
+let scrollportCleanup: (() => void) | undefined;
+
+/** Where the active item sits in the scrollport's content, in fixture pixels. */
+const ITEM_CONTENT_TOP = 900;
+const ITEM_HEIGHT = 40;
+
+function scrollport(): HTMLElement {
+  const element = document.createElement('div');
+  element.style.overflowY = 'auto';
+  document.body.append(element);
+
+  const define = (name: string, value: number): void => {
+    Object.defineProperty(element, name, { value, configurable: true });
+  };
+  define('clientHeight', 300);
+  define('scrollHeight', 2000);
+
+  const rectProto = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'getBoundingClientRect',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
+    value(this: HTMLElement) {
+      // The port sits at the viewport origin; a descendant sits at its content
+      // offset shifted up by however far the port is scrolled, which is what a
+      // browser reports.
+      const top = this === element ? 0 : ITEM_CONTENT_TOP - element.scrollTop;
+      return { ...EMPTY_RECT, top, bottom: top + ITEM_HEIGHT };
+    },
+    configurable: true,
+    writable: true,
+  });
+
+  const heightProto = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'offsetHeight',
+  );
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    get: () => ITEM_HEIGHT,
+    configurable: true,
+  });
+
+  scrollportCleanup = () => {
+    if (rectProto) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'getBoundingClientRect',
+        rectProto,
+      );
+    }
+    if (heightProto) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', heightProto);
+    }
+    element.remove();
+  };
+  return element;
+}
+
+const EMPTY_RECT = {
+  x: 0,
+  y: 0,
+  left: 0,
+  right: 0,
+  width: 0,
+  height: ITEM_HEIGHT,
+  toJSON: () => ({}),
+} as const;
+
+function restoreScrollport(): void {
+  scrollportCleanup?.();
+  scrollportCleanup = undefined;
 }
 
 describe('DocsSidebar node types', () => {
@@ -310,7 +412,17 @@ describe('DocsSidebar collapse state', () => {
 });
 
 describe('DocsSidebar injected Link', () => {
-  it('routes every internal link through it with prefetch off', () => {
+  it("warms the reader's own section, and nothing else", () => {
+    /*
+     * `prefetch={false}` used to be on every link, on Pages-Router reasoning
+     * that does not hold in the App Router: there it disables the hover and
+     * touch paths as well as the viewport one, so the most-clicked control in
+     * a docs site made every navigation a cold round-trip.
+     *
+     * Nearby is the list that directly holds the current page, plus the
+     * heading of the group the reader is inside. Everything else stays off,
+     * which is the half of the old comment that was right.
+     */
     render(
       <DocsSidebar
         nav={nav}
@@ -319,12 +431,194 @@ describe('DocsSidebar injected Link', () => {
       />,
     );
 
+    const prefetchOf = (name: string | RegExp): string | null =>
+      screen.getByRole('link', { name }).getAttribute('data-prefetch');
+
+    // The active page itself, and the heading of the group holding it.
+    expect(prefetchOf('Authentication')).toBeNull();
+    expect(prefetchOf('API')).toBeNull();
+    // The root list does not hold the active page, so nothing in it is warm.
+    expect(prefetchOf('Introduction')).toBe('false');
+
+    const internal = screen
+      .getAllByRole('link')
+      .filter((link) => link.getAttribute('href')?.startsWith('/') === true);
+    const warm = internal.filter(
+      (link) => link.getAttribute('data-prefetch') === null,
+    );
+    // Warm links are the minority, always — that is the entire budget.
+    expect(warm.length).toBeGreaterThan(0);
+    expect(warm.length).toBeLessThan(internal.length);
+  });
+
+  it('keeps every link an ordinary tab stop, and uses no tree roles', () => {
+    /*
+     * The APG **Disclosure Navigation** pattern, pinned so it survives the
+     * next person reaching for the aria role that sounds closest.
+     *
+     * `role="tree"` replaces the tab order with a single roving tabstop — so a
+     * reader who tabs into the navigation can no longer tab through it — and
+     * announces "tree item, level 3" for what is, to the person hearing it, a
+     * link to a page. A docs sidebar is not a file explorer.
+     */
+    // Both link branches: the plain `<a>` fallback AND the injected component.
+    // Checking one leaves the other free to grow a `tabindex` unnoticed, which
+    // is exactly what happened when this was first written.
+    for (const Link of [undefined, RecordingLink]) {
+      const { container, unmount } = render(
+        <DocsSidebar
+          nav={nav}
+          pathname="/docs/api/authentication"
+          {...(Link === undefined ? {} : { Link })}
+        />,
+      );
+
+      expect(container.querySelectorAll('[tabindex]')).toHaveLength(0);
+      for (const role of ['tree', 'treeitem', 'group', 'menu', 'menuitem']) {
+        expect(container.querySelectorAll(`[role="${role}"]`)).toHaveLength(0);
+      }
+      unmount();
+    }
+  });
+
+  it('does not re-scroll when the reader expands a group', async () => {
+    /*
+     * The effect is keyed on `pathname` alone, and that is the point. Keying it
+     * on the toggle state as well would yank the column every time a group was
+     * expanded — pulling the list out from under the hand that just clicked,
+     * which is worse than never scrolling at all.
+     */
+    const user = userEvent.setup();
+    const port = scrollport();
+    try {
+      render(<DocsSidebar nav={nav} pathname="/docs/api/authentication" />, {
+        container: port,
+      });
+      port.scrollTop = 0;
+
+      await user.click(screen.getByRole('button', { name: 'Guides' }));
+
+      expect(port.scrollTop).toBe(0);
+    } finally {
+      restoreScrollport();
+    }
+  });
+
+  it('moves focus to the toggle when a group collapses under it', async () => {
+    /*
+     * Collapsing a group unmounts its children. If focus was on one of them it
+     * would land on `<body>`, which drops a keyboard reader at the top of the
+     * document — the same failure the YouTube facade and the code copy button
+     * each had to avoid. Here the control that did the collapsing is the
+     * natural place for it, and the browser does it because the toggle is what
+     * was activated.
+     */
+    const user = userEvent.setup();
+    render(<DocsSidebar nav={nav} pathname="/docs/api/authentication" />);
+
+    const toggle = screen.getByRole('button', { name: /Collapse API/ });
+    await user.click(toggle);
+
+    expect(document.activeElement).toBe(toggle);
+    expect(screen.queryByRole('link', { name: 'Authentication' })).toBeNull();
+  });
+
+  it('never calls scrollIntoView, on any render', () => {
+    /*
+     * ⚠️ A TEST FOR THE API DELIBERATELY NOT USED, and the only thing that
+     * stops the bug being reintroduced by someone simplifying the code.
+     *
+     * `element.scrollIntoView({ block: 'nearest' })` is what anyone reaches
+     * for here, and it scrolls **every** scrollable ancestor including the
+     * document — so bringing the sidebar item into view also jumps the article
+     * the reader came to read, on the one navigation where they know exactly
+     * what they asked for. The component walks to the nearest scrollable
+     * ancestor and assigns `scrollTop` instead.
+     */
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+
+    try {
+      const port = scrollport();
+      const { rerender } = render(
+        <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+        { container: port },
+      );
+      rerender(<DocsSidebar nav={nav} pathname="/docs/guides/caching" />);
+
+      // The scrollport is what makes this able to fail: without one the effect
+      // returns before it could reach for either API, and the assertion would
+      // pass against an implementation that called `scrollIntoView` happily.
+      expect(spy).not.toHaveBeenCalled();
+      expect(port.scrollTop).toBeGreaterThan(0);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+      restoreScrollport();
+    }
+  });
+
+  it('measures the item from the top of the content, not from a positioned ancestor', () => {
+    /*
+     * ⚠️ EXACT NUMBERS, DELIBERATELY. The assertion this replaces was
+     * `expect(port.scrollTop).toBeGreaterThan(0)`, which passes for every
+     * arithmetic that scrolls *somewhere* — and the arithmetic that shipped
+     * scrolled the active item entirely below the fold, because it subtracted
+     * the port's own `offsetTop` from an `offsetTop` already measured against
+     * that same port (the column is `position: sticky`, so it is the
+     * offsetParent). Chromium caught it; `toBeGreaterThan(0)` could not.
+     *
+     * Fixture geometry: item at 900 in a 2000px content, 300px viewport, so
+     * bringing its bottom into view with the 16px margin is
+     * `900 + 40 - 300 + 16`.
+     */
+    const port = scrollport();
+    try {
+      const { rerender } = render(
+        <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+        { container: port },
+      );
+
+      expect(port.scrollTop).toBe(ITEM_CONTENT_TOP + ITEM_HEIGHT - 300 + 16);
+
+      /*
+       * And the case that pins the `+ port.scrollTop` term specifically: with
+       * the column already scrolled so the item is comfortably in view, the
+       * right answer is to leave it alone. Drop that term and the item's
+       * viewport-relative `100` reads as "above the fold", and the column jumps
+       * backwards to 84 on a navigation that should not have moved it.
+       */
+      port.scrollTop = 800;
+      rerender(<DocsSidebar nav={nav} pathname="/docs/guides/caching" />);
+
+      expect(port.scrollTop).toBe(800);
+    } finally {
+      restoreScrollport();
+    }
+  });
+
+  it('scrolls nothing when there is no scrollport', () => {
+    // jsdom reports every dimension as zero, which is also what a nav shorter
+    // than its column looks like. Neither may produce a scroll.
+    const { container } = render(
+      <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+    );
+
+    for (const element of container.querySelectorAll('*')) {
+      expect(element.scrollTop).toBe(0);
+    }
+  });
+
+  it('warms nothing at all when the reader is on no page in the tree', () => {
+    render(
+      <DocsSidebar nav={nav} pathname="/somewhere/else" Link={RecordingLink} />,
+    );
+
     const internal = screen
       .getAllByRole('link')
       .filter((link) => link.getAttribute('href')?.startsWith('/') === true);
     expect(internal.length).toBeGreaterThan(0);
     for (const link of internal) {
-      // A full-tree sidebar otherwise asks Next to prefetch every route in it.
       expect(link).toHaveAttribute('data-prefetch', 'false');
     }
   });

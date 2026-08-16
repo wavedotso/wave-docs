@@ -1,7 +1,7 @@
 {
   "name": "@waveso/docs",
   "version": "0.2.0",
-  "description": "Markdown documentation for Next.js — parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "description": "Zero parser bytes in the browser: markdown docs for Next.js, built to hast in Node and rendered as your components",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -9,15 +9,11 @@
   "license": "MIT",
   "author": "Wave (https://github.com/wavedotso)",
   "keywords": [
-    "documentation",
-    "docs",
-    "markdown",
-    "remark",
-    "rehype",
-    "shiki",
     "nextjs",
+    "documentation",
+    "markdown",
     "react-server-components",
-    "static-site"
+    "shiki"
   ],
   "repository": {
     "type": "git",
@@ -34,6 +30,10 @@
     "./types": {
       "types": "./dist/types.d.ts",
       "default": "./dist/types.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
     },
     "./frontmatter": {
       "types": "./dist/frontmatter.d.ts",
@@ -59,22 +59,46 @@
       "browser": null,
       "default": "./dist/search-index.js"
     },
-    "./search-options": {
-      "types": "./dist/search-options.d.ts",
-      "default": "./dist/search-options.js"
-    },
-    "./markdown-links": {
-      "types": "./dist/plugins/remark-doc-links.d.ts",
-      "default": "./dist/plugins/remark-doc-links.js"
-    },
     "./next": {
       "types": "./dist/next.d.ts",
       "browser": null,
       "default": "./dist/next.js"
     },
-    "./react/*": {
-      "types": "./dist/react/*.d.ts",
-      "default": "./dist/react/*.js"
+    "./react/callout": {
+      "types": "./dist/react/callout.d.ts",
+      "default": "./dist/react/callout.js"
+    },
+    "./react/doc-content": {
+      "types": "./dist/react/doc-content.d.ts",
+      "default": "./dist/react/doc-content.js"
+    },
+    "./react/markdown-components": {
+      "types": "./dist/react/markdown-components.d.ts",
+      "default": "./dist/react/markdown-components.js"
+    },
+    "./react/next-search": {
+      "types": "./dist/react/next-search.d.ts",
+      "default": "./dist/react/next-search.js"
+    },
+    "./react/search-dialog": {
+      "types": "./dist/react/search-dialog.d.ts",
+      "default": "./dist/react/search-dialog.js"
+    },
+    "./react/sidebar": {
+      "types": "./dist/react/sidebar.d.ts",
+      "default": "./dist/react/sidebar.js"
+    },
+    "./react/skip-link": {
+      "types": "./dist/react/skip-link.d.ts",
+      "default": "./dist/react/skip-link.js"
+    },
+    "./react/toc": {
+      "types": "./dist/react/toc.d.ts",
+      "default": "./dist/react/toc.js"
+    },
+    "./react/youtube": {
+      "types": "./dist/react/youtube.d.ts",
+      "default": "./dist/react/youtube.js"
     }
   },
   "files": [
@@ -95,14 +119,21 @@
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "format": "biome format --write",
-    "test": "vitest run",
+    "test": "vitest run --project node --project dom",
     "test:watch": "vitest",
     "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
+    "check:readme": "node scripts/check-readme.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run check:package",
+    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run check:readme && pnpm run check:package",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "pnpm run build && changeset publish"
+    "release": "pnpm run build && changeset publish",
+    "test:browser": "vitest run --project browser",
+    "test:smoke": "node smoke/check.ts",
+    "size": "node scripts/size.ts",
+    "build:site": "next build site",
+    "dev:site": "next dev site",
+    "shoot": "node scripts/shoot.ts"
   },
   "dependencies": {
     "@shikijs/langs": "4.4.3",
@@ -111,7 +142,6 @@
     "@standard-schema/spec": "^1.1.0",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
-    "gray-matter": "^4.0.3",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "hast-util-to-string": "^3.0.1",
     "minisearch": "^7.2.0",
@@ -125,6 +155,7 @@
     "unified": "^11.0.5",
     "unist-util-visit": "^5.1.0",
     "vfile": "^6.0.3",
+    "vfile-matter": "^5.0.1",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
@@ -147,15 +178,19 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@vitest/browser": "4.1.10",
+    "@vitest/browser-playwright": "^4.1.10",
+    "hast-util-to-html": "^9.0.5",
     "image-size": "^2.0.2",
     "jsdom": "^30.0.1",
     "next": "^16.3.0",
+    "playwright": "^1.62.1",
     "publint": "^0.3.23",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "rolldown": "^1.2.4",
     "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
-    "unrun": "^0.3.1",
     "vitest": "^4.1.10"
   },
   "devEngines": {

@@ -2,7 +2,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { docsError, isDocsError } from './docs-error.js';
+import { docsError } from './docs-error.js';
+import { isDocsError } from './errors.js';
 
 const SRC = import.meta.dirname;
 

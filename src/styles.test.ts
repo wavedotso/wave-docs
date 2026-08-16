@@ -202,10 +202,10 @@ const STATE_PAIRS: ReadonlyArray<readonly [string, string, string]> = [
  * and `display: none` among others), so a text search over the raw source
  * reports the prose, not the CSS.
  */
-const sheet = (await readFile(STYLESHEET, 'utf8')).replace(
-  /\/\*[\s\S]*?\*\//g,
-  '',
-);
+const rawSheet = await readFile(STYLESHEET, 'utf8');
+
+/** Comments stripped, so a selector match cannot be a sentence about one. */
+const sheet = rawSheet.replace(/\/\*[\s\S]*?\*\//g, '');
 
 interface StyleRule {
   /** Selector list or at-rule prelude, whitespace collapsed. */
@@ -295,9 +295,9 @@ function focusSelectors(rules: readonly StyleRule[]): string[] {
 }
 
 /**
- * Focus rules whose indicator is drawn by a different rule, and which therefore
- * need no forced-colors entry: the search input's ring lives on the row around
- * it, because a ring on a borderless full-width input reads as an error state.
+ * Focus rules whose indicator is drawn by a different rule: the search input's
+ * ring lives on the row around it, because a ring on a borderless full-width
+ * input reads as an error state.
  */
 const INDICATOR_ELSEWHERE: ReadonlySet<string> = new Set([
   '.wave-docs-search-input:focus',
@@ -334,6 +334,130 @@ describe.each(BLOCK_SELECTORS)('tokens in %s', (selector) => {
   );
 });
 
+describe('the dark ramp', () => {
+  /**
+   * ⚠️ EVERY COLOUR TOKEN THE LIGHT BLOCK DEFINES, REDEFINED IN BOTH DARK
+   * BLOCKS. Nothing checked this, and the way the gap showed up was not a
+   * missing token at all — the table's horizontal-scroll shadow was written as
+   * a literal `oklch(0 0 0 / 0.12)` inside the rule, so there was no token to
+   * miss. Black at 12% over a `0.19` background is invisible, which left a dark
+   * reader with no indication that a wide table scrolled sideways.
+   *
+   * Making it a token fixed that instance. This is what stops the next one:
+   * a colour that only exists in the light block is a colour some reader sees
+   * the light version of.
+   */
+  const light = readTokens(sheet, ':root {');
+
+  it.each([":root[data-theme='system']", ":root[data-theme='dark']"])(
+    '%s redefines every colour token the light block sets',
+    (selector) => {
+      const dark = readTokens(sheet, selector);
+      const missing = [...light.keys()].filter((name) => !dark.has(name));
+
+      // The guard on the guard: an empty light ramp would make this vacuous.
+      expect(light.size).toBeGreaterThan(20);
+      expect(missing).toEqual([]);
+    },
+  );
+
+  /**
+   * Literal colours that are right in both themes, each for a stated reason.
+   *
+   * An allowlist rather than an exemption for whole rules: a new literal has to
+   * be argued for here, which is the conversation the table's invisible shadow
+   * never had.
+   */
+  const THEME_INDEPENDENT: ReadonlySet<string> = new Set([
+    // Player chrome, over a video thumbnail rather than over the page. A
+    // letterbox is black, YouTube's play badge is dark grey with a white
+    // arrow, and it turns YouTube red on hover — in every theme, because the
+    // reader is looking at a video, not at the page.
+    'oklch(0 0 0)',
+    'oklch(0.3 0 0 / 0.75)',
+    'oklch(1 0 0)',
+    'oklch(0.55 0.22 27)',
+    // Modal scrims, for the drawer and the search dialog. A scrim dims what is
+    // behind it, and dimming is dark on a light page and dark on a dark one —
+    // inverting it on the dark ramp would brighten the page under a modal.
+    'oklch(0.2 0.02 262 / 0.55)',
+    'oklch(0.2 0.02 265 / 0.5)',
+  ]);
+
+  it('leaves no bare oklch() outside the token blocks', () => {
+    /*
+     * The rule that actually bit. A literal colour in a component rule cannot
+     * respond to the theme, so it is right in exactly one of them — and the
+     * test above cannot see it, because it is not a token.
+     *
+     * `transparent`, `currentColor` and `color-mix()` are all theme-following
+     * and stay allowed; this is only about a fixed `oklch()`.
+     */
+    const blocks = BLOCK_SELECTORS.map((selector) =>
+      readBlock(sheet, sheet.indexOf(selector)),
+    );
+    const outside = blocks.reduce(
+      (rest, block) => rest.replace(block, ''),
+      sheet,
+    );
+
+    const literals = [...outside.matchAll(/oklch\([^)]*\)/g)]
+      .map((match) => match[0])
+      .filter((colour) => !THEME_INDEPENDENT.has(colour));
+
+    expect(literals).toEqual([]);
+  });
+});
+
+describe('the copy button', () => {
+  /**
+   * Both states the runtime writes have a rule, not just the happy one.
+   *
+   * ⚠️ `data-copied="false"` HAD NONE. The runtime set it from the beginning
+   * and announced "Copy failed. Select the code and press Control or Command +
+   * C." into a live region — so a screen-reader user was told and a sighted
+   * user watched a button do nothing at all. The most common way to reach it is
+   * not exotic: `next dev` opened from a phone over `http://192.168.x.x:3000`
+   * is not a secure context, `navigator.clipboard` is undefined there, and no
+   * amount of pressing again will help.
+   *
+   * The attribute reaching the DOM is `code-runtime.test.tsx`; that CSS acts on
+   * it is here, because the two halves fail independently and each looks
+   * correct on its own.
+   */
+  it.each(['true', 'false'])(
+    'gives data-copied="%s" a visible treatment',
+    (state) => {
+      const selector = `.wave-docs-code__copy[data-copied='${state}']`;
+      expect(sheet).toContain(`${selector} {`);
+
+      const block = readBlock(sheet, sheet.indexOf(`${selector} {`));
+      // A colour, so the button changes rather than merely carrying an
+      // attribute — and a `::after` glyph, so the change is not colour alone
+      // (WCAG 1.4.1).
+      expect(block).toMatch(/color:/);
+      expect(sheet).toContain(`${selector}::after`);
+    },
+  );
+
+  it('tells the two states apart by more than colour', () => {
+    // Success is a tick and failure a cross; identical glyphs would make the
+    // pair distinguishable only by hue.
+    const tick = readBlock(
+      sheet,
+      sheet.indexOf(".wave-docs-code__copy[data-copied='true']::after"),
+    );
+    const cross = readBlock(
+      sheet,
+      sheet.indexOf(".wave-docs-code__copy[data-copied='false']::after"),
+    );
+
+    expect(tick).toContain('content:');
+    expect(cross).toContain('content:');
+    expect(tick).not.toBe(cross);
+  });
+});
+
 describe('the cascade contract', () => {
   it('declares nothing outside a @layer', () => {
     const top = RULES.filter((rule) => rule.depth === 0);
@@ -357,8 +481,20 @@ describe('the cascade contract', () => {
     expect(shiki.length).toBeGreaterThan(0);
 
     for (const selector of shiki) {
-      expect(selector, `${selector} styles .shiki globally`).toContain(
-        '.wave-docs-prose .shiki',
+      /*
+       * The property is "`.wave-docs-prose` is an ancestor scope", not "the
+       * two class names are adjacent in the selector". This asserted the
+       * literal substring `.wave-docs-prose .shiki` until the code frame
+       * landed, at which point a correctly-scoped
+       * `.wave-docs-prose .wave-docs-code:has(…) .shiki` failed it — a rule
+       * that was doing exactly what this test exists to require.
+       *
+       * What must never appear is a `.shiki` selector that does not name our
+       * prose at all: unlayered or not, it would restyle the output of any
+       * other package rendering Shiki on the same page.
+       */
+      expect(selector, `${selector} styles .shiki globally`).toMatch(
+        /(^|[\s,])\.wave-docs-prose[\s.:[]/,
       );
     }
   });
@@ -376,7 +512,11 @@ describe('the cascade contract', () => {
     // it only de-animates them when `<html>` carries
     // `data-scroll-behavior="smooth"`, which only the host can set — and
     // `scroll-padding-top` on bare `html` assumed a sticky header we cannot see.
-    expect(sheet).not.toContain('scroll-behavior');
+    //
+    // At a property boundary, not as a substring: `overscroll-behavior`
+    // contains `scroll-behavior` and is a different property doing a different
+    // job — it is what stops the sidebar chaining its scroll into the article.
+    expect(sheet).not.toMatch(/(^|[\s;{])scroll-behavior\s*:/);
 
     const bare = RULES.flatMap((rule) => splitSelectors(rule.prelude)).filter(
       (selector) => selector === 'html' || selector === 'body',
@@ -521,24 +661,13 @@ describe('callout hues', () => {
 });
 
 describe('focus indicators', () => {
-  const forced = RULES.find(
-    (rule) => rule.prelude === '@media (forced-colors: active)',
-  );
-  if (forced === undefined) {
-    throw new Error('styles.css has no @media (forced-colors: active) block');
-  }
-  const forcedBody = readBlock(sheet, forced.at);
-  const forcedEnd = forced.at + forcedBody.length;
-  const restored = focusSelectors(readRules(forcedBody.slice(1)));
-  const declared = focusSelectors(
-    RULES.filter((rule) => rule.at < forced.at || rule.at > forcedEnd),
-  );
+  const declared = focusSelectors(RULES);
 
   it('has one for every focusable surface in the package', () => {
     // The skip link, prose links, the sidebar, the TOC, the YouTube facade, the
     // table scroll region, the Shiki `<pre>` (Shiki gives it `tabindex="0"`),
-    // the search trigger, its input row, the close button and each result link.
-    expect(declared.length).toBeGreaterThanOrEqual(10);
+    // the search trigger, its input row and the close button.
+    expect(declared.length).toBeGreaterThanOrEqual(9);
   });
 
   it('covers the Shiki <pre>, which Shiki makes focusable', () => {
@@ -557,30 +686,381 @@ describe('focus indicators', () => {
     );
   });
 
-  it('restores all of them under forced colours', () => {
-    // Forced-colors mode drops `box-shadow` entirely and honours `outline`.
-    // Every ring in this package is a box-shadow paired with `outline: none`,
-    // so without this block the package strictly removes the UA indicator from
-    // every interactive surface and draws nothing in its place.
+  /**
+   * Replaces the forced-colors assertion this file used to carry, and is a
+   * stronger invariant than it was.
+   *
+   * The old test checked that every focus rule had a matching entry in a
+   * `@media (forced-colors: active)` block — necessary only because every ring
+   * was a `box-shadow`, which that mode drops. It could not tell whether the
+   * *normal* indicator was visible; a rule declaring `outline: none` with no
+   * shadow passed it. This one reads the declarations: forced-colors forces
+   * `outline-color` to a system colour by itself, so an outline that is visible
+   * here is visible there, and there is nothing left to keep in step.
+   */
+  it('draws a real outline, so forced colours need no second list', () => {
+    expect(sheet).not.toContain('--wave-docs-ring');
+    expect(sheet).not.toContain('outline: 2px solid transparent');
+
     for (const selector of declared) {
       if (INDICATOR_ELSEWHERE.has(selector)) continue;
-      expect(restored, `${selector} has no forced-colors rule`).toContain(
-        selector,
+      const block = readBlock(sheet, sheet.indexOf(`${selector}`));
+      expect(block, `${selector} declares no outline`).toMatch(
+        /outline:\s*\d+px solid (?!transparent)/,
       );
     }
-    expect(forcedBody).toContain('Highlight');
   });
 
   it('marks the active search result with more than a tint', () => {
     // Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one —
-    // so the active class is the only indication of where the keyboard is.
+    // so the active class is the only indication of where the keyboard is, and
+    // `.wave-docs-search-result-link:focus-visible` was dead CSS.
     const active = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-search-result-active {'),
     );
     expect(active).toContain('outline: 2px solid var(--wave-docs-accent)');
     expect(active).toContain('outline-offset: -2px');
-    expect(forcedBody).toContain('.wave-docs-search-result-active');
+    expect(sheet).not.toContain('.wave-docs-search-result-link:focus-visible');
+  });
+});
+
+describe('the reading column', () => {
+  /** A non-colour token's raw value; `readTokens` parses only `oklch()`. */
+  function rawToken(name: string): string {
+    const at = sheet.indexOf(`${name}:`);
+    expect(at, `${name} not declared`).toBeGreaterThan(-1);
+    return sheet.slice(at + name.length + 1, sheet.indexOf(';', at)).trim();
+  }
+
+  /**
+   * `.wave-docs-prose` carried no `max-width` and a comment saying the docs
+   * shell owned column width. No shell shipped, so every consumer's first
+   * override was the same container CSS — and on a 1440px viewport the default
+   * was a ~140-character line.
+   */
+  it('constrains the measure, through a token', () => {
+    const prose = readBlock(sheet, sheet.indexOf('.wave-docs-prose {'));
+    expect(prose).toContain('max-width: var(--wave-docs-measure)');
+    expect(rawToken('--wave-docs-measure')).toBe('46rem');
+  });
+
+  /**
+   * Inheriting the family means a host that never set one renders its
+   * documentation in the UA serif, which reads as broken rather than as
+   * unstyled. The opt-out is the token, not a cascade accident.
+   */
+  it('ships a typeface on every root it owns', () => {
+    expect(rawToken('--wave-docs-font-sans')).toMatch(
+      /ui-sans-serif|system-ui/,
+    );
+
+    const declaration = 'font-family: var(--wave-docs-font-sans)';
+    const at = sheet.indexOf(declaration);
+    expect(at, 'nothing applies the sans token').toBeGreaterThan(-1);
+
+    // The prelude of the rule that applies it: back to the `{` that opens the
+    // block, then to the end of the comment or `}` before its selector list.
+    const open = sheet.lastIndexOf('{', at);
+    const prior = Math.max(
+      sheet.lastIndexOf('*/', open),
+      sheet.lastIndexOf('}', open),
+    );
+    const prelude = sheet.slice(prior + 2, open);
+
+    for (const root of [
+      '.wave-docs-prose',
+      '.wave-docs-sidebar',
+      '.wave-docs-toc',
+      '.wave-docs-skip-link',
+      '.wave-docs-search-trigger',
+      '.wave-docs-search-dialog',
+    ]) {
+      expect(prelude, `${root} does not get the typeface`).toContain(root);
+    }
+  });
+
+  /**
+   * Both are settable layout tokens from `docs/adr/001-shell-contract.md`, and
+   * they are layered — so a consumer's own unlayered `:root` still wins, which
+   * is the promise the README makes.
+   */
+  it('leaves both overridable from an unlayered :root', () => {
+    for (const token of ['--wave-docs-measure', '--wave-docs-font-sans']) {
+      const layer = sheet.lastIndexOf('@layer', sheet.indexOf(`${token}:`));
+      expect(sheet.slice(layer, layer + 13)).toBe('@layer theme ');
+    }
+  });
+});
+
+describe('the type scale', () => {
+  /** A declaration's value inside one rule, by selector. */
+  function decl(selector: string, property: string): string | undefined {
+    const at = sheet.indexOf(`${selector} {`);
+    expect(at, `${selector} not found`).toBeGreaterThan(-1);
+    const block = readBlock(sheet, at);
+    const match = new RegExp(`${property}:\\s*([^;]+);`).exec(block);
+    return match?.[1]?.trim();
+  }
+
+  const LEVELS = [
+    '.wave-docs-prose h1',
+    '.wave-docs-prose h2',
+    '.wave-docs-prose h3',
+    '.wave-docs-prose h4',
+    '.wave-docs-prose :is(h5, h6)',
+  ] as const;
+
+  /**
+   * The old scale shared `line-height: 1.25` across all six levels, so the 36px
+   * h1 floated apart and the 16px h5 crowded. Leading has to fall as size
+   * rises; a single shared value is the signature of a scale nobody set.
+   */
+  it('gives every level its own leading, rising as size falls', () => {
+    const leading = LEVELS.map((selector) => {
+      const value = decl(selector, 'line-height');
+      expect(value, `${selector} declares no line-height`).toBeDefined();
+      return Number(value);
+    });
+
+    expect(new Set(leading).size, `shared leading: ${leading}`).toBe(
+      leading.length,
+    );
+    for (let i = 1; i < leading.length; i += 1) {
+      expect(
+        leading[i],
+        `${LEVELS[i]} does not lead looser than ${LEVELS[i - 1]}`,
+      ).toBeGreaterThan(leading[i - 1] as number);
+    }
+  });
+
+  /**
+   * h5 and h6 were the same size and weight as body text, differing only in
+   * colour — a coloured paragraph, not a hierarchy level. Two more steps of a
+   * 1.2 scale would land inside a rounding error of the body, so the
+   * distinction moves to a different axis.
+   */
+  it('makes h5/h6 an eyebrow rather than a fifth indistinguishable size', () => {
+    const eyebrow = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-prose :is(h5, h6) {'),
+    );
+    expect(eyebrow).toContain('text-transform: uppercase');
+    expect(eyebrow).toContain('letter-spacing');
+    expect(decl('.wave-docs-prose :is(h5, h6)', 'font-size')).not.toBe('1rem');
+  });
+
+  /**
+   * A full-width hairline under every h2 is the loudest "rendered GitHub
+   * README" signal a page carries. The opt-in ships in the same commit as the
+   * deletion, because otherwise the first consumer who wants rules forks.
+   */
+  it('rules no h2, and offers the opt-in that replaces it', () => {
+    const h2 = readBlock(sheet, sheet.indexOf('.wave-docs-prose h2 {'));
+    expect(h2).not.toContain('border-block-end');
+
+    const optIn = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-prose[data-rules] > h2 {'),
+    );
+    expect(optIn).toContain('border-block-end');
+  });
+
+  it('does not italicise blockquotes', () => {
+    // The rule and the muted colour already say "quotation", and markdown
+    // authors use blockquotes for asides, not only for speech.
+    const quote = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-prose blockquote {'),
+    );
+    expect(quote).toContain('font-style: normal');
+  });
+
+  it('sizes only the h1 fluidly', () => {
+    // Fluid type against a fixed measure means characters-per-line drifts and
+    // the measure token stops meaning what it says — but a fixed h1 wraps an
+    // ordinary title to three lines at 390px.
+    expect(decl('.wave-docs-prose h1', 'font-size')).toContain('clamp(');
+    for (const selector of LEVELS.slice(1)) {
+      expect(decl(selector, 'font-size')).not.toContain('clamp(');
+    }
+  });
+});
+
+describe('tables', () => {
+  const table = readBlock(sheet, sheet.indexOf('.wave-docs-table {'));
+  const scroll = readBlock(sheet, sheet.indexOf('.wave-docs-table-scroll {'));
+
+  /**
+   * `width: 100%` is not a floor. Auto table layout floors at min-content, and
+   * `.wave-docs-prose a { overflow-wrap: anywhere }` collapses a link-bearing
+   * column's min-content to about one character — `anywhere` affects intrinsic
+   * sizing where `break-word` does not (CSS Text 3). So an API table fitted
+   * 320px without overflowing, at five lines per row.
+   */
+  it('declares a minimum width, not just a percentage', () => {
+    expect(table).toContain('width: 100%');
+    expect(table).toContain('min-width: 40rem');
+
+    /*
+     * NOT `min(100%, 40rem)`. That spelling looks like the same floor and is a
+     * no-op at exactly the widths it governs: the `100%` resolves against the
+     * box being floored, so in a 318px scroll container it computes to 318px —
+     * the container's own width — and the table squeezes exactly as it did
+     * before. The browser tier caught it at 318 vs 318; this keeps it from
+     * coming back as a tidy-up.
+     */
+    expect(table).not.toContain('min(100%');
+  });
+
+  /**
+   * The comment is the finding. Without it the next reader sees a link rule and
+   * a table rule with no connection between them, and `anywhere` looks like a
+   * safe tidy-up.
+   */
+  it('records why the link rule is what sizes the table', () => {
+    expect(sheet).toContain('overflow-wrap: anywhere');
+    // Against the raw sheet: this assertion is *about* the comment.
+    const documented = readBlock(
+      rawSheet,
+      rawSheet.indexOf('.wave-docs-table {'),
+    );
+    expect(documented).toMatch(/anywhere/);
+    expect(documented).toMatch(/intrinsic/);
+  });
+
+  /** With `border-collapse: collapse` the border belongs to the table, so it
+   * scrolls out from under a sticky header. */
+  it('holds the header down with a shadow rather than a border', () => {
+    const head = readBlock(sheet, sheet.indexOf('.wave-docs-table thead th {'));
+    expect(head).toContain('position: sticky');
+    expect(head).toContain('box-shadow: inset');
+    expect(head).not.toContain('border-block-end');
+  });
+
+  /**
+   * Four gradients, two `local` and two `scroll`, are what make the affordance
+   * stateless — the covers travel with the content and uncover the shadow only
+   * on the side that has more to show. Losing either pair silently turns it
+   * into a permanent shadow on both edges.
+   */
+  it('shows which way a wide table scrolls, without JavaScript', () => {
+    expect(scroll.match(/no-repeat local/g)).toHaveLength(2);
+    expect(scroll.match(/no-repeat scroll/g)).toHaveLength(2);
+  });
+});
+
+describe('the responsive shell', () => {
+  const widthQueries = RULES.filter((rule) =>
+    /^@media \(min-width/.test(rule.prelude),
+  ).map((rule) => rule.prelude);
+
+  /**
+   * There were **zero** width-based media queries in this file before the
+   * shell: every `@media` was `prefers-color-scheme`, `prefers-reduced-motion`
+   * or `forced-colors`. So there was no mobile layout, and nothing for a layout
+   * component to use.
+   */
+  it('has breakpoints at all', () => {
+    expect(widthQueries.length).toBeGreaterThanOrEqual(3);
+    for (const prelude of widthQueries) {
+      // `rem`, so a reader who raises their base font size gets the
+      // single-column layout at a proportionally larger viewport.
+      expect(prelude, `${prelude} is not in rem`).toMatch(/\d+rem/);
+    }
+  });
+
+  /**
+   * `1fr` is `minmax(auto, 1fr)`, and `auto` floors at the content's
+   * min-content width — so one wide table pushes the track past the viewport
+   * and takes the document into horizontal scroll, with the prose column
+   * computing to 0. Invisible to every unit test; the browser tier is what
+   * proves the geometry, and this is what stops the shorthand coming back.
+   */
+  it('never sizes a content track with a bare 1fr', () => {
+    const tracks = [...sheet.matchAll(/grid-template-columns:\s*([^;]+);/g)];
+    expect(tracks.length).toBeGreaterThan(0);
+
+    for (const [, value] of tracks) {
+      expect(value, `bare 1fr in "${value?.trim()}"`).toContain(
+        'minmax(0, 1fr)',
+      );
+      // The `1fr` inside `minmax(0, 1fr)` is the correct one, so remove every
+      // minmax before looking for a bare one.
+      const outside = (value ?? '').replace(/minmax\([^)]*\)/g, '');
+      expect(outside, `bare 1fr in "${value?.trim()}"`).not.toContain('1fr');
+    }
+    expect(
+      readBlock(sheet, sheet.indexOf('.wave-docs-layout__main {')),
+    ).toContain('min-width: 0');
+  });
+
+  /**
+   * The TOC element is in the DOM at every width and only its `display`
+   * changes, so a top-level `:has()` reserves a column of nothing on a phone —
+   * measured, it squeezed the article to 94px at 390px.
+   */
+  it('reserves the TOC column only inside its breakpoint', () => {
+    const at = sheet.indexOf('.wave-docs-layout:has(');
+    expect(at, ':has() rule missing').toBeGreaterThan(-1);
+
+    const query = sheet.lastIndexOf('@media (min-width', at);
+    expect(query, ':has() is not inside a width query').toBeGreaterThan(-1);
+    expect(sheet.slice(query, sheet.indexOf('{', query))).toContain('80rem');
+  });
+
+  /**
+   * `vh` is the viewport with a mobile URL bar retracted, so anything sized
+   * against it is taller than what the reader can see: the last nav items sit
+   * under the browser chrome, unreachable.
+   */
+  it('measures the viewport with dvh, never vh', () => {
+    expect(sheet).not.toMatch(/\d\s*vh\b/);
+    expect(sheet).toMatch(/dvh\b/);
+  });
+
+  /** Sticky columns scroll independently, and must not chain into the article. */
+  it('contains the overscroll on both sticky columns', () => {
+    // Anchored to the breakpoint each column appears at, not to "the first
+    // min-width query": both names also appear in the base `display: none`
+    // rule, which is what a looser search finds.
+    for (const [selector, breakpoint] of [
+      ['.wave-docs-layout__sidebar', '@media (min-width: 64rem)'],
+      ['.wave-docs-layout__toc', '@media (min-width: 80rem)'],
+    ] as const) {
+      const query = sheet.indexOf(breakpoint);
+      expect(query, `${breakpoint} missing`).toBeGreaterThan(-1);
+
+      const at = sheet.indexOf(`${selector} {`, query);
+      expect(at, `${selector} not styled inside ${breakpoint}`).toBeGreaterThan(
+        -1,
+      );
+
+      const block = readBlock(sheet, at);
+      expect(block).toContain('position: sticky');
+      expect(block).toContain('overscroll-behavior: contain');
+      // `dvh`, so the last nav items are not under a mobile URL bar.
+      expect(block).toContain('dvh');
+    }
+  });
+
+  /** Public class names with no rules are the worst of the three options. */
+  it('defines every sidebar class the JSX emits', async () => {
+    const jsx = await readFile(
+      path.join(import.meta.dirname, 'react', 'sidebar.tsx'),
+      'utf8',
+    );
+    const emitted = new Set(
+      [...jsx.matchAll(/["'`](wave-docs-sidebar__[a-z-]+)["'`]/g)].map(
+        (match) => match[1],
+      ),
+    );
+    expect(emitted.size).toBeGreaterThan(0);
+
+    const undefinedClasses = [...emitted].filter(
+      (name) => !sheet.includes(`.${name}`),
+    );
+    expect(undefinedClasses).toEqual([]);
   });
 });
 

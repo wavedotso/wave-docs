@@ -1,0 +1,12 @@
+# No blank issues: the bug form's first field is a dropdown of every error code
+# this package throws, and it is the single most useful thing a report can
+# carry. A blank issue skips it.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/wavedotso/wave-docs/security/advisories/new
+    about: Report privately, never as an issue. See SECURITY.md.
+  - name: Question, or "is this supposed to work like this?"
+    url: https://github.com/wavedotso/wave-docs/discussions
+    about: Discussions. An issue is for something that is wrong.

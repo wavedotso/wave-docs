@@ -44,9 +44,12 @@
  * out of the config load, which was never true.
  */
 
+import { createHash } from 'node:crypto';
 import { stat } from 'node:fs/promises';
-import type { ComponentProps, ComponentType, ReactNode } from 'react';
-import { cache, createElement } from 'react';
+import type { Options as MiniSearchOptions } from 'minisearch';
+import type { PluggableList } from 'unified';
+import type { ComponentType, ReactNode } from 'react';
+import { Fragment, cache, createElement } from 'react';
 
 import { mapPooled } from './map-pooled.js';
 import type {
@@ -56,19 +59,27 @@ import type {
   DocsThemes,
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
+// Type-only, so it is erased: `layout.tsx` is a `'use client'` module and this
+// entry point must not put it on `next.config.ts`'s graph. `Layout` reaches the
+// value through the dynamic `import()` below, which is the same reason.
+import type { DocsLayoutSearchProps } from './react/layout.js';
+import type { DocsLabels } from './react/shell-labels.js';
+import { DocsToc } from './react/toc.js';
 import type {
   DocsImageComponent,
   DocsImageProps,
-  DocsLinkComponent,
-  DocsLinkProps,
   MarkdownComponents,
 } from './react/markdown-components.js';
 import { createMarkdownComponents } from './react/markdown-components.js';
-import { DOCS_CONTENT_ID } from './react/skip-link.js';
+import { DOCS_CONTENT_ID } from './docs-content-id.js';
+import type { NextLinkComponent } from './react/next-link.js';
+import { wrapNextLink } from './react/next-link.js';
 import type { DocsRenderer } from './render.js';
 import { createDocsRenderer } from './render.js';
 import type { DocsSource } from './source.js';
-import { createDocsSource, resolveDocsConfig, toAliasRoute } from './source.js';
+import { createDocsSource, resolveDocsConfig } from './source.js';
+import { toAliasRoute } from './route-path.js';
+import { sitemapLimitWarning } from './sitemap-limit.js';
 import type {
   DocFile,
   DocFrontmatter,
@@ -76,6 +87,7 @@ import type {
   ImageResolver,
   LinkResolver,
   RenderedDoc,
+  SearchRecord,
 } from './types.js';
 import { docsError } from './docs-error.js';
 
@@ -94,26 +106,9 @@ export type { DocsLang, DocsTheme, DocsThemes };
  */
 const RENDER_CONCURRENCY = 16;
 
-/** Google's per-sitemap URL cap. */
-const SITEMAP_URL_LIMIT = 50_000;
-
 /* -------------------------------------------------------------------------
  * Lazily-loaded `next` modules
  * ---------------------------------------------------------------------- */
-
-/**
- * The part of `next/link` this adapter uses.
- *
- * Declared locally rather than imported: `next` is an optional peer, and a
- * type-only import of it would still be a hard resolution requirement for
- * anyone type-checking against our `.d.ts`.
- */
-type NextLinkComponent = ComponentType<
-  Omit<ComponentProps<'a'>, 'href' | 'ref'> & {
-    href: string;
-    prefetch?: boolean | null | undefined;
-  }
->;
 
 /** The part of `next/image` this adapter uses. */
 type NextImageComponent = ComponentType<{
@@ -224,34 +219,6 @@ async function loadNotFound(): Promise<() => never> {
 }
 
 /**
- * Adapt `next/link` to {@link DocsLinkProps}.
- *
- * `next/link` widens `href` to `string | UrlObject` and `prefetch` to
- * `boolean | null`; the React layer promises neither, because it must also run
- * with a plain `<a>`. One wrapper keeps that mismatch in a single
- * place instead of at every call site.
- */
-function wrapNextLink(NextLink: NextLinkComponent): DocsLinkComponent {
-  return function DocsNextLink({
-    href,
-    prefetch,
-    children,
-    ...rest
-  }: DocsLinkProps): ReactNode {
-    return createElement(
-      NextLink,
-      {
-        ...rest,
-        href,
-        // `exactOptionalPropertyTypes`: absent, never explicitly `undefined`.
-        ...(prefetch === undefined ? {} : { prefetch }),
-      },
-      children,
-    );
-  };
-}
-
-/**
  * Adapt `next/image` to {@link DocsImageProps}.
  *
  * Every prop is named rather than spread. `next/image` types `width`/`height`
@@ -351,22 +318,17 @@ export interface DocsRouteOptions<
    */
   titleHeading?: boolean | undefined;
   /**
-   * `id` of the rendered `<article>`, which is also what
-   * `@waveso/docs/react/skip-link` targets by default. Defaults to
-   * `'docs-content'`. Pass `false` to render no id at all.
+   * Extra remark plugins, attached after `remarkGfm` and before link
+   * resolution — so anything they emit is folded, contained and asserted like
+   * authored markdown.
    */
-  contentId?: string | false | undefined;
+  remarkPlugins?: PluggableList | undefined;
   /**
-   * Re-read the content directory on every request.
-   *
-   * Defaults to `true` outside `NODE_ENV=production`. Markdown files are not in
-   * Next's module graph, so nothing re-evaluates a route module when one
-   * changes: without this, `next dev` serves whatever it read on the first
-   * request until the server restarts, and a file added afterwards is never
-   * found. A rescan of a few hundred small files costs single-digit
-   * milliseconds; a production build reads the tree once, as it should.
+   * Extra rehype plugins, attached after heading ids and permalinks exist and
+   * before the code steps — so a `<pre>` is still the author's text rather
+   * than Shiki's token spans.
    */
-  rescanPerRequest?: boolean | undefined;
+  rehypePlugins?: PluggableList | undefined;
   /** Replaces the built-in markdown-link resolution. */
   linkResolver?: LinkResolver | undefined;
   /**
@@ -383,6 +345,65 @@ export interface DocsRouteOptions<
    * set neither, you ship pages with no usable canonical.
    */
   siteUrl?: string | undefined;
+  /**
+   * MiniSearch overrides for the index {@link DocsRoute.searchIndex} builds.
+   *
+   * ⚠️ THE IDENTICAL OBJECT MUST REACH THE DIALOG — pass it to `DocsSearch`'s
+   * (or `SearchDialog`'s) `miniSearchOptions`. MiniSearch reads `tokenize` and
+   * `processTerm` both when indexing and when querying, so applying one here
+   * and not there produces an index whose terms no query can spell: zero
+   * results, no error, nothing in the console.
+   */
+  miniSearchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
+}
+
+/**
+ * Props for {@link DocsRoute.Layout}.
+ *
+ * Four, and the fourth is a boolean. Everything else a docs shell is asked for
+ * turned out to be reachable already: an announcement banner renders *above*
+ * `<docs.Layout>` in your own `layout.tsx`, because this does not own `<body>`;
+ * a content footer goes inside `children`; and sidebar links, social icons and
+ * separators are `DocNavNode`s authored in `meta.json`. The header bar is the
+ * one region nothing else can reach, which is what `actions` is for.
+ *
+ * A `slots` map was the alternative, and it can still be added later — two node
+ * props can become a slots map, a slots map cannot become two props.
+ */
+export interface DocsLayoutProps {
+  children: ReactNode;
+  /**
+   * Brand at the header start. A string, or your own logo component.
+   *
+   * `ReactNode`, so it cannot also serve as the `<title>` or as the header's
+   * accessible name; the landmark carries a fixed label instead.
+   */
+  title?: ReactNode;
+  /** Header end, after search: a theme toggle, a version switcher, a link. */
+  actions?: ReactNode;
+  /**
+   * The search trigger. Defaults to on, and the URL is always derived.
+   *
+   * `false` omits it. An object configures the dialog — `placeholder`,
+   * `hotkey`, `miniSearchOptions` and the rest of `DocsSearch`'s surface,
+   * minus `indexUrl`.
+   *
+   * You do not need to pass `miniSearchOptions` here to match what
+   * `createDocsRoute` was given: the route's own value is forwarded, so the
+   * object that built the index is the object that queries it. Pass one only
+   * to override that.
+   */
+  search?: boolean | DocsLayoutSearchProps | undefined;
+  /**
+   * The four strings the shell renders itself: the navigation landmark's name,
+   * the drawer's open and close buttons, and the skip link.
+   *
+   * Everything else a reader sees is your markdown or your `title`. This is the
+   * whole of what a non-English site has to say — and it is the fifth prop,
+   * added deliberately: a documentation shell nobody can translate is not a
+   * shell for the whole ecosystem.
+   */
+  labels?: DocsLabels | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -500,11 +521,89 @@ export interface DocsRoute<
     segments: string[],
   ) => Promise<RenderedDoc<TFrontmatter> | undefined>;
   /**
-   * Every published page, rendered. The input to
-   * `extractSearchRecords`/`writeSearchIndex` — nothing builds the search index
-   * for you.
+   * Every published page, rendered. The escape hatch behind
+   * {@link DocsRoute.searchIndex}, for anyone building their own artifact out
+   * of `extractSearchRecords`.
    */
   renderAll: () => Promise<Array<RenderedDoc<TFrontmatter>>>;
+  /**
+   * `GET` handler for `app/<basePath>/search-index.json/route.ts`, serving the
+   * MiniSearch index the dialog fetches.
+   *
+   * ```ts
+   * // app/docs/search-index.json/route.ts — the whole file
+   * import { docs } from '@/lib/docs';
+   *
+   * export const GET = docs.searchIndex;
+   * export const dynamic = 'force-static'; // a literal, see below
+   * ```
+   *
+   * **`dynamic = 'force-static'` is not optional and must be a literal**, for
+   * the same reason as {@link DocsRoute.dynamicParams}: route segment config is
+   * parsed out of the module before any of it runs. Without it Next marks the
+   * route `ƒ` (Dynamic) and re-renders your entire corpus on every request —
+   * from markdown that output tracing did not put in the deployment bundle, so
+   * on a serverless host it does not merely get slow, it throws, at the reader,
+   * inside the search dialog. The build prints no warning for this, so the
+   * handler detects it at runtime and throws with `code:
+   * 'search-index-dynamic'` instead of failing quietly.
+   *
+   * The index is built from the same `renderAll()` → `extractSearchRecords` →
+   * `buildSearchIndex` pipeline you could write by hand, with the `charset`-free
+   * `application/json` content type, a strong `ETag` and
+   * `cache-control: public, max-age=0, must-revalidate` — Next's default for a
+   * prerendered route is a year of `s-maxage` with no validator, which on a
+   * stable URL means a CDN serving last year's index until someone purges it.
+   */
+  searchIndex: () => Promise<Response>;
+  /**
+   * Default export for `app/<basePath>/layout.tsx` — the entire docs shell.
+   *
+   * ```tsx
+   * // app/docs/layout.tsx — the whole file
+   * import '@waveso/docs/styles.css';
+   * import { docs } from '@/lib/docs';
+   *
+   * export default docs.Layout;
+   * ```
+   *
+   * Or, with your own chrome in the header:
+   *
+   * ```tsx
+   * export default function DocsLayout({ children }: { children: ReactNode }) {
+   *   return (
+   *     <docs.Layout title={<Logo />} actions={<ThemeToggle />}>
+   *       {children}
+   *     </docs.Layout>
+   *   );
+   * }
+   * ```
+   *
+   * It owns the skip link, the header, the sidebar column, the mobile drawer
+   * and the grid, and it reads `source.nav()` and `searchIndexUrl` itself — so
+   * there is no nav to fetch and no URL to pass. It does **not** own the table
+   * of contents: a Next layout receives `{children, params}` and cannot know
+   * which page is rendering, so `docs.Page` emits the TOC as its second child
+   * and the grid places it.
+   *
+   * Your `layout.tsx` stays a Server Component. The two pieces that need a
+   * client — the nav's `usePathname`, the search dialog — carry their own
+   * `'use client'` boundaries inside the package.
+   *
+   * Next passes `{ children, params }`; the extra `params` is ignored, which is
+   * why `export default docs.Layout` type-checks as a layout.
+   */
+  Layout: (props: DocsLayoutProps) => Promise<ReactNode>;
+  /**
+   * `${basePath}/search-index.json` — hand it to `DocsSearch`'s `indexUrl`.
+   *
+   * Derived from the route's own `basePath`, so it is right when the docs are
+   * mounted at `/`, at `/docs`, or under a nested prefix. It is *not* prefixed
+   * with Next's `basePath` config, which Next applies to `<Link>` and to
+   * navigation but never to a client `fetch()` — on a site setting that, prefix
+   * it yourself.
+   */
+  searchIndexUrl: string;
 }
 
 /**
@@ -520,9 +619,13 @@ export function createDocsRoute<
   const config = resolveDocsConfig(options);
   const source = createDocsSource(options);
   const siteUrl = normalizeSiteUrl(options.siteUrl);
-  const contentId = options.contentId ?? DOCS_CONTENT_ID;
-  const rescanPerRequest =
-    options.rescanPerRequest ?? process.env.NODE_ENV !== 'production';
+  // Re-read the content directory on every request outside a production
+  // build. Markdown is not in Next's module graph, so nothing re-evaluates a
+  // route module when a file changes: without this, `next dev` serves what it
+  // read on the first request until the server restarts, and a file added
+  // afterwards is never found. It was an option; nobody should have turned it
+  // off, and `docs.source.invalidate()` is the escape hatch if anyone must.
+  const rescanPerRequest = process.env.NODE_ENV !== 'production';
 
   // Built on first render, not on import: `generateStaticParams` runs in its
   // own pass and has no use for a syntax highlighter.
@@ -618,6 +721,12 @@ export function createDocsRoute<
       ...(options.titleHeading === undefined
         ? {}
         : { titleHeading: options.titleHeading }),
+      ...(options.remarkPlugins === undefined
+        ? {}
+        : { remarkPlugins: options.remarkPlugins }),
+      ...(options.rehypePlugins === undefined
+        ? {}
+        : { rehypePlugins: options.rehypePlugins }),
       ...(options.linkResolver === undefined
         ? {}
         : { linkResolver: options.linkResolver }),
@@ -703,6 +812,74 @@ export function createDocsRoute<
     );
   };
 
+  const searchIndexUrl = `${config.basePath}/search-index.json`;
+
+  /**
+   * Fail loudly when the search-index route was not frozen at build time.
+   *
+   * The signal is `NEXT_PHASE`, which Next sets to `phase-production-build`
+   * while prerendering — verified in both output modes, and `undefined` under
+   * `next start`. It is internal and undocumented, which is why the CI smoke
+   * build asserts the prerendered body exists: if this ever changes meaning it
+   * fails there, in this repository, rather than in a consumer's deploy.
+   *
+   * The alternative was a `console.error`, and it is not one. A warning in a
+   * serverless log is unread, and the observable symptom — a search dialog
+   * stuck on "could not load the index" — arrives days later with nothing
+   * connecting it to a missing line in a route file.
+   */
+  const assertPrerendered = (): void => {
+    if (
+      process.env.NODE_ENV === 'production' &&
+      process.env.NEXT_PHASE !== 'phase-production-build'
+    ) {
+      throw docsError(
+        'search-index-dynamic',
+        'the search index was requested at runtime instead of being built ' +
+          `into your deployment. Add \`export const dynamic = 'force-static'\` ` +
+          `to app${searchIndexUrl}/route.ts — it has to be a literal, like ` +
+          '`dynamicParams`. Without it Next re-renders every page of your ' +
+          'corpus per request, from markdown that is not in the deployment ' +
+          'bundle. (Building the index somewhere else on purpose? Use ' +
+          '`docs.renderAll()` with `extractSearchRecords` and ' +
+          '`buildSearchIndex` from `@waveso/docs/search-index` instead of ' +
+          'calling this handler.)',
+      );
+    }
+  };
+
+  const searchIndex = async (): Promise<Response> => {
+    assertPrerendered();
+    // Lazy so MiniSearch stays off the module graph of `next.config.ts`, which
+    // loads this entry point for `createDocsSitemap`/`createDocsRedirects`.
+    const { buildSearchIndex, extractSearchRecords } = await import(
+      './search-index.js'
+    );
+    const rendered = await renderAll();
+    const json = buildSearchIndex(
+      rendered.flatMap((doc) => extractSearchRecords(doc)),
+      options.miniSearchOptions ?? {},
+    );
+
+    return new Response(json, {
+      headers: {
+        // No `charset`: JSON is UTF-8 by definition and the parameter is not
+        // defined for this media type (RFC 8259 §11).
+        'content-type': 'application/json',
+        // Next's default for a `force-static` route is
+        // `s-maxage=31536000` with no validator, so a CDN in front of a
+        // self-hosted `next start` pins a year-old index to a URL that never
+        // changes. `must-revalidate` on a stable URL with a strong ETag is
+        // the shape a docs index actually wants: revalidation is a 304.
+        'cache-control': 'public, max-age=0, must-revalidate',
+        // Strong, not weak: the body is byte-stable for a given corpus, which
+        // `buildSearchIndex` guarantees, so byte equality is the real
+        // equivalence here and a `W/` prefix would understate it.
+        etag: `"${createHash('sha1').update(json).digest('hex')}"`,
+      },
+    });
+  };
+
   async function renderRoute(segments: string[]): Promise<ReactNode> {
     const doc = await getPage(segments);
     if (doc === undefined) {
@@ -711,20 +888,70 @@ export function createDocsRoute<
     }
 
     const components = await loadNextComponents();
+
+    /*
+     * TWO CHILDREN, AND THEY MUST STAY DIRECT CHILDREN OF THE GRID.
+     *
+     * `docs.Layout` renders `{children}` straight into `.wave-docs-layout`
+     * without a wrapper, so the article and the TOC land in their own
+     * `grid-template-columns` tracks. Next inserts nothing around a page's
+     * output, which is what makes that hold — wrap these two in a `<div>` here
+     * and the TOC moves inside the article's column while the third track
+     * sits empty at every width above 80rem.
+     *
+     * The TOC is emitted here rather than by the layout because a Next layout
+     * receives `{children, params}` and has no way to know which page is
+     * rendering, and `doc.toc` comes from the render `getPage` just did.
+     * Recovering it client-side would mean a second slugging pass over the
+     * DOM, which is the thing `DocContent` refuses to do.
+     */
     return createElement(
-      'article',
-      {
-        className: 'wave-docs-prose',
-        // The target `SkipLink` points at by default. `tabIndex` with it: a
-        // fragment link moves the scroll position but not always the focus, so
-        // an unfocusable target leaves a keyboard user stranded at the top of
-        // the sidebar they were trying to skip.
-        ...(contentId === false ? {} : { id: contentId, tabIndex: -1 }),
-      },
-      createElement(DocContent, {
-        hast: doc.hast,
-        components: { ...components, ...options.components },
-      }),
+      Fragment,
+      null,
+      createElement(
+        /*
+         * ⚠️ `main`, NOT `article`. This is the page's main landmark, and it
+         * was an `<article>` — which gave the shell a `banner`, a `navigation`
+         * and a `complementary` and no `main` at all. A screen-reader user
+         * navigating by landmark, which is how they skip a hundred-link
+         * sidebar without tabbing, had nothing to jump to; the skip link
+         * covered the keyboard case and hid the missing landmark behind it.
+         *
+         * One `<main>` per document is the constraint, and this satisfies it:
+         * `docs.Layout` renders the header and the navigation and nothing that
+         * competes for the role, and `docs.Page` is the only thing inside it.
+         */
+        'main',
+        {
+          // `wave-docs-prose` is NOT here: `DocContent` owns it, so the one
+          // hand-rolled path in the README cannot forget it.
+          className: 'wave-docs-layout__main',
+          // The target `SkipLink` points at by default. `tabIndex` with it: a
+          // fragment link moves the scroll position but not always the focus,
+          // so an unfocusable target leaves a keyboard user stranded at the
+          // top of the sidebar they were trying to skip.
+          id: DOCS_CONTENT_ID,
+          tabIndex: -1,
+        },
+        createElement(DocContent, {
+          hast: doc.hast,
+          components: { ...components, ...options.components },
+        }),
+      ),
+      /*
+       * NO ELEMENT AT ALL when there are no headings, rather than an empty
+       * one. The grid reserves its TOC track with
+       * `.wave-docs-layout:has(.wave-docs-layout__toc)`, and `:has()` matches
+       * an empty aside exactly as well as a full one — so an untitled page
+       * would give up 15rem to nothing. The same defect V-4 measured.
+       */
+      doc.toc.length === 0
+        ? null
+        : createElement(
+            'aside',
+            { className: 'wave-docs-layout__toc' },
+            createElement(DocsToc, { entries: doc.toc }),
+          ),
     );
   }
 
@@ -732,6 +959,8 @@ export function createDocsRoute<
     source: requestScopedSource,
     getPage,
     renderAll,
+    searchIndex,
+    searchIndexUrl,
     dynamicParams: false,
 
     async Page({ params }: DocsPageProps): Promise<ReactNode> {
@@ -741,6 +970,62 @@ export function createDocsRoute<
 
     async IndexPage(): Promise<ReactNode> {
       return renderRoute([]);
+    },
+
+    async Layout({
+      children,
+      title,
+      actions,
+      search,
+      labels,
+    }: DocsLayoutProps): Promise<ReactNode> {
+      /*
+       * Lazy, and load-bearing. The shell reaches `next/navigation` and
+       * `next/link` through its client components, and a static import here
+       * would put both on the module graph of `next.config.ts` — which loads
+       * this entry point for `createDocsSitemap` and `createDocsRedirects`,
+       * outside the Next runtime entirely.
+       */
+      const { DocsLayoutShell } = await import('./react/layout.js');
+
+      /*
+       * ⚠️ THE ROUTE'S `miniSearchOptions` GO TO THE DIALOG FROM HERE, and this
+       * is the only place they can. MiniSearch reads `tokenize` and
+       * `processTerm` when indexing *and* when querying, so the object that
+       * built the index has to be the object that queries it — the warning on
+       * the option itself. While `search` was a bare boolean there was no
+       * channel, so configuring the route and rendering `docs.Layout` (the two
+       * things the README tells you to do) produced an index whose terms no
+       * query could spell: zero results, no error, nothing in the console.
+       *
+       * A host object wins over the route's, because a host that passes one
+       * has said something more specific than the route's default.
+       */
+      const searchProps =
+        search === false
+          ? false
+          : {
+              ...(options.miniSearchOptions === undefined
+                ? {}
+                : { miniSearchOptions: options.miniSearchOptions }),
+              ...(search === true || search === undefined ? {} : search),
+            };
+
+      /*
+       * `requestScopedSource`, not `source`: outside a production build this
+       * rescans, so adding a page in `next dev` shows up in the drawer. Next
+       * does not re-run a layout on every client navigation, so a stale read
+       * here survives longer than a stale read anywhere else on the route.
+       */
+      return createElement(DocsLayoutShell, {
+        children,
+        nav: await requestScopedSource.nav(),
+        searchIndexUrl,
+        search: searchProps,
+        ...(title === undefined ? {} : { title }),
+        ...(actions === undefined ? {} : { actions }),
+        ...(labels === undefined ? {} : { labels }),
+      });
     },
 
     async generateStaticParams(): Promise<Array<{ slug: string[] }>> {
@@ -822,16 +1107,6 @@ export interface DocsSitemapOptions<
   lastModified?: (
     file: DocFile<TFrontmatter>,
   ) => Date | undefined | Promise<Date | undefined>;
-  /**
-   * Re-read the content directory before building the sitemap.
-   *
-   * Defaults to `true` outside `NODE_ENV=production`, matching
-   * {@link DocsRouteOptions.rescanPerRequest}. `createDocsSource` memoises by
-   * config, so without this the first scan of the process is the only one —
-   * and `app/sitemap.ts` in `next dev` would keep serving the page set as it
-   * stood when the server booted.
-   */
-  rescanPerRequest?: boolean | undefined;
 }
 
 /**
@@ -857,22 +1132,16 @@ export async function createDocsSitemap<
 >(options: DocsSitemapOptions<TFrontmatter>): Promise<DocsSitemapEntry[]> {
   const siteUrl = requireSiteUrl(options.siteUrl);
   const source = createDocsSource(options);
-  if (options.rescanPerRequest ?? process.env.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     source.invalidate();
   }
   const files = await source.all();
 
   // Google rejects a sitemap above 50,000 URLs or 50 MB uncompressed, and Next
-  // neither chunks nor warns. Splitting belongs to the caller — `generateSitemaps`
-  // plus a slice of this array is three lines — but silently emitting a file
-  // no crawler will read is not something to discover from Search Console.
-  if (files.length > SITEMAP_URL_LIMIT) {
-    console.warn(
-      `@waveso/docs: this sitemap has ${files.length} URLs, above Google's ` +
-        `limit of ${SITEMAP_URL_LIMIT}. Split it with Next's ` +
-        '`generateSitemaps` and slice the array this returns.',
-    );
-  }
+  // neither chunks nor warns. The wording and the arithmetic live in
+  // `sitemap-limit.ts` so they are reachable without writing 50,001 files.
+  const oversized = sitemapLimitWarning(files.length);
+  if (oversized !== undefined) console.warn(oversized);
   // Annotated because the two branches have different parameter types, and a
   // union of signatures is not callable: `readMtime` reads nothing outside
   // `DocFrontmatter`, so it accepts the narrower file too.

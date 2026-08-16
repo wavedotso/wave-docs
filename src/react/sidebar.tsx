@@ -1,10 +1,11 @@
 'use client';
 
-import { useId, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { DocNavGroup, DocNavNode } from '../types.js';
 import type { DocsLinkComponent } from './markdown-components.js';
+import { nearestScrollTop } from './nearest-scroll-top.js';
 
 export interface DocsSidebarProps {
   /** The tree from `@waveso/docs/source`. */
@@ -56,9 +57,44 @@ function containsActive(node: DocNavNode, pathname: string): boolean {
 /**
  * The docs navigation tree.
  *
- * Prefetch is off by default on the injected link. A full-tree sidebar on a
- * few hundred pages otherwise asks Next to prefetch every route in it —
- * ~1.8 KB brotli each, all of it wasted on the routes nobody clicks.
+ * ## Prefetch
+ *
+ * Nearby links prefetch; the rest do not. Nearby means the list that directly
+ * contains the current page, plus the heading link of the group the reader is
+ * inside — 5 to 15 warm links on a real sidebar rather than 400 or none.
+ *
+ * ⚠️ THE PREVIOUS NOTE HERE WAS WRONG, AND THE RETRACTION IS THE POINT. It
+ * said prefetch was off because a full-tree sidebar otherwise asks Next to
+ * prefetch every route in it, ~1.8 KB brotli each. That reasoning is correct
+ * for the Pages Router and wrong for the App Router:
+ * `next/dist/client/app-dir/link.js` computes
+ * `const prefetchEnabled = prefetchProp !== false`, and BOTH the hover path
+ * and the touch path bail on it, while the IntersectionObserver is only
+ * registered when it is true. So `prefetch={false}` did not trade viewport
+ * prefetching for hover prefetching — it turned off both, and made every
+ * navigation from the most-clicked control in a docs site a cold RSC
+ * round-trip.
+ *
+ * ## The keyboard model, and why there is no `role="tree"`
+ *
+ * This is the **APG Disclosure Navigation** pattern: a list of links, with a
+ * button per collapsible group. Every link is an ordinary tab stop, Enter
+ * follows it, and the browser does all of it. There is no `tabindex`
+ * anywhere in here and no roving focus, deliberately.
+ *
+ * `role="tree"` is the tempting alternative and it is refused. It removes
+ * every link from the tab order in favour of a single roving tabstop, so a
+ * reader who tabs into the navigation can no longer tab through it; and it
+ * makes a screen reader announce "tree item, level 3" for what is, in every
+ * way that matters to the person hearing it, a link to a page. A docs sidebar
+ * is not a file explorer. `sidebar.test.tsx` asserts the absence of both, so
+ * the decision survives someone reaching for the aria pattern that sounds
+ * closest to "collapsible tree".
+ *
+ * ⚠️ AND IT IS UNOBSERVABLE IN `next dev`. The same file guards the hover path
+ * with `if (!prefetchEnabled || process.env.NODE_ENV === 'development')`, so
+ * nothing prefetches locally whatever this says. Do not "fix" it back because
+ * the network tab looks the same.
  */
 export function DocsSidebar({
   nav,
@@ -84,8 +120,62 @@ export function DocsSidebar({
     setToggled((previous) => ({ ...previous, [key]: isOpen }));
   };
 
+  const navRef = useRef<HTMLElement | null>(null);
+
+  /*
+   * Bring the current page into view, on navigation only.
+   *
+   * ⚠️ KEYED ON `pathname`, NEVER ON `toggled`. Adding the toggle state would
+   * re-scroll the column every time the reader expanded a group — yanking the
+   * list under the hand that just clicked, which is worse than never scrolling
+   * at all.
+   *
+   * `useLayoutEffect` so it lands before paint: in an effect the reader sees
+   * the wrong position for a frame and then a jump.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a trigger, not an input — see above.
+  useLayoutEffect(() => {
+    const active = navRef.current?.querySelector('[aria-current="page"]');
+    if (!(active instanceof HTMLElement)) return;
+
+    const port = scrollableAncestor(active);
+    // No scrollport means the nav is shorter than its column, or this is not a
+    // browser. Either way there is nothing to do — and nothing to do wrongly.
+    if (port === null) return;
+
+    /*
+     * ⚠️ RECTANGLES, NOT `offsetTop`. `active.offsetTop - port.offsetTop` reads
+     * as the obvious way to get an item's position inside its scrollport and is
+     * wrong here, because `offsetTop` is measured from the nearest *positioned*
+     * ancestor — and the scrollport is `position: sticky`, so it IS that
+     * ancestor. `active.offsetTop` is therefore already the number wanted, and
+     * subtracting the port's own offset takes off the header height a second
+     * time. Measured in Chromium at 1280×800: the active item scrolled to 206
+     * where 265 was correct, which put a 1024–1055 item inside a 206–1014
+     * viewport — entirely below the fold, the exact failure this effect exists
+     * to prevent.
+     *
+     * The rect difference is right whether or not the port is the offsetParent,
+     * and `+ port.scrollTop` converts it from viewport-relative back to
+     * content-relative, which is what `nearestScrollTop` documents itself to
+     * take.
+     */
+    const next = nearestScrollTop({
+      itemTop:
+        active.getBoundingClientRect().top -
+        port.getBoundingClientRect().top +
+        port.scrollTop,
+      itemHeight: active.offsetHeight,
+      viewHeight: port.clientHeight,
+      scrollTop: port.scrollTop,
+      scrollHeight: port.scrollHeight,
+    });
+    if (next !== undefined) port.scrollTop = next;
+  }, [pathname]);
+
   return (
     <nav
+      ref={navRef}
       aria-label={label}
       className={['wave-docs-sidebar', className].filter(Boolean).join(' ')}
     >
@@ -100,6 +190,31 @@ export function DocsSidebar({
       />
     </nav>
   );
+}
+
+/**
+ * The nearest ancestor that actually scrolls, or `null`.
+ *
+ * ⚠️ THIS EXISTS SO `scrollIntoView` DOES NOT HAVE TO. `scrollIntoView({ block:
+ * 'nearest' })` reads as exactly the right call and scrolls **every**
+ * scrollable ancestor including the document — so on a docs page it brings the
+ * sidebar item into view and jumps the article the reader came to read, on the
+ * one navigation where they know precisely what they asked for.
+ * `sidebar.test.tsx` spies on it and asserts it is never called.
+ */
+function scrollableAncestor(element: HTMLElement): HTMLElement | null {
+  let current = element.parentElement;
+  while (current !== null) {
+    const overflow = getComputedStyle(current).overflowY;
+    if (
+      (overflow === 'auto' || overflow === 'scroll') &&
+      current.scrollHeight > current.clientHeight
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
 }
 
 interface NavListProps {
@@ -124,6 +239,19 @@ function NavList({
   onToggle,
   id,
 }: NavListProps): ReactNode {
+  /*
+   * One decision for the whole list: is the reader's own page in it? If so
+   * every link here is a plausible next click — the sibling pages of the
+   * section they are reading. Anywhere else in a few-hundred-page tree is not,
+   * and prefetching it would be the bandwidth the old comment was worried
+   * about, correctly.
+   */
+  const holdsActive = nodes.some(
+    (node) =>
+      (node.type === 'page' || (node.type === 'link' && !node.external)) &&
+      isActiveHref(pathname, node.href),
+  );
+
   return (
     <ul id={id} className="wave-docs-sidebar__list" data-depth={depth}>
       {/* Positional keys: the tree is authored on disk and read at build time,
@@ -148,6 +276,7 @@ function NavList({
                   href={node.href}
                   isExternal={node.external}
                   isActive={!node.external && isActiveHref(pathname, node.href)}
+                  isNearby={holdsActive}
                   Link={Link}
                 >
                   {node.title}
@@ -161,6 +290,7 @@ function NavList({
                   href={node.href}
                   isExternal={false}
                   isActive={isActiveHref(pathname, node.href)}
+                  isNearby={holdsActive}
                   Link={Link}
                 >
                   {node.title}
@@ -237,6 +367,9 @@ function NavGroup({
               href={node.href}
               isExternal={false}
               isActive={isGroupActive}
+              // The heading of the group the reader is inside: the one link
+              // that reliably gets clicked on the way back out.
+              isNearby={hasActive}
               Link={Link}
             >
               {node.title}
@@ -276,6 +409,8 @@ interface NavLinkProps {
   href: string;
   isExternal: boolean;
   isActive: boolean;
+  /** Close enough to the reader's position to be worth a warm route. */
+  isNearby?: boolean | undefined;
   Link: DocsLinkComponent | undefined;
   children: ReactNode;
 }
@@ -284,6 +419,7 @@ function NavLink({
   href,
   isExternal,
   isActive,
+  isNearby = false,
   Link,
   children,
 }: NavLinkProps): ReactNode {
@@ -298,6 +434,27 @@ function NavLink({
         rel="noopener noreferrer"
       >
         {children}
+        {/*
+         * An inline SVG, matching the `Chevron` precedent in this file rather
+         * than a `::after` glyph — some screen-reader and browser pairs
+         * announce generated content, which would double the name the sr-only
+         * span below already provides. `aria-hidden` for the same reason.
+         */}
+        <svg
+          className="wave-docs-sidebar__external"
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 24 24"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+        </svg>
         <span className="wave-docs-sr-only"> (opens in a new tab)</span>
       </a>
     );
@@ -319,7 +476,10 @@ function NavLink({
     <Link
       className={className}
       href={href}
-      prefetch={false}
+      // `undefined`, not `true`: it is omitted from the element entirely, so
+      // Next applies its own default rather than this component pinning a
+      // policy it has no information to pin.
+      prefetch={isNearby ? undefined : false}
       aria-current={isActive ? 'page' : undefined}
     >
       {children}

@@ -66,7 +66,37 @@ describe('DocContent', () => {
       />,
     );
 
-    expect(html).toBe('<h2 class="custom">Intro</h2>');
+    expect(html).toBe(
+      '<div class="wave-docs-prose"><h2 class="custom">Intro</h2></div>',
+    );
+  });
+
+  it('carries the prose class, so no caller can forget it', () => {
+    /*
+     * Nearly every rule in `styles.css` is scoped under `.wave-docs-prose`,
+     * `.wave-docs-prose .shiki` among them. The hand-rolled route in the
+     * README used to make the consumer type this class on their own
+     * `<article>`, and forgetting it left a page whose code blocks kept their
+     * syntax colours and lost everything else — which reads as a decision.
+     */
+    const html = render(
+      <DocContent hast={root(element('p', {}, [text('.')]))} />,
+    );
+
+    expect(html.startsWith('<div class="wave-docs-prose">')).toBe(true);
+  });
+
+  it('appends className rather than substituting for it', () => {
+    // Substitution is the bug the wrapper exists to prevent; offering a
+    // replace-the-class prop would reintroduce it with a nicer name.
+    const html = render(
+      <DocContent
+        hast={root(element('p', {}, [text('.')]))}
+        className="mine"
+      />,
+    );
+
+    expect(html.startsWith('<div class="wave-docs-prose mine">')).toBe(true);
   });
 
   it('never passes the hast node to components', () => {
@@ -82,7 +112,7 @@ describe('DocContent', () => {
       />,
     );
 
-    expect(html).toBe('<p>Body.</p>');
+    expect(html).toBe('<div class="wave-docs-prose"><p>Body.</p></div>');
     expect(html).not.toContain('node=');
     expect(html).not.toContain('object Object');
   });
@@ -109,9 +139,16 @@ describe('markdown components', () => {
     );
 
     expect(html).toContain('i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
-    expect(html).toContain('aria-label="Play video: YouTube video player"');
-    // The whole point: no player bytes until someone asks for them.
-    expect(html).not.toContain('<iframe');
+    expect(html).toContain('Play video: YouTube video player');
+    /*
+     * The iframe IS in the markup now — there is no JavaScript left to insert
+     * it later — and it costs nothing because a `loading="lazy"` iframe inside
+     * a closed `<details>` is never requested. Measured in Chromium; the
+     * assertion lives in `youtube.browser.test.tsx`, since a network request
+     * is not something this environment can see.
+     */
+    expect(html).toContain('<details');
+    expect(html).toContain('loading="lazy"');
   });
 
   it('lets a consumer replace the youtube component', () => {

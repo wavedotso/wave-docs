@@ -128,11 +128,29 @@ describe('createDocsRenderer', () => {
     expect(secondUsage?.children.map((entry) => entry.text)).toEqual([
       'Options',
     ]);
-    // h4 nests under the h3 that precedes it, not the h2.
-    expect(
-      secondUsage?.children[0]?.children.map((entry) => entry.text),
-    ).toEqual(['Deeply nested']);
     expect(doc.toc.every((entry) => entry.depth === 2)).toBe(true);
+  });
+
+  it('stops at h3, and leaves everything deeper linkable anyway', () => {
+    /*
+     * The capture is capped at h2+h3 — measured on a synthetic API page, h2–h6
+     * gave 104 entries and 6,797 bytes of flight payload against 32 and 2,321.
+     * A rail with a hundred entries is the page again in a narrower column,
+     * and every comparator caps here too.
+     *
+     * The second half is the justification for cutting at *capture* rather
+     * than at render: an h4 keeps its id and its permalink, so it is still
+     * deep-linkable and still opens its own section in the search index. The
+     * entry is dropped; the heading is not.
+     */
+    expect(flattenToc(doc.toc).every((entry) => entry.depth <= 3)).toBe(true);
+    expect(flattenToc(doc.toc).map((entry) => entry.text)).not.toContain(
+      'Deeply nested',
+    );
+
+    expect(headingIds(doc.hast)).toContain('deeply-nested');
+    const anchors = findAll(doc.hast, 'a').map((node) => node.properties.href);
+    expect(anchors).toContain('#deeply-nested');
   });
 
   it('gives duplicate headings ids that match their anchors exactly', () => {
@@ -143,19 +161,27 @@ describe('createDocsRenderer', () => {
       'options',
       'usage-1',
       'options-1',
-      'deeply-nested',
     ]);
-    // The `-1` suffixes are where a second slugging pass drifts. Assert
-    // against the tree, not against a recomputed slug.
-    expect(headingIds(doc.hast)).toEqual(['getting-started', ...ids]);
+    /*
+     * The `-1` suffixes are where a second slugging pass drifts. Assert
+     * against the tree, not against a recomputed slug — and against the tree's
+     * FULL heading list, which is a superset of the TOC now that the capture
+     * caps at h3. That superset relationship is the guarantee: every id the
+     * TOC names exists in the document, whether or not the document has
+     * headings the TOC skipped.
+     */
+    const inDocument = headingIds(doc.hast);
+    expect(inDocument[0]).toBe('getting-started');
+    for (const id of ids) {
+      expect(inDocument).toContain(id);
+    }
 
     const anchors = findAll(doc.hast, 'a').filter((node) =>
       String(node.properties.href).startsWith('#'),
     );
-    expect(anchors.map((node) => node.properties.href)).toEqual([
-      '#getting-started',
-      ...ids.map((id) => `#${id}`),
-    ]);
+    expect(anchors.map((node) => node.properties.href)).toEqual(
+      inDocument.map((id) => `#${id}`),
+    );
     expect(anchors.every((node) => toText(node) === '#')).toBe(true);
     expect(anchors[0]?.properties.className).toEqual(['heading-anchor']);
   });
@@ -284,6 +310,14 @@ describe('createDocsRenderer', () => {
     expect(code?.properties.className).toEqual(['language-mermaid']);
     // The disguise the exclusion is built on must never reach the output.
     expect(JSON.stringify(rendered.hast)).not.toContain('excluded-pre');
+    /*
+     * Untouched by the highlighter, but not left unreachable. The stylesheet
+     * gives this block `overflow-x: auto` like every other one, and a
+     * scrollable region with no `tabindex` is one no keyboard can scroll
+     * (WCAG 2.1.1) — Shiki adds this to every `<pre>` it emits, and this is the
+     * one `<pre>` Shiki never sees.
+     */
+    expect(pre?.properties.tabIndex).toBe(0);
   });
 
   /**

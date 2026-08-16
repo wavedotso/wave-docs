@@ -1,6 +1,17 @@
 /**
  * Collect the table of contents from the rendered tree.
  *
+ * ## Why this runs dead last
+ *
+ * Because `extractSearchRecords` walks the finished tree, and the TOC must
+ * describe the same document search does. Captured earlier, a consumer plugin
+ * attached through `rehypePlugins` could add or remove a heading and put the
+ * two out of step — silently, in both directions: a deleted heading id leaves
+ * a TOC entry pointing at nothing while search drops the section, and an added
+ * `<h2>` becomes a search record with no TOC entry. Reading last makes them
+ * agree by construction rather than by a validation pass that would have to
+ * exist and be maintained.
+ *
  * The ids are read off the tree rather than recomputed, which is the whole
  * point of doing this as a rehype pass instead of a second parse of the
  * markdown: `rehype-slug` seeds a `GithubSlugger` per document, so a second
@@ -24,15 +35,36 @@ declare module 'vfile' {
   }
 }
 
-/** `h2`–`h6`. `h1` is the page title and never appears in a TOC. */
-const HEADING = /^h([2-6])$/;
+/**
+ * `h2` and `h3`. `h1` is the page title, and h4–h6 are too deep to navigate.
+ *
+ * Measured on a synthetic API page — 8 methods, 3 overloads each, 3
+ * subsections apiece — capturing h2–h6 gave **104 entries and 6,797 bytes** of
+ * flight payload against **32 entries and 2,321 bytes** capped at h3. A rail
+ * with a hundred entries is not a table of contents; it is the page again, in
+ * a narrower column.
+ *
+ * Stripe, Linear, Mintlify, Fumadocs and Docusaurus all cap at h2+h3 —
+ * Docusaurus's defaults are literally 2 and 3.
+ *
+ * Nothing becomes unreachable by cutting here. `rehype-slug` and
+ * `rehype-autolink-headings` still give every h4–h6 an id and a permalink, so
+ * they are still linkable and still land in the search index, which opens
+ * sections on its own walk. There is deliberately no `maxDepth` option: the
+ * escape hatch is `rehypePlugins`, where a plugin writing its own
+ * `file.data.toc` is about forty lines.
+ */
+const HEADING = /^h([23])$/;
 
 /**
  * Drop the permalink anchor `rehype-autolink-headings` appends.
  *
- * This plugin is ordered before that one, so in practice there is nothing to
- * drop — but the check costs nothing and the alternative, if the order ever
- * changes, is every TOC entry silently gaining a trailing `#`.
+ * ⚠️ LOAD-BEARING NOW. This used to run *before* autolinking, so there was
+ * nothing to drop and this was insurance against an order that might change.
+ * The order changed: the capture is dead last, after Shiki and after the
+ * consumer's own plugins, so every heading really does carry an appended
+ * anchor by the time this walks it. Delete this and every TOC entry gains a
+ * trailing `#`.
  */
 function isPermalink(child: ElementContent): boolean {
   if (child.type !== 'element' || child.tagName !== 'a') {

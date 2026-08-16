@@ -12,8 +12,6 @@
  * misapplied to full text.
  */
 
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
-import path from 'node:path';
 import type { Element, ElementContent, RootContent } from 'hast';
 import MiniSearch, { type Options as MiniSearchOptions } from 'minisearch';
 import { mergeSearchOptions } from './search-options.js';
@@ -280,10 +278,11 @@ function collapseWhitespace(text: string): string {
 /**
  * Build a serialised MiniSearch index from extracted records.
  *
- * The return value is JSON, ready for `MiniSearch.loadJSON` on the client or
- * for {@link writeSearchIndex} to put on disk. The output is byte-stable for a
- * given record list, so an index committed to the repository does not dirty
- * the diff on every build.
+ * The return value is JSON, ready for `MiniSearch.loadJSON` on the client.
+ * `docs.searchIndex` serves exactly this; reach for `buildSearchIndex`
+ * directly only when you need an artifact that route cannot produce. The
+ * output is byte-stable for a given record list, which is what lets the
+ * route ship a strong `ETag`.
  *
  * ⚠️ `options` MUST ALSO REACH THE DIALOG — pass the identical object to
  * `SearchDialog`'s `searchOptions`. Both sides feed it through
@@ -298,43 +297,4 @@ export function buildSearchIndex(
   const index = new MiniSearch<SearchRecord>(mergeSearchOptions(options));
   index.addAll(records);
   return JSON.stringify(index);
-}
-
-/**
- * Write the serialised index to `outFile`, creating parent directories.
- *
- * Returns the byte size written, so a build step can log it or assert a
- * budget — a docs index that quietly crosses a megabyte is a regression
- * nobody notices until the dialog takes a second to open.
- *
- * ⚠️ WRITTEN BESIDE THE TARGET AND RENAMED OVER IT, NEVER INTO IT. The target
- * is normally `public/search-index.json`, a live static asset: writing in
- * place truncates it to zero and grows it back in 1 MiB chunks, and a fetch
- * landing in that window gets a 200 with a half-written body. `response.ok`
- * passes, the parse throws, and the dialog is stuck in its error state —
- * *"Try reloading the page"* — for every visitor, reloading forever, until
- * someone redeploys content that did not change. `rename` is atomic within a
- * filesystem, so a reader sees either the whole old file or the whole new one;
- * it also makes two concurrent builds safe.
- */
-export async function writeSearchIndex(
-  records: SearchRecord[],
-  outFile: string,
-  options: Partial<MiniSearchOptions<SearchRecord>> = {},
-): Promise<number> {
-  const json = buildSearchIndex(records, options);
-  const absolute = path.resolve(outFile);
-  // The pid keeps two concurrent builds from renaming each other's half-file.
-  const temporary = `${absolute}.tmp-${process.pid}`;
-  await mkdir(path.dirname(absolute), { recursive: true });
-  try {
-    await writeFile(temporary, json, 'utf8');
-    await rename(temporary, absolute);
-  } catch (error) {
-    // Otherwise a failed build leaves a stray artifact in `public/`, which the
-    // next successful one happily serves.
-    await rm(temporary, { force: true });
-    throw error;
-  }
-  return Buffer.byteLength(json, 'utf8');
 }

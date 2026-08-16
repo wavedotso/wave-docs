@@ -1,0 +1,63 @@
+name: Feature request
+description: Something this package should do and does not.
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The public surface here is deliberately small — `docs.Layout` takes five
+        props, and a test fails when someone adds a sixth so that the
+        conversation happens on purpose. This is that conversation.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: >-
+        The problem, not the solution. "I want a `sidebarFooter` prop" is a
+        solution; "I need a version switcher under the navigation" is a problem,
+        and it may already have an answer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: today
+    attributes:
+      label: What did you try?
+      description: >-
+        Several things that look missing are reachable already — an announcement
+        banner goes *above* `docs.Layout` in your own layout, a content footer
+        goes inside `children`, sidebar links and separators are `DocNavNode`s
+        in `meta.json`, and `remarkPlugins` / `rehypePlugins` open the pipeline.
+        Knowing which of those you ruled out, and why, is most of the answer.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: What would this touch?
+      options:
+        - The markdown pipeline (plugins, frontmatter, links)
+        - The shell (docs.Layout, navigation, drawer)
+        - Search
+        - Code blocks
+        - Styling and tokens
+        - The Next adapter (routes, sitemap, redirects)
+        - Types
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: cost
+    attributes:
+      label: Cost
+      description: >-
+        This package ships under 13 KB gzipped to a reader and budgets every
+        byte in `size-budget.json`, so client weight is a real constraint rather
+        than a talking point.
+      options:
+        - label: This can be done on the server, at build time, or in CSS.
+        - label: This would ship JavaScript to the browser.
+        - label: Not sure which.

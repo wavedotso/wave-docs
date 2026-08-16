@@ -2,13 +2,16 @@ import type { ReactNode } from 'react';
 
 /**
  * The `id` this link targets, and the one `createDocsRoute` puts on its
- * `<article>`.
+ * `<main>`. Defined in a private module so the two halves cannot spell it
+ * differently; re-exported here because this is the documented import path.
  *
- * One constant for both halves: the two files spelled the string independently,
- * and a skip link pointing at an id nothing carries scrolls nowhere and focuses
- * nothing — a failure with no symptom until a keyboard user hits it.
+ * (This comment used to call the file a `'use client'` module. It is not one
+ * and never was — `SkipLink` is an anchor with no state, so it is a Server
+ * Component like everything else here that does not need a browser.)
  */
-export const DOCS_CONTENT_ID = 'docs-content';
+import { DOCS_CONTENT_ID } from '../docs-content-id.js';
+
+export { DOCS_CONTENT_ID };
 
 export interface SkipLinkProps {
   /** Fragment id of the main content region. */

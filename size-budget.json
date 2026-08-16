@@ -1,0 +1,48 @@
+{
+  "client": {
+    "code-runtime": {
+      "max": 1000,
+      "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. It is one delegated listener and one live region; if this grows past a kilobyte it has stopped being that."
+    },
+    "nav": {
+      "max": 2200,
+      "note": "The drawer: a dialog, a close-on-navigate effect and an eight-line `command` fallback, plus the sidebar it wraps — so it moves whenever the sidebar does. Growth beyond that means behaviour moved out of the browser and into us, which is the direction to argue about."
+    },
+    "next-nav": {
+      "max": 2300,
+      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper."
+    },
+    "next-search": {
+      "max": 9700,
+      "note": "`search-dialog` plus the Next router wiring. MiniSearch is NOT in here — it is `import()`ed on hover — so if this jumps by tens of kilobytes the lazy boundary has been lost."
+    },
+    "search-dialog": {
+      "max": 9600,
+      "note": "The whole keyboard-first dialog: focus trap, combobox wiring, result rendering. The single largest thing this package ships to a browser, and the one worth defending line by line."
+    },
+    "sidebar": {
+      "max": 1800,
+      "note": "A tree with disclosure groups and no router import. Raised from 1.37 KB when scroll-into-view and the external-link icon landed — the first change after this budget existed, and it caught it. Both are client-only by necessity: the scroll needs layout, and the icon is markup. If this approaches the dialog's 9 KB, the navigation has grown a feature that belongs on the server."
+    },
+    "toc": {
+      "max": 900,
+      "note": "A list plus one IntersectionObserver. The smallest client component here, and it should stay that way."
+    }
+  },
+  "payload": {
+    "light": {
+      "max": 1.32,
+      "note": "Prose-only pages: hast over the wire costs 20% more brotli than HTML would. This is the honest price of the architecture and the first number a skeptical reviewer asks for. If it exceeds this, restate the architecture argument — do not raise the budget."
+    },
+    "heavy": {
+      "max": 1.23,
+      "note": "Pages with code, tables and headings: 11.6%. The ratio improves as pages get heavier, because Shiki's token spans dominate both representations equally. Same rule as `light`."
+    }
+  },
+  "render": {
+    "shiki-multiple": {
+      "max": 2.1,
+      "note": "Highlighting costs about 1.7x a render with the grammar excluded, measured idle (1.67-1.70 across runs). The budget sits well above that on purpose: this is the one timing metric here, and a contended machine moves it. Interleaving the two halves removed a systematic skew - separately-timed blocks reported 2.03x under load against 1.71-1.86x idle - but the residual noise is still +/-0.2x on a busy CI runner, in both directions. A budget inside that band fails for reasons the author cannot act on, which teaches everyone to raise a budget without reading it. A real regression here is a grammar or a transformer getting expensive, and that moves the number far past 2.1."
+    }
+  }
+}

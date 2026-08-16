@@ -73,8 +73,91 @@ jobs:
       - name: Test
         run: pnpm run test
 
+      # The browser tier is out of `pnpm test` on purpose — it costs a browser
+      # launch, and the sub-seven-second inner loop is what makes the fast
+      # suite worth running on every save. CI has no such constraint, and these
+      # are the only assertions that can see layout at all: jsdom reports every
+      # width as 0, so the measure, the type scale, reflow and the table floor
+      # are unassertable without a real engine.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Test in a browser
+        run: pnpm run test:browser
+
       - name: Build library
         run: pnpm run build
+
+      # The tripwire for the Next internals the search index rests on, none of
+      # them public API: that a `force-static` route handler prerenders to
+      # `<route>.body`, that `NEXT_PHASE` marks the prerender, that response
+      # headers survive into the prerender manifest, and that `turbopackIgnore`
+      # keeps the consumer's whole project out of the server bundle. A unit
+      # test can call the handler; only a real build can prove Next invoked it.
+      # When a Next minor changes one of these, it fails here — on the pull
+      # request that bumped Next — instead of in a consumer's deploy.
+      #
+      # Must follow the build: `smoke/lib/docs.ts` imports `@waveso/docs/next`
+      # by name, which Node self-references through the real `exports` map into
+      # dist/, exactly as a consumer resolves it.
+      - name: Smoke build (a real Next app, both output modes)
+        run: pnpm run test:smoke
+
+      # Must follow the build, and is the acceptance harness for `docs.Layout`:
+      # six markdown files and five route files with no CSS of their own. A
+      # documentation site built by the people who wrote the package will
+      # always work — unless it is forbidden from patching around a defect,
+      # which `src/site-budget.test.ts` is what enforces. `output: 'export'`
+      # deliberately, so a route that quietly went dynamic fails here.
+      - name: Build the documentation site
+        run: pnpm run build:site
+
+      # The README's screenshots, re-shot from the site that was just built and
+      # compared byte for byte. A stylesheet change that reflows the shell
+      # should fail on the pull request that made it — not be discovered in a
+      # README six releases later, which is how the 14px gap between a code
+      # frame's title bar and its own body survived to a screenshot.
+      #
+      # Chromium is already installed above for the browser tier.
+      - name: Check the README screenshots
+        run: pnpm run shoot -- --check
+
+      # Must follow the build: the examples import `@waveso/docs/*` by name,
+      # which Node self-references through the real `exports` map into dist/.
+      # Two README examples shipped not compiling because nothing had ever
+      # compiled them; this is what stops the third.
+      - name: Type-check the README examples
+        run: pnpm run check:readme
+
+      # Must follow the build: the `'use client'` directive is a property of
+      # the built output, and a bundler that dropped it would leave the source
+      # looking correct.
+      - name: Check the server component boundary
+        run: pnpm exec vitest run --project node src/server-boundary.test.ts
+
+      # Must follow the build: it bundles `dist/` to measure what each entry
+      # point requires, and an entry with no builtins is the claim being made.
+      - name: Check runtime requirements
+        run: pnpm exec vitest run --project node src/entry-runtime.test.ts
+
+      # Must follow the build, and DID NOT. `manifest.test.ts` carries three
+      # `it.skipIf(!existsSync(dist))` blocks — the `'use client'` directive
+      # surviving the build, every subpath resolving to a file that exists, and
+      # every runtime export being documented — and `pnpm test` above runs on a
+      # fresh checkout where `dist/` does not exist yet. All three skipped in
+      # every CI run this workflow has ever had, silently, so the guard against
+      # a bundler upgrade dropping a directive was never once executed here.
+      # Re-run after the build, where they can actually see the output.
+      - name: Check the built manifest
+        run: pnpm exec vitest run --project node src/manifest.test.ts
+
+      # Must follow the build: it bundles each `'use client'` entry from
+      # dist/ and renders a corpus to compare payload shapes. Every number the
+      # README quotes about size or speed has a budget entry behind it, so a
+      # regression fails here rather than turning a published claim into a
+      # false one.
+      - name: Size and speed budgets
+        run: pnpm run size
 
       # Must follow the build: `attw --pack .` packs the real tarball and
       # resolves every export subpath against dist/.

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { DOCS_CONTENT_ID } from '../docs-content-id.js';
 import type { TocEntry } from '../types.js';
 
 export interface DocsTocProps {
@@ -20,6 +21,8 @@ export interface DocsTocProps {
    * other unit, `rem` included.
    */
   rootMargin?: string | undefined;
+  /** Text for the back-to-top link. */
+  topLabel?: string | undefined;
   className?: string | undefined;
 }
 
@@ -53,15 +56,22 @@ function flattenTocIds(entries: TocEntry[]): string[] {
  * out of sync on duplicate headings.
  *
  * Scrolling itself is left to the browser: the links are real anchors, and
- * smooth scrolling is applied in CSS under
- * `@media (prefers-reduced-motion: no-preference)`. Doing it in JavaScript
- * means reimplementing that check, and getting it wrong makes people ill.
+ * nothing here calls `scrollTo`. Doing it in JavaScript means reimplementing
+ * the `prefers-reduced-motion` check, and getting that wrong makes people ill.
+ *
+ * ⚠️ AND THE STYLESHEET SETS NO `scroll-behavior: smooth` EITHER, deliberately
+ * — this comment used to say it did. Next 16 suppresses smooth scrolling
+ * across a route change only when `<html>` carries
+ * `data-scroll-behavior="smooth"`, an attribute only the host can set, so a
+ * package-level rule would smooth-scroll every navigation and no reader could
+ * turn it off. `styles.css` says the same at greater length.
  */
 export function DocsToc({
   entries,
   label = 'On this page',
   rootMargin = DEFAULT_ROOT_MARGIN,
   className,
+  topLabel = 'Back to top',
 }: DocsTocProps): ReactNode {
   const ids = useMemo(() => flattenTocIds(entries), [entries]);
   const [activeId, setActiveId] = useState<string | undefined>(undefined);
@@ -161,6 +171,20 @@ export function DocsToc({
       className={['wave-docs-toc', className].filter(Boolean).join(' ')}
     >
       <TocList entries={entries} activeId={activeId} onSelect={setActiveId} />
+      {/*
+       * A fragment link, not a scroll button, and the difference is the whole
+       * reason it is correct here and nowhere else in the category: `docs.Page`
+       * puts `tabIndex={-1}` on that article, so following this moves FOCUS as
+       * well as the scroll position. A floating `scrollTo(0)` control returns
+       * the page to the top and leaves the keyboard caret at the bottom of the
+       * document, which is worse than not offering it.
+       *
+       * The id comes from the shared constant, so it cannot drift from the
+       * one `SkipLink` targets and `docs.Page` emits.
+       */}
+      <a className="wave-docs-toc__top" href={`#${DOCS_CONTENT_ID}`}>
+        {topLabel}
+      </a>
     </nav>
   );
 }

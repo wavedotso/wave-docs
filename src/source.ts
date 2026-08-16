@@ -10,11 +10,11 @@
 import type { Dirent, Stats } from 'node:fs';
 import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import matter from 'gray-matter';
+import { VFile } from 'vfile';
+import { matter } from 'vfile-matter';
 import { parseFrontmatter } from './frontmatter.js';
 import type { MetaDirEntry } from './meta.js';
 import { orderNavEntries, readDocsMeta } from './meta.js';
-import { foldSegments } from './plugins/remark-doc-links.js';
 import type {
   DocFile,
   DocFrontmatter,
@@ -26,6 +26,7 @@ import type {
   ResolvedDocsConfig,
 } from './types.js';
 import { docsError } from './docs-error.js';
+import { encodeSegments, toAliasRoute } from './route-path.js';
 
 /** Markdown only. MDX is deliberately out of scope for this package. */
 const PAGE_EXTENSION = '.md';
@@ -88,7 +89,29 @@ export function resolveDocsConfig<
   TFrontmatter extends DocFrontmatter = DocFrontmatter,
 >(config: DocsConfig<TFrontmatter>): ResolvedDocsConfig<TFrontmatter> {
   return {
-    contentDir: path.resolve(process.cwd(), config.contentDir),
+    /*
+     * ⚠️ `turbopackIgnore` IS LOAD-BEARING — IT IS NOT A WARNING SUPPRESSION.
+     * `contentDir` comes from the consumer, so Turbopack's static analysis
+     * cannot see what this reads — and its fallback is to trace *the entire
+     * project* into the server output: every source file, the whole `public/`
+     * folder, previous build output. Measured on the smoke app, that was 39
+     * unrelated files traced into a route that needs none of them; on a real
+     * docs site it is every image you ship, and on a serverless host it is how
+     * you meet a bundle size limit for no reason. The build says so out loud
+     * ("Dynamic filesystem access causes tracing of the whole project"), which
+     * meant every consumer got a warning we had no answer for.
+     *
+     * Nothing needs tracing here, because nothing reads markdown at request
+     * time: `dynamicParams = false` prerenders every page, and the search
+     * index is `force-static` with a guard that throws if it is not. Both are
+     * required, so there is no supported configuration this takes anything
+     * away from. `smoke/check.ts` asserts no `.md` is traced, so if that ever
+     * stops being true it fails there rather than in someone's deploy.
+     */
+    contentDir: path.resolve(
+      /*turbopackIgnore: true*/ process.cwd(),
+      config.contentDir,
+    ),
     basePath: normalizeBasePath(config.basePath ?? '/docs'),
     includeDrafts: config.includeDrafts ?? false,
     assertLinks: config.assertLinks ?? true,
@@ -243,6 +266,33 @@ function buildSource<TFrontmatter extends DocFrontmatter>(
 
   return {
     config,
+    /**
+     * Throw the scan away. The next query reads the disk again.
+     *
+     * ⚠️ A STAT-WALK DIRTY CHECK WAS BUILT HERE AND MEASURED AND REMOVED. The
+     * idea is obvious and the roadmap called for it: mark dirty, then compare
+     * a stat-only fingerprint of the tree against the cached one and skip the
+     * re-read when nothing changed. It rests on stat being much cheaper than
+     * read, and on this corpus it is not — the fingerprint has to `readdir`
+     * every directory and `stat` every file, which is nearly everything the
+     * scan does apart from the read and the parse.
+     *
+     * Measured over 501 pages, median of six, against a full rescan:
+     *
+     *   ~1.4 KB pages   28.3 ms vs 26.8 ms   0.95x  (slower)
+     *   ~20 KB pages    28.8 ms vs 27.4 ms   0.95x  (slower)
+     *   ~120 KB pages   39.1 ms vs 45.1 ms   1.15x  (faster)
+     *
+     * Documentation pages are the first two rows. So it is a small regression
+     * plus a new class of invalidation bug, in exchange for a win on a corpus
+     * nobody has. There is no cheaper correct fingerprint either: statting
+     * only directories catches an added or renamed file but not an edited one,
+     * which is the common case in a dev server.
+     *
+     * If this is ever revisited, the thing to change is the *scan*, not the
+     * check — patch only the files whose mtime moved and re-derive the nav in
+     * memory, which is a different item with a much harder correctness story.
+     */
     invalidate() {
       cached = null;
     },
@@ -464,19 +514,40 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
   let data: unknown;
   let content: string;
   try {
-    // The options object is load-bearing: called with none, `gray-matter`
-    // memoises every distinct file body it has ever seen in a module-level
-    // cache that is never evicted, so a dev server rescanning on each save
-    // retains one full copy per revision for the life of the process.
-    const parsed = matter(raw, { language: 'yaml' });
-    data = parsed.data;
-    content = parsed.content;
+    /*
+     * `vfile-matter` mutates the file: it strips the block from `file.value`
+     * and puts the parsed object on `file.data.matter`. That is why this is
+     * two statements rather than a destructure, and it is also the whole
+     * reason for the swap — `gray-matter` reached for a bare `require('fs')`
+     * (for a `matter.read()` this package never calls), which was the only
+     * gratuitous Node requirement in the tree, and memoised every distinct
+     * file body it had ever seen in a module-level cache that is never
+     * evicted. A dev server rescanning on each save kept one full copy per
+     * revision for the life of the process; the eleven-line comment that used
+     * to sit here worked around it with an options object.
+     */
+    /*
+     * ⚠️ THE BOM IS OURS TO STRIP NOW. `gray-matter` did it; `vfile-matter`
+     * does not, and `readFile(…, 'utf8')` does not either. Left in place the
+     * parser sees `\uFEFF---`, which is not a delimiter, so the whole block
+     * becomes body text and the page has no title — a failure that reproduces
+     * only on files written by editors that emit one, which is most of them
+     * on Windows. Caught by the byte-level cases written green against the old
+     * parser before the swap, which is the only reason it is not shipped.
+     */
+    const file = new VFile({
+      value: raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw,
+    });
+    matter(file, { strip: true });
+    data = file.data.matter;
+    content = String(file);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw docsError(
       'invalid-frontmatter',
       `Could not parse the frontmatter block in ${relativePath}: ${reason}`,
-      // js-yaml's own error carries the line and column inside the block, which
+      // The YAML parser's own error carries the line and column inside the
+      // block, which
       // `reason` flattens away; the cause keeps it for anyone who unwraps.
       { cause: err },
     );
@@ -686,73 +757,6 @@ function isVisibleIn(file: DocFile, config: ResolvedDocsConfig): boolean {
  * it. `c++` is the loud sibling: the build aborts with `Unexpected MODIFIER at
  * 7`, naming an offset into a string the author never wrote and no file.
  */
-const ALIAS_PATTERN_CHARS = /[:()+*?{}]/;
-
-/**
- * A former URL from `aliases` frontmatter, as a route.
- *
- * `'quickstart'` on a site mounted at `/docs` becomes `/docs/quickstart`.
- * Leading and trailing slashes are tolerated because authors write them, but
- * the value is always relative to the base path — an alias of `'/docs/old'` on
- * a `/docs` site would produce `/docs/docs/old`.
- *
- * Shared by both adapters so they agree on which routes exist: an alias is a
- * redirect the host installs, so a link to one resolves, and a link that
- * builds under Next must build under Vite. The source scan calls it too, so
- * every rejection below names the markdown file at the moment it is read.
- */
-export function toAliasRoute(
-  alias: string,
-  basePath: string,
-  /**
-   * The source path, for the error. A STRING rather than the whole `DocFile`
-   * it used to take: this function dereferenced exactly one property of it, and
-   * demanding the object meant a cache reader or a manifest-driven redirect
-   * table had to fabricate a `DocFile` to agree with the package about which
-   * routes exist. That is the reason it is exported at all.
-   */
-  sourceLabel: string,
-): string {
-  const trimmed = alias.trim();
-
-  if (trimmed.split('/').some((part) => part === '.' || part === '..')) {
-    throw docsError(
-      'invalid-alias',
-      `@waveso/docs: the alias '${alias}' in ${sourceLabel} has a '.' or ` +
-        "'..' segment. An alias is a former URL relative to the docs base " +
-        'path, not a path on disk: write `aliases: [legacy/old-name]`.',
-    );
-  }
-
-  const pattern = ALIAS_PATTERN_CHARS.exec(trimmed);
-  if (pattern !== null) {
-    throw docsError(
-      'invalid-alias',
-      `@waveso/docs: the alias '${alias}' in ${sourceLabel} contains ` +
-        `'${pattern[0]}', which Next compiles as redirect pattern syntax ` +
-        'rather than as part of the URL — the redirect then swallows every ' +
-        'page whose route the pattern happens to match, or fails the build. ' +
-        'Remove the character; an alias is a literal former URL.',
-    );
-  }
-
-  // The same fold the link resolver uses, so an alias and a link can never
-  // disagree about the route they spell. With `.`/`..` already rejected it
-  // collapses the repeated slashes of `old//name` — a redirect source Next
-  // accepts and no request can ever match.
-  const segments = foldSegments([], trimmed);
-  if (segments === undefined || segments.length === 0) {
-    throw docsError(
-      'invalid-alias',
-      `@waveso/docs: ${sourceLabel} has an empty entry in its ` +
-        '`aliases` frontmatter. Each alias is a former URL for this page, ' +
-        'relative to the docs base path — e.g. `aliases: [quickstart]`.',
-    );
-  }
-
-  return `${basePath}/${encodeSegments(segments)}`;
-}
-
 /* -------------------------------------------------------------------------
  * Naming
  * ---------------------------------------------------------------------- */
@@ -790,20 +794,6 @@ function isIgnoredDir(name: string): boolean {
 /** `getting-started.MD` -> `getting-started`. */
 function stripExtension(name: string): string {
   return name.slice(0, name.length - path.extname(name).length);
-}
-
-/**
- * Percent-encode the segments, and only here.
- *
- * `segments` and `slug` stay raw on purpose: Next decodes route params before
- * they reach `find()`, so an encoded slug would match nothing. Unencoded, a
- * `#`, `?` or `%` in a filename stops being part of the path — the sitemap
- * emitted `https://example.com/docs/c#%20guide`, and `alternates.canonical`
- * and `og:url` are built by the same call — while a space produced a URL that
- * only works until something re-encodes it.
- */
-function encodeSegments(segments: readonly string[]): string {
-  return segments.map(encodeURIComponent).join('/');
 }
 
 function toHref(basePath: string, segments: readonly string[]): string {

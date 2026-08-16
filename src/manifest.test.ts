@@ -150,8 +150,46 @@ describe('node version floors', () => {
   });
 });
 
+/**
+ * React modules that are deliberately NOT importable, each with the reason.
+ *
+ * Empty today. It exists because the shell work adds `layout`, `nav`,
+ * `next-nav` and `code-runtime` to `src/react/`, none of which is the public
+ * API — `docs.Layout` is, and `DocsSidebar` is. Without this the enumeration
+ * below would be silently completed by whoever adds the first one.
+ */
+const INTERNAL_REACT_MODULES = new Set<string>([
+  // The `next/link` → `DocsLinkProps` adapter, shared by `@waveso/docs/next`
+  // (server, markdown components) and `./next-search` (client, search
+  // results). Private on purpose: it exists to stop those two answering the
+  // same question differently, not to be a third answer.
+  'next-link',
+  // The shell. `docs.Layout` is the public name for all three, and it has to
+  // be, because two of them only work when the route wires them together: the
+  // drawer's trigger lives in the header and binds to the dialog by a fixed
+  // `id`, and the nav reads a `pathname` the layout never sees. Exporting the
+  // pieces would publish a way to render half a shell.
+  'layout',
+  'nav',
+  'next-nav',
+  // The copy runtime. `DocContent` mounts it, and only when the tree contains
+  // a code frame — exporting it would publish a second way to mount it, which
+  // is the way that double-announces to a screen reader.
+  'code-runtime',
+  // The scroll geometry behind the sidebar's scroll-into-view. Pure, and
+  // separate from the component so it can be tested exhaustively — jsdom
+  // reports every rectangle as zero, so nothing driving the effect could.
+  'nearest-scroll-top',
+  // The shell's four strings and their defaults. The *type* is public, through
+  // `DocsLayoutProps['labels']`; the module is not, because the merge is an
+  // implementation detail of `docs.Layout` and a second caller would be a
+  // second set of defaults — which is the bug it was written to end, not one
+  // to publish a new way of having.
+  'shell-labels',
+]);
+
 describe('exports map', () => {
-  /** Every string target in the map, wildcards included. */
+  /** Every string target in the map. */
   function targets(node: unknown): string[] {
     if (typeof node === 'string') {
       return [node];
@@ -174,36 +212,275 @@ describe('exports map', () => {
   });
 
   /**
+   * Two subpaths were deleted rather than kept for symmetry, and must not
+   * return. `./markdown-links` froze six names to make one reachable — the
+   * plugin among them throws `docsError('internal')` unless the caller sets an
+   * undocumented vfile field, so it was surface with no use. `./search-options`
+   * froze `tokenizeSearchText`, an `Intl.Segmenter` policy with a feature-detect
+   * fallback, i.e. the function most likely to change; and it was doing nothing
+   * even internally, since both readers import it relatively.
+   *
+   * `resolveMarkdownLink` survives, from `./render`: six public names became
+   * one, and it is the only one a `linkResolver` author cannot hand-roll.
+   */
+  it('does not re-expose the deleted plumbing subpaths', () => {
+    const keys = Object.keys(section(manifest, 'exports'));
+    expect(keys).not.toContain('./markdown-links');
+    expect(keys).not.toContain('./search-options');
+  });
+
+  /**
+   * Wildcards are gone on purpose, and must not come back. Node's `exports`
+   * wildcard does not check that the target exists, so `"./react/*"` made every
+   * file that ever lands in `src/react/` public API on the day it is typed —
+   * verified: a throwaway module dropped into `dist/react/` imported cleanly.
+   * The stability policy promises nothing undocumented is exported, and a
+   * wildcard makes that promise unkeepable rather than merely unkept.
+   */
+  it('enumerates every subpath rather than wildcarding', () => {
+    for (const key of Object.keys(section(manifest, 'exports'))) {
+      expect(key).not.toContain('*');
+    }
+    for (const target of all) {
+      expect(target).not.toContain('*');
+    }
+  });
+
+  /**
    * Skipped rather than failed when `dist/` is absent so the suite does not
    * depend on build order — CI type-checks and tests before it builds.
    */
   it.skipIf(!existsSync(path.join(ROOT, 'dist')))(
     'points every subpath at a file the build actually emits',
     () => {
-      const missing = all.flatMap((target) => {
-        if (!target.includes('*')) {
-          return existsSync(path.join(ROOT, target)) ? [] : [target];
-        }
-        const [prefix, suffix] = target.split('*');
-        if (prefix === undefined || suffix === undefined) {
-          return [target];
-        }
-        // `./dist/react/*.js` splits to a prefix that is already a directory;
-        // `path.dirname` on it would climb one level too far and silently
-        // pass against the wrong folder.
-        const isDir = prefix.endsWith('/');
-        const dir = path.join(ROOT, isDir ? prefix : path.dirname(prefix));
-        if (!existsSync(dir)) {
-          return [target];
-        }
-        const base = isDir ? '' : path.basename(prefix);
-        const matches = readdirSync(dir).filter(
-          (name) => name.startsWith(base) && name.endsWith(suffix),
-        );
-        return matches.length > 0 ? [] : [target];
-      });
+      const missing = all.filter(
+        (target) => !existsSync(path.join(ROOT, target)),
+      );
 
       expect(missing).toEqual([]);
     },
   );
+
+  /**
+   * The other half of the enumeration: a component added to `src/react/` and
+   * forgotten in the map ships unimportable, which no other test would catch.
+   * A module that is genuinely internal goes on the allowlist WITH the reason —
+   * the package already keeps `docs-error`, `map-pooled` and `section-boundary`
+   * out of the map entirely, and `src/react/` now works the same way.
+   */
+  it('exports every react module, or names it internal', () => {
+    // `.ts` as well as `.tsx`: a module in here that happens to use
+    // `createElement` instead of JSX is no less public a name.
+    const modules = readdirSync(path.join(ROOT, 'src', 'react'))
+      .filter((name) => /\.tsx?$/.test(name) && !name.includes('.test.'))
+      .map((name) => name.replace(/\.tsx?$/, ''));
+
+    const exported = new Set(
+      Object.keys(section(manifest, 'exports'))
+        .filter((key) => key.startsWith('./react/'))
+        .map((key) => key.slice('./react/'.length)),
+    );
+
+    const unaccounted = modules.filter(
+      (name) => !exported.has(name) && !INTERNAL_REACT_MODULES.has(name),
+    );
+
+    expect(unaccounted).toEqual([]);
+
+    // An allowlist entry for a module that no longer exists is a stale comment
+    // pretending to be a decision.
+    const stale = [...INTERNAL_REACT_MODULES].filter(
+      (name) => !modules.includes(name),
+    );
+    expect(stale).toEqual([]);
+  });
+
+  /**
+   * `'use client'` has to survive the build, as the FIRST statement.
+   *
+   * It is the only thing that makes a component a client boundary, and losing
+   * it is completely silent: the module still compiles, still renders, still
+   * type-checks. What changes is that the boundary moves up into whatever
+   * imported it — a consumer's `app/docs/layout.tsx` becomes a client
+   * component, dragging the whole subtree with it, and nothing anywhere says
+   * so. `tsdown` keeps directives only because `unbundle` is on and Rolldown
+   * tracks them; a bundling config, a minifier, or a plugin that rewrites the
+   * prologue all drop it.
+   *
+   * Skipped when `dist/` is absent so the suite still runs on a clean
+   * checkout — CI builds before `check:package`, which is where this matters.
+   */
+  it.skipIf(!existsSync(path.join(ROOT, 'dist', 'react')))(
+    'keeps the use-client directive through the build',
+    () => {
+      const sourceDir = path.join(ROOT, 'src', 'react');
+      const clientModules = readdirSync(sourceDir)
+        .filter((name) => name.endsWith('.tsx') && !name.includes('.test.'))
+        .filter((name) =>
+          readFileSync(path.join(sourceDir, name), 'utf8').startsWith(
+            "'use client'",
+          ),
+        )
+        .map((name) => name.replace(/\.tsx$/, '.js'));
+
+      // A guard on the guard: if the filter ever matches nothing — a rename, a
+      // changed quote style — this test would pass by testing an empty list.
+      expect(clientModules.length).toBeGreaterThan(0);
+
+      const stripped = clientModules.filter((name) => {
+        const built = readFileSync(path.join(ROOT, 'dist', 'react', name), {
+          encoding: 'utf8',
+        });
+        return !/^['"]use client['"];/.test(built.trimStart());
+      });
+
+      expect(stripped).toEqual([]);
+    },
+  );
+});
+
+/**
+ * "Nothing undocumented is exported."
+ *
+ * ⚠️ THE CHANGESET CLAIMED THIS WAS ENFORCED BY A TEST BEFORE THIS TEST
+ * EXISTED, and the README states it as a guarantee ("a name that is not in the
+ * table above is not importable"). It was neither: five runtime names —
+ * `DOCS_ERROR_PREFIX`, `DEFAULT_DOCS_THEMES`, `CALLOUT_TYPES`,
+ * `defaultMarkdownComponents`, `DOCS_CONTENT_ID` — shipped as public API
+ * documented in no file, so a consumer who imported one was depending on
+ * something this package did not consider public and would rename without a
+ * major.
+ *
+ * Two halves, because a guarantee about "importable names" needs both:
+ *
+ * - every **subpath** in `exports` appears in the README;
+ * - every **runtime name** each subpath exports appears in the README.
+ *
+ * The second half reads `dist/`, which is what makes it real — a name is public
+ * when the built module exports it, not when the source says so. It is
+ * therefore build-order dependent, and CI runs it in the post-build step rather
+ * than the ordinary one.
+ */
+describe('the documented surface', () => {
+  const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const subpaths = Object.keys(section(manifest, 'exports')).filter(
+    // `./package.json` is a resolver convention, and `./styles.css` is a file
+    // you import for its side effect — neither is a name anyone calls.
+    (key) => key !== '.' && key !== './package.json' && key !== './styles.css',
+  );
+
+  it('names every subpath somewhere in the README', () => {
+    expect(subpaths.length).toBeGreaterThan(10);
+
+    // Either spelling: the Entry points table writes `@waveso/docs/next`, the
+    // Components table writes `react/skip-link` beside the component's name.
+    const undocumented = subpaths.filter(
+      (key) => !readme.includes(key.slice('./'.length)),
+    );
+
+    expect(undocumented).toEqual([]);
+  });
+
+  it.skipIf(!existsSync(path.join(ROOT, 'dist')))(
+    'names every runtime export somewhere in the README',
+    async () => {
+      const undocumented: string[] = [];
+
+      for (const key of subpaths) {
+        const target = section(manifest, 'exports')[key];
+        const file = isRecord(target) ? target.default : target;
+        if (typeof file !== 'string' || !file.endsWith('.js')) continue;
+
+        const module: Record<string, unknown> = await import(
+          path.join(ROOT, file)
+        );
+        for (const name of Object.keys(module)) {
+          // Word-boundary, so `DocsError` is not credited to a README mention
+          // of `DocsErrorCode`.
+          if (!new RegExp(`\\b${name}\\b`).test(readme)) {
+            undocumented.push(`${key} → ${name}`);
+          }
+        }
+      }
+
+      // The guard on the guard: `import()` returning empty namespaces for every
+      // subpath would otherwise make this pass while checking nothing.
+      expect(subpaths.length).toBeGreaterThan(10);
+      expect(undocumented).toEqual([]);
+    },
+  );
+});
+
+/**
+ * The clauses of the stability policy a test can hold.
+ *
+ * The policy is in the README, and most of it is a promise about future
+ * behaviour that no test can check — "dropping a React major gets its own
+ * release" is a commitment, not an invariant. Three parts are checkable, and
+ * those are exactly the parts that rot first: a floor that drifts from the
+ * documented one, a peer range narrowed without anyone noticing, and a
+ * third-party type in a public signature that nobody remembers is now this
+ * package's problem too.
+ */
+describe('the stability policy', () => {
+  const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const policy = readme.slice(readme.indexOf('## Stability'));
+
+  it('exists, and says the thing that matters first', () => {
+    // The guard on the guard: a missing section would make every slice below
+    // empty and every assertion vacuous.
+    expect(policy.length).toBeGreaterThan(500);
+    expect(policy).toContain('breaking changes land in minors');
+  });
+
+  it('documents the Node floor the manifest actually declares', () => {
+    /*
+     * Two places said 20.19.0 and 22.12.0 once, and the README was the wrong
+     * one. A floor is the first thing a reader checks before installing, so it
+     * is the worst single number in the file to have stale.
+     */
+    const engines = section(manifest, 'engines');
+    const declared = String(engines.node ?? '');
+    // The version, not the range syntax: the README writes a floor as prose
+    // and the manifest as a range, and comparing `>=22.12.0` to "22.12.0"
+    // would fail on the punctuation rather than on the number.
+    const version = /(\d+\.\d+\.\d+)/.exec(declared)?.[1];
+
+    expect(version).toBeDefined();
+    expect(policy).toContain(version as string);
+  });
+
+  it('names every peer whose major it promises to treat as breaking', () => {
+    /*
+     * "Dropping a Next or React major is breaking" is only a promise if the
+     * policy names the peers it is about. A peer added later — `next/og`, a
+     * future adapter — inherits the promise silently otherwise.
+     */
+    for (const peer of Object.keys(section(manifest, 'peerDependencies'))) {
+      expect(policy.toLowerCase()).toContain(peer.toLowerCase());
+    }
+  });
+
+  it('claims CSS class names and emitted hast as covered', () => {
+    /*
+     * The two clauses packages usually omit, and omitting them is how a
+     * "patch" reflows everyone's site. Asserted as text because that is what
+     * they are — a commitment — and a commitment quietly deleted is the whole
+     * failure mode.
+     */
+    expect(policy).toContain('CSS class names');
+    expect(policy).toContain('hast');
+    expect(policy).toContain('wave-docs-');
+  });
+
+  it('names the third-party types it has adopted', () => {
+    /*
+     * Each of these appears in a public signature, so that library's next
+     * major is this package's major. A type added to the surface without a
+     * line here is a break this package would pass on without naming.
+     */
+    for (const owned of ['PluggableList', 'MiniSearch', 'Root']) {
+      expect(policy).toContain(owned);
+    }
+  });
 });

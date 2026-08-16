@@ -1,0 +1,98 @@
+name: Bug report
+description: Something threw, rendered wrong, or typed wrong.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. The first field is the one that saves a
+        round trip — every failure this package raises carries a `code`, and it
+        is printed in the message.
+
+  # ⚠️ THE OPTIONS BELOW ARE ASSERTED AGAINST `src/errors.ts` BY
+  # `src/error-taxonomy.test.ts`. A code added to the union without a row here
+  # fails the build. Keep the order the union's, and keep the two "no error"
+  # entries last.
+  - type: dropdown
+    id: code
+    attributes:
+      label: Which error code?
+      description: >-
+        From the thrown message — every one is prefixed `@waveso/docs`. If
+        nothing threw, pick one of the last two.
+      options:
+        - broken-link
+        - draft-link
+        - alias-link
+        - invalid-alias
+        - alias-collision
+        - route-collision
+        - invalid-frontmatter
+        - invalid-meta
+        - invalid-config
+        - missing-content-dir
+        - broken-symlink
+        - invalid-image
+        - unknown-theme
+        - unknown-language
+        - missing-peer
+        - search-index-unavailable
+        - search-index-dynamic
+        - invalid-code-meta
+        - internal
+        - no error — wrong output
+        - no error — wrong types
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: >-
+        The full error, or what rendered instead of what you expected. Paste
+        text rather than a screenshot where you can — it is searchable, and the
+        next person with this bug is looking for it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: The smallest thing that reproduces it
+      description: >-
+        A markdown file and the relevant part of your `createDocsRoute` call is
+        usually enough. A link to a repository is welcome and never required.
+      render: markdown
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: '@waveso/docs version'
+      placeholder: 0.3.0
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Next, React and Node versions
+      description: '`npx envinfo --system --npmPackages next,react,react-dom` covers it.'
+      placeholder: 'Next 16.3.0, React 19.2.3, Node 24.18.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Where does it happen?
+      options:
+        - next dev
+        - next build
+        - output: 'export'
+        - in the browser, after the page loaded
+        - in the editor (types only)
+    validations:
+      required: true

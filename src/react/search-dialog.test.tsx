@@ -880,7 +880,7 @@ describe('SearchDialog', () => {
         <SearchDialog
           indexUrl={INDEX_URL}
           navigate={() => undefined}
-          searchOptions={{ searchOptions: { combineWith: 'OR' } }}
+          miniSearchOptions={{ searchOptions: { combineWith: 'OR' } }}
         />,
       );
 
@@ -947,7 +947,7 @@ describe('SearchDialog', () => {
           maxResults={count}
           debounceMs={count}
           className={label}
-          searchOptions={options}
+          miniSearchOptions={options}
         />,
       );
 

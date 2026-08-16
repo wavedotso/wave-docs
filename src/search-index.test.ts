@@ -1,6 +1,3 @@
-import { mkdtemp, mkdir, readFile, readdir, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import type { Element, ElementContent, Root, RootContent } from 'hast';
 import MiniSearch from 'minisearch';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -10,11 +7,7 @@ import {
   mergeSearchOptions,
   tokenizeSearchText,
 } from './search-options.js';
-import {
-  buildSearchIndex,
-  extractSearchRecords,
-  writeSearchIndex,
-} from './search-index.js';
+import { buildSearchIndex, extractSearchRecords } from './search-index.js';
 import type { RenderedDoc, SearchRecord } from './types.js';
 
 let doc: RenderedDoc;
@@ -383,65 +376,5 @@ describe('buildSearchIndex', () => {
     // A non-deterministic index dirties the diff on every build, and defeats
     // every cache between here and the reader.
     expect(buildSearchIndex(records)).toBe(buildSearchIndex(records));
-  });
-});
-
-describe('writeSearchIndex', () => {
-  it('creates parent directories and reports the byte size', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-search-'));
-    try {
-      const outFile = path.join(dir, 'nested', 'deeper', 'search-index.json');
-      const size = await writeSearchIndex(records, outFile);
-
-      const written = await readFile(outFile, 'utf8');
-      expect(size).toBe(Buffer.byteLength(written, 'utf8'));
-      expect((await stat(outFile)).size).toBe(size);
-      expect(() => JSON.parse(written) as unknown).not.toThrow();
-      // No stray `.tmp-<pid>` beside it.
-      expect(await readdir(path.dirname(outFile))).toStrictEqual([
-        'search-index.json',
-      ]);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('replaces the served file instead of truncating it in place', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-search-'));
-    try {
-      const outFile = path.join(dir, 'search-index.json');
-      await writeSearchIndex(records, outFile);
-      const before = await stat(outFile);
-
-      await writeSearchIndex(records, outFile);
-      const after = await stat(outFile);
-
-      /*
-       * A NEW INODE IS THE PROOF, and the whole point of the fix. Writing into
-       * the live path truncates it to zero and grows it back in 1 MiB chunks;
-       * a fetch landing in that window gets a 200 with a half-written body,
-       * `response.ok` passes, the parse throws, and the dialog is stuck on
-       * "Try reloading the page" for every visitor until someone redeploys.
-       * `rename` swaps the whole file atomically, so the number changes.
-       */
-      expect(after.ino).not.toBe(before.ino);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('leaves no temp file behind when the write fails', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-search-'));
-    try {
-      // A directory where the file belongs: the temp write succeeds and the
-      // rename cannot, which is the only path that can strand an artifact.
-      const outFile = path.join(dir, 'search-index.json');
-      await mkdir(outFile);
-
-      await expect(writeSearchIndex(records, outFile)).rejects.toThrow();
-      expect(await readdir(dir)).toStrictEqual(['search-index.json']);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
   });
 });

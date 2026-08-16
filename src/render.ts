@@ -17,12 +17,14 @@ import rehypeSlug from 'rehype-slug';
 import remarkGfm from 'remark-gfm';
 import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
+import type { PluggableList } from 'unified';
 import { unified } from 'unified';
 import { visit } from 'unist-util-visit';
 import { VFile } from 'vfile';
 import type { DocsHighlighter, DocsLang, DocsThemes } from './highlighter.js';
 import { createDocsHighlighter, DEFAULT_DOCS_THEMES } from './highlighter.js';
 import { rehypeCaptureToc } from './plugins/rehype-capture-toc.js';
+import { rehypeCodeFrame } from './plugins/rehype-code-frame.js';
 import {
   rehypeNormalizeCodeLanguage,
   rehypeRestoreExcludedCode,
@@ -53,6 +55,22 @@ import { docsError } from './docs-error.js';
  * declaration output.
  */
 type ShikiHighlighter = Parameters<typeof rehypeShikiFromHighlighter>[0];
+
+/**
+ * Re-exported because writing a {@link LinkResolver} without it is a trap.
+ *
+ * `./markdown-links` used to expose six names — the plugin, its options, two
+ * types and two helpers — to make this one reachable. The plugin among them
+ * throws `docsError('internal')` unless the caller sets an undocumented vfile
+ * field, so five of the six were surface with no use, frozen by semver.
+ *
+ * This one earns its place: a resolver author has to fold `../` without
+ * escaping the content root, strip `.md`, collapse `/index`, and NFC-normalise
+ * each segment — and getting any of them wrong fails the build on a link that
+ * is spelled correctly. Reusing it is what keeps a custom resolver and the
+ * source layer agreeing about which routes exist.
+ */
+export { resolveMarkdownLink } from './plugins/remark-doc-links.js';
 
 /**
  * The parts of {@link ResolvedDocsConfig} rendering actually depends on.
@@ -88,6 +106,38 @@ export interface DocsRendererOptions {
    * is a duplication authors forget to keep in step.
    */
   titleHeading?: boolean | undefined;
+  /**
+   * Extra remark plugins, attached **after `remarkGfm` and before
+   * `remarkDocLinks`**.
+   *
+   * Which is to say: while links are still mdast `url` strings, so anything
+   * you emit is folded, contained and asserted exactly like authored markdown.
+   * A plugin emitting `[x](../other/page.md)` gets the same resolution an
+   * author would; one emitting `![i](./x.png)` throws `invalid-image` without
+   * a resolver, for the same reason.
+   *
+   * ⚠️ ATTACHED ONCE, TO A PROCESSOR SHARED BY EVERY FILE. The pipeline is
+   * built and frozen a single time, so a plugin holding state accumulates it
+   * across the whole build rather than per document. Keep them pure, or key
+   * whatever they hold on the vfile.
+   */
+  remarkPlugins?: PluggableList | undefined;
+  /**
+   * Extra rehype plugins, attached **after `rehypeAutolinkHeadings` and before
+   * the code frame and Shiki**.
+   *
+   * The position is the useful one and it is not negotiable: after slugging
+   * and autolinking, so heading ids exist; before Shiki, so a `<pre>` is still
+   * `<pre><code class="language-ts">` with the author's text inside rather
+   * than several hundred token spans. Fences excluded by `excludeLangs` are
+   * not yet disguised at this point either, so a plugin sees every code block
+   * the same way.
+   *
+   * Code-block internals are Shiki's `transformers`, not this. There is no
+   * after-Shiki slot, because the honest documentation for one would be a list
+   * of things you must not do.
+   */
+  rehypePlugins?: PluggableList | undefined;
   /** Replaces the built-in markdown-link resolution. */
   linkResolver?: LinkResolver | undefined;
   /**
@@ -322,7 +372,7 @@ function titleHeadingNode(title: string): Element {
  *
  * The tree is the payload: it crosses the RSC boundary, so every byte is
  * shipped to every reader.
- * Positions are 38% of that JSON on a typical page — line and column offsets
+ * Positions are roughly a third of that JSON — line and column offsets
  * into a markdown file the browser does not have and cannot fetch. Nothing
  * downstream reads them: link errors are reported from positions captured
  * during the mdast phase, and the TOC works off ids.
@@ -366,18 +416,38 @@ function stripPositions(tree: HastRoot): HastRoot {
  *  8. `rehypeFallbackHeadingIds` — before slugging, so an emoji-only heading
  *                             never seeds the collision counter with `''`.
  *  9. `rehypeSlug`          — assigns heading ids.
- * 10. `rehypeCaptureToc`    — reads those ids. Before autolinking, so heading
- *                             text is captured without the appended `#`.
- * 11. `rehypeAutolinkHeadings` — appends the permalink.
+ * 10. `rehypeAutolinkHeadings` — appends the permalink.
+ * 11. `rehypePlugins`      — the consumer's, after slugging and autolinking so
+ *                             heading ids exist, and before the code steps so
+ *                             a `<pre>` is still the author's text.
  * 12. `rehypeNormalizeCodeLanguage` — immediately before Shiki, which is the
  *                             last moment `class="language-JSON"` exists.
- * 13. `rehypeShikiFromHighlighter` — near-last: it replaces `<pre><code>`
+ * 13. `rehypeCodeFrame`    — the one step wide window: after 12, which folds
+ *                             the language and disguises excluded fences, and
+ *                             before Shiki, which destroys `code.data.meta`
+ *                             and with it the fence's `title="…"`.
+ * 14. `rehypeShikiFromHighlighter` — near-last: it replaces `<pre><code>`
  *                             wholesale, and anything walking code blocks
  *                             afterwards would be walking Shiki's token spans.
- * 14. `rehypeRestoreExcludedCode` — the other side of step 12's disguise.
- * 15. `rehypeFlattenRoots` — last of all, because Shiki is what splices a
- *                             `root` into `root.children` and the published
+ * 15. `rehypeRestoreExcludedCode` — the other side of step 12's disguise.
+ * 16. `rehypeFlattenRoots` — because Shiki is what splices a `root` into
+ *                             `root.children` and the published
  *                             `RenderedDoc.hast` type says that cannot happen.
+ *                             Step 13 is the first thing to put a `root`
+ *                             inside an *element* rather than at the top, so
+ *                             this recursing into element children is now
+ *                             load-bearing rather than defensive.
+ * 17. `rehypeCaptureToc`    — DEAD LAST, and that is the design rather than an
+ *                             ordering detail. The TOC is then read off the
+ *                             identical tree `extractSearchRecords` walks, so
+ *                             a consumer plugin cannot put the two out of step
+ *                             — and no validation pass or error has to exist
+ *                             to notice when it does. Measured both drifts
+ *                             before the move: a plugin deleting a heading id
+ *                             left `toc` pointing at an id no longer in the
+ *                             DOM while search silently dropped the section;
+ *                             one adding an `<h2>` produced a search record
+ *                             with no TOC entry. Both silent.
  */
 async function buildProcessor(
   options: DocsRendererOptions,
@@ -389,6 +459,7 @@ async function buildProcessor(
   return unified()
     .use(remarkParse)
     .use(remarkGfm)
+    .use(options.remarkPlugins ?? [])
     .use(remarkDocLinks, {
       basePath: options.config.basePath,
       ...(options.linkResolver === undefined
@@ -408,7 +479,6 @@ async function buildProcessor(
     .use(rehypeGithubAlerts, { build: buildCallout })
     .use(rehypeFallbackHeadingIds)
     .use(rehypeSlug)
-    .use(rehypeCaptureToc)
     .use(rehypeAutolinkHeadings, {
       behavior: 'append',
       // Zero config renders an *empty* anchor — a focusable element with no
@@ -424,11 +494,13 @@ async function buildProcessor(
         tabIndex: -1,
       },
     })
+    .use(options.rehypePlugins ?? [])
     .use(rehypeNormalizeCodeLanguage, {
       ...(options.excludeLangs === undefined
         ? {}
         : { exclude: options.excludeLangs }),
     })
+    .use(rehypeCodeFrame)
     .use(rehypeShikiFromHighlighter, highlighter as ShikiHighlighter, {
       themes,
       /*
@@ -454,6 +526,7 @@ async function buildProcessor(
     })
     .use(rehypeRestoreExcludedCode)
     .use(rehypeFlattenRoots)
+    .use(rehypeCaptureToc)
     .freeze();
 }
 

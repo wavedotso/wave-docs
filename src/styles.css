@@ -110,18 +110,67 @@
     --wave-docs-callout-caution: oklch(0.55 0.2 24);
     --wave-docs-callout-caution-bg: oklch(0.97 0.025 24);
 
+    /* The table's "there is more this way" shadow.
+     *
+     * A token, not a literal: it was a hardcoded `oklch(0 0 0 / 0.12)`, and
+     * black at 12% over a `0.19` background is invisible — so in dark mode the
+     * one affordance telling a reader a table scrolls sideways was not there at
+     * all. A shadow darkens a light page and lightens a dark one; it cannot be
+     * a single colour. */
+    --wave-docs-scroll-shadow: oklch(0 0 0 / 0.12);
+    /* Elevation, for the one element that floats over the page. Same
+     * reasoning as `scroll-shadow`: a black shadow over a dark surface is
+     * no shadow, so the dark ramp deepens it rather than reusing it. */
+    --wave-docs-shadow: oklch(0 0 0 / 0.3);
+
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
-    /* How far below the top of the scrollport an anchored heading parks —
-     * i.e. the height of the host's sticky header. Set it to 0 if there is no
-     * such header; nothing else in this sheet reads it. */
-    --wave-docs-scroll-padding: 4rem;
+    /* The shell, per `docs/adr/001-shell-contract.md`. These four plus
+     * `--wave-docs-measure` are the whole settable layout surface; the gutter
+     * and the drawer width are literals, because each appears once and an
+     * ordinary override is already the cleanest tool for them. */
+    --wave-docs-header-height: 3.5rem;
+    --wave-docs-sidebar-width: 16rem;
+    --wave-docs-toc-width: 15rem;
+    --wave-docs-shell-width: 100rem;
+
+    /* How far below the top of the scrollport an anchored heading parks.
+     *
+     * Derived, not set: it is the sticky header's height plus a rem of air, and
+     * the shell's sticky columns offset by the same token — so a host that
+     * changes the header height moves all three together. An earlier version of
+     * this comment said nothing else in the sheet read it, which stopped being
+     * true the moment the layout landed. */
+    --wave-docs-scroll-padding: calc(var(--wave-docs-header-height) + 1rem);
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
 
-    /* Focus ring, shared by every interactive thing in the package. */
-    --wave-docs-ring: 0 0 0 2px var(--wave-docs-bg),
-      0 0 0 4px var(--wave-docs-accent);
+    /* The body typeface.
+     *
+     * A default rather than an inheritance, because inheriting means a host
+     * that never set one renders documentation in the UA serif — which is what
+     * this package did until now, and which reads as broken rather than as
+     * unstyled.
+     *
+     * A host with its own typeface sets `--wave-docs-font-sans: inherit`, and
+     * the whole package follows `body` again. That is one line, and it is the
+     * documented opt-out; overriding the family on every element this sheet
+     * touches is not. */
+    --wave-docs-font-sans: ui-sans-serif, system-ui, -apple-system,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    /* Prose column width.
+     *
+     * 46rem is 736px at a 16px root, about 83 `ch` in the stack above — wider
+     * than a pure-prose measure wants, and deliberately: this column also
+     * carries code blocks, API tables and callouts, and narrowing it to suit
+     * paragraphs pushes those into horizontal scroll. Without any measure at
+     * all, a 1440px viewport produced a ~140-character line.
+     *
+     * `--wave-docs-measure: none` opts out entirely, for a host whose own
+     * shell already constrains the column. See `docs/adr/001-shell-contract.md`
+     * — this is one of the five settable layout tokens. */
+    --wave-docs-measure: 46rem;
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -141,6 +190,9 @@
       --wave-docs-accent-hover: oklch(0.8 0.12 248);
       --wave-docs-accent-fg: oklch(0.18 0.02 265);
       --wave-docs-accent-subtle: oklch(0.26 0.06 248);
+
+      --wave-docs-scroll-shadow: oklch(1 0 0 / 0.16);
+      --wave-docs-shadow: oklch(0 0 0 / 0.6);
 
       --wave-docs-code-bg: oklch(0.26 0.016 265);
       --wave-docs-code-fg: oklch(0.86 0.04 300);
@@ -182,6 +234,9 @@
     --wave-docs-accent-fg: oklch(0.18 0.02 265);
     --wave-docs-accent-subtle: oklch(0.26 0.06 248);
 
+    --wave-docs-scroll-shadow: oklch(1 0 0 / 0.16);
+    --wave-docs-shadow: oklch(0 0 0 / 0.6);
+
     --wave-docs-code-bg: oklch(0.26 0.016 265);
     --wave-docs-code-fg: oklch(0.86 0.04 300);
     --wave-docs-code-block-bg: oklch(0.17 0.015 265);
@@ -213,6 +268,25 @@
    * `src/styles.test.ts` a fact about the shipped page rather than about a
    * background nobody declared.
    */
+  /*
+   * ⚠️ `.wave-docs-layout` IS IN THIS LIST, AND IT WAS NOT. Painting only the
+   * three content containers left the grid's own gutters — 1.5rem between each
+   * column, plus the inline padding — showing whatever the browser paints the
+   * canvas, because `body` is deliberately never touched.
+   *
+   * In light mode that is white against a white token and invisible. In dark
+   * mode the UA canvas and `--wave-docs-bg` are two different darks, so the
+   * sidebar and the table of contents rendered as slightly lighter panels
+   * floating on a darker page. Caught by looking at a screenshot of the real
+   * site; every contrast ratio in `styles.test.ts` was correct throughout,
+   * because each one was a fact about a container that *was* painted.
+   *
+   * The grid is a container this package owns, so painting it breaks no rule
+   * — `body` still belongs to the host, and a host whose page is a different
+   * colour overrides the token rather than fighting a `body` rule they did not
+   * write.
+   */
+  .wave-docs-layout,
   .wave-docs-prose,
   .wave-docs-sidebar,
   .wave-docs-toc {
@@ -222,6 +296,28 @@
      * a TOC pane usually is. Headings carry the matching `scroll-margin-top`
      * for the far commoner case where the document scrolls. */
     scroll-padding-top: var(--wave-docs-scroll-padding);
+  }
+
+  /*
+   * The typeface, on every root this package owns.
+   *
+   * Separate from the grounding rule above because these six are not the same
+   * set: the dialog is portalled out of the prose and the trigger usually sits
+   * in the host's own header, so neither inherits from anything this sheet
+   * paints — while the skip link and the trigger have their own backgrounds and
+   * must not be handed the page one.
+   *
+   * Declared at all because inheriting means a host that never set a family
+   * renders its documentation in the UA serif. `--wave-docs-font-sans: inherit`
+   * gives the host's typeface back in one line.
+   */
+  .wave-docs-prose,
+  .wave-docs-sidebar,
+  .wave-docs-toc,
+  .wave-docs-skip-link,
+  .wave-docs-search-trigger,
+  .wave-docs-search-dialog {
+    font-family: var(--wave-docs-font-sans);
   }
 
   /*
@@ -279,15 +375,18 @@
    * plain `:focus` for the same reason. */
   .wave-docs-skip-link:focus {
     transform: translateY(0);
-    /* Transparent rather than `none`, here and at every other ring in this
-     * file: forced-colors mode zeroes `box-shadow` and honours `outline`, so
-     * `outline: none` would strictly remove the UA indicator and put nothing
-     * back. A transparent outline is invisible normally and repainted in a
-     * system colour there. The explicit `forced-colors` block at the end of
-     * this file is the belt to this pair of braces. */
-    outline: 2px solid transparent;
+    /* `outline`, here and at every other focus ring in this file, never
+     * `box-shadow`. Forced-colors mode drops `box-shadow` and forces
+     * `outline-color` to a system colour, so an outline is repainted for free
+     * where a shadow ring had to be restored by hand — which is what a 24-line
+     * `forced-colors` block used to do, for all eleven of them, with a test
+     * policing the list. An outline also follows the element's own
+     * `border-radius`, and shows the real surface through `outline-offset`
+     * instead of painting `--wave-docs-bg` as a spacer — which was a lie on the
+     * active search result, where the row is `accent-subtle` and the ring drew
+     * a white gap across it. */
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -312,45 +411,108 @@
      * tests at. `break-word` and not `word-break: break-all`, which would also
      * chop ordinary prose mid-syllable. */
     overflow-wrap: break-word;
-    /* No `max-width` on purpose — the docs shell owns column width. */
+    /* The comment here used to say the docs shell owns column width. No shell
+     * shipped, so in practice every consumer's first override was the same
+     * container CSS — a default the package should have carried itself. */
+    max-width: var(--wave-docs-measure);
   }
 
   .wave-docs-prose > * + * {
     margin-block-start: 1.25em;
   }
 
+  /* `pretty`, not `balance`: balance is for headings, where every line matters
+   * and there are two or three of them. On a paragraph it is capped at four
+   * lines in most engines anyway; `pretty` is the one that stops a paragraph
+   * ending on a single orphaned word. */
+  .wave-docs-prose p {
+    text-wrap: pretty;
+  }
+
+  /*
+   * A 1.2 minor third, four sizes, six unmistakable levels.
+   *
+   * The old scale stepped 1.50 / 1.20 / 1.18 / 1.06 / 1.00 — one enormous jump
+   * and then four nearly flat ones, so h3, h4 and h5 were interchangeable at a
+   * glance. h5 and h6 were the same size *and* weight as body text, differing
+   * only in colour: a coloured paragraph, not a level. They are an eyebrow now,
+   * which is a different axis (tracking and case) rather than a fifth size
+   * nobody can distinguish from the fourth.
+   *
+   * Leading falls as size rises — 1.15 through 1.5 — because one shared 1.25
+   * let the 36px h1 float apart and crowded the 16px h5. Tracking tightens the
+   * same way, for the same reason.
+   */
   .wave-docs-prose :is(h1, h2, h3, h4, h5, h6) {
-    position: relative;
     color: var(--wave-docs-fg);
     font-weight: 650;
-    line-height: 1.25;
     text-wrap: balance;
     scroll-margin-top: var(--wave-docs-scroll-padding);
   }
 
-  .wave-docs-prose > :is(h2, h3, h4, h5, h6) {
+  /* Top margin scales with the size of the break the heading signals, so a new
+   * section reads as a bigger pause than a subsection. */
+  .wave-docs-prose > h2 {
+    margin-block-start: 2.5em;
+  }
+  .wave-docs-prose > h3 {
     margin-block-start: 2em;
+  }
+  .wave-docs-prose > :is(h4, h5, h6) {
+    margin-block-start: 1.75em;
+  }
+  /* ...and a heading sits close to what it introduces. */
+  .wave-docs-prose :is(h1, h2, h3, h4, h5, h6) + * {
+    margin-block-start: 0.75em;
   }
 
   .wave-docs-prose h1 {
-    font-size: 2.25rem;
-    letter-spacing: -0.02em;
+    /* The one fluid size. A fixed 2.0736rem h1 wraps an ordinary page title to
+     * three lines at 390px; everything below it stays fixed, because fluid type
+     * against a fixed measure means characters-per-line silently drifts and the
+     * measure token stops meaning what it says. */
+    font-size: clamp(1.75rem, 1.45rem + 1.3vw, 2.0736rem);
+    line-height: 1.15;
+    letter-spacing: -0.021em;
+    font-weight: 680;
   }
   .wave-docs-prose h2 {
-    font-size: 1.5rem;
-    letter-spacing: -0.015em;
-    padding-block-end: 0.3em;
-    border-block-end: 1px solid var(--wave-docs-border);
+    font-size: 1.44rem;
+    line-height: 1.25;
+    letter-spacing: -0.014em;
+    font-weight: 660;
   }
   .wave-docs-prose h3 {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
+    line-height: 1.35;
+    letter-spacing: -0.008em;
   }
   .wave-docs-prose h4 {
-    font-size: 1.0625rem;
-  }
-  .wave-docs-prose :is(h5, h6) {
     font-size: 1rem;
+    line-height: 1.45;
+  }
+  /* An eyebrow, not a fifth size: at this depth the distinction has to come
+   * from case and tracking, because two more steps of a 1.2 scale would land
+   * inside a rounding error of the body text. */
+  .wave-docs-prose :is(h5, h6) {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
     color: var(--wave-docs-fg-muted);
+  }
+
+  /*
+   * No rule under `h2`. A full-width hairline under every section heading is
+   * the single loudest "rendered GitHub README" signal a page can carry, and
+   * with no measure it ran the entire viewport. A long reference page that
+   * genuinely wants them is one attribute away, and shipping the opt-out in the
+   * same breath as the deletion is what stops someone forking the stylesheet
+   * to get it back:
+   */
+  .wave-docs-prose[data-rules] > h2 {
+    padding-block-end: 0.3em;
+    border-block-end: 1px solid var(--wave-docs-border);
   }
 
   .wave-docs-prose a {
@@ -376,9 +538,8 @@
   .wave-docs-sidebar :is(a, button):focus-visible,
   .wave-docs-toc a:focus-visible,
   .wave-docs-youtube__facade:focus-visible {
-    outline: 2px solid transparent;
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   .wave-docs-prose :is(ul, ol) {
@@ -414,7 +575,10 @@
     padding-inline-start: 1rem;
     border-inline-start: 3px solid var(--wave-docs-border-strong);
     color: var(--wave-docs-fg-muted);
-    font-style: italic;
+    /* Not italic. The rule and the muted colour already say "quotation"; a
+     * long italic passage is measurably slower to read, and markdown authors
+     * use blockquotes for asides and notes, not only for speech. */
+    font-style: normal;
   }
 
   .wave-docs-prose hr {
@@ -466,19 +630,94 @@
     overflow-x: auto;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
+    scrollbar-width: thin;
+    scrollbar-color: var(--wave-docs-border-strong) transparent;
+    /*
+     * ⚠️ NOT DECORATIVE, AND NOT DELETABLE AS SUCH.
+     *
+     * This is the whole scroll affordance, and it is four gradients because
+     * that is what makes it stateless. The two `local` covers are painted in
+     * the page colour and scroll *with* the content, so each one sits over its
+     * shadow only while that edge is at rest; the two `scroll` shadows are
+     * pinned to the box. The result is a shadow that appears on precisely the
+     * side that has content off-screen, with no listener, no state and no
+     * hydration — on a table the reader may well meet before JS arrives.
+     */
+    background:
+      linear-gradient(to right, var(--wave-docs-bg) 30%, transparent) left /
+        2rem 100% no-repeat local,
+      linear-gradient(to left, var(--wave-docs-bg) 30%, transparent) right /
+        2rem 100% no-repeat local,
+      radial-gradient(
+          farthest-side at 0 50%,
+          var(--wave-docs-scroll-shadow),
+          transparent
+        )
+        left / 0.75rem 100% no-repeat scroll,
+      radial-gradient(
+          farthest-side at 100% 50%,
+          var(--wave-docs-scroll-shadow),
+          transparent
+        )
+        right / 0.75rem 100% no-repeat scroll;
   }
 
   .wave-docs-table-scroll:focus-visible {
-    outline: 2px solid transparent;
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   .wave-docs-table {
     width: 100%;
+    /*
+     * A FLOOR, NOT A SIZING MODE — and `width: 100%` is not one.
+     *
+     * Auto table layout floors at min-content, so `width: 100%` inside an
+     * `overflow-x: auto` container does not stop a table from being squeezed;
+     * it only stops it from being wider than the container. What actually
+     * collapses the columns is `.wave-docs-prose a { overflow-wrap: anywhere }`
+     * above: per CSS Text 3, `anywhere` affects *intrinsic* sizing and
+     * `break-word` does not, so a cell holding a link — i.e. every column of a
+     * real API table — reports a min-content width of about one character. The
+     * table then fits 320px, does not overflow, and renders rows five lines
+     * tall with one word per line.
+     *
+     * `width: max-content` is the obvious fix and is worse: it forbids a
+     * description cell from wrapping at all, so a table with one sentence in it
+     * is over 1600px wide at every viewport and you scroll sideways to read
+     * one sentence.
+     *
+     * A floor solves both. Below 40rem of available width the table stops
+     * shrinking and the scroll container takes over; above it, `width: 100%`
+     * takes over and the description column wraps as it should.
+     *
+     * `min-width: 40rem`, NOT `min(100%, 40rem)` — that spelling is a no-op at
+     * exactly the widths it is meant to govern, because the `100%` resolves
+     * against the box being floored: in a 318px scroll container it computes to
+     * `min(318px, 640px)` = 318px, i.e. the container's own width, so nothing
+     * ever overflows and the table squeezes exactly as before. The browser tier
+     * caught it at 318 vs 318.
+     *
+     * A consumer with an eight-column monster overrides `min-width` from their
+     * own unlayered rule and wins by the cascade contract this file already
+     * guarantees — so no token for it.
+     */
+    min-width: 40rem;
     border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
     font-size: 0.9375rem;
     line-height: 1.6;
+  }
+
+  /* `box-shadow`, not `border-block-end`: with `border-collapse: collapse` the
+   * border belongs to the table, not the cell, so it scrolls away from a
+   * sticky header instead of staying under it. */
+  .wave-docs-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--wave-docs-bg-subtle);
+    box-shadow: inset 0 -1px 0 var(--wave-docs-border);
   }
 
   .wave-docs-table :is(th, td) {
@@ -549,6 +788,210 @@
  * ------------------------------------------------------------------------ */
 
 @layer components {
+  /* -------------------------------------------------------------------------
+   * Code frame
+   *
+   * The `<figure>` `rehypeCodeFrame` wraps every highlighted fence in: an
+   * optional title bar, a copy button, and the `<pre>` itself.
+   * ---------------------------------------------------------------------- */
+
+  .wave-docs-code {
+    position: relative;
+    /* The `<pre>` inside carries the border and background; the figure is only
+     * a positioning context, and a default `<figure>` margin would indent the
+     * whole block by 40px. */
+    margin: 0;
+  }
+
+  .wave-docs-code__title {
+    display: flex;
+    align-items: center;
+    /* Room for the button, which is absolutely positioned over this row. */
+    padding: 0.5rem 3rem 0.5rem 1.125rem;
+    border: 1px solid var(--wave-docs-border);
+    border-block-end: 0;
+    border-start-start-radius: var(--wave-docs-radius);
+    border-start-end-radius: var(--wave-docs-radius);
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg-muted);
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.8125rem;
+  }
+
+  /* Square off the top of a `<pre>` that sits under a title bar.
+   *
+   * `.wave-docs-prose` first, even though `.wave-docs-code` is our class and
+   * only ever appears inside it: `styles.test.ts` requires every `.shiki` rule
+   * to name the prose scope, so the package can never style a code block it
+   * did not render. One form for that invariant is worth the extra selector. */
+  /*
+   * ⚠️ THE `<pre>`'s USER-AGENT MARGIN, WHICH UNDID THE FRAME.
+   *
+   * A `<pre>` defaults to `margin-block: 1em`, and at this block's 0.875rem
+   * that is 14px — measured in Chromium on the real site, not reasoned about.
+   * So the title bar dropped its bottom border and squared its bottom corners
+   * to join the code below it, and then the browser pushed the two 14px apart:
+   * a caption floating over a gap, which is the one arrangement the frame was
+   * designed not to be.
+   *
+   * It mis-seated the copy button too. The button is positioned against the
+   * `<figure>`, so on a fence with no title the margin slid the code down out
+   * from under it.
+   *
+   * Invisible to every test here before the site existed: jsdom has no layout,
+   * and `styles.test.ts` reads rules as text. It took a screenshot of a real
+   * page to see it.
+   */
+  .wave-docs-prose .wave-docs-code .shiki {
+    margin: 0;
+  }
+
+  .wave-docs-prose .wave-docs-code:has(.wave-docs-code__title) .shiki {
+    border-start-start-radius: 0;
+    border-start-end-radius: 0;
+  }
+
+  .wave-docs-code__copy {
+    position: absolute;
+    top: 0.5rem;
+    inset-inline-end: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius-sm);
+    background-color: var(--wave-docs-bg);
+    color: var(--wave-docs-fg-muted);
+    font-size: 0.875rem;
+    cursor: pointer;
+    /*
+     * ⚠️ HIDDEN UNTIL THE RUNTIME SAYS OTHERWISE, AND THIS IS STRUCTURAL.
+     *
+     * The button is in the HTML whether or not any JavaScript runs — a reader
+     * with scripts off, a `renderToStaticMarkup` consumer, anyone rendering
+     * the hast by hand. `visibility: hidden` also takes it out of the tab
+     * order, which `opacity: 0` would not: without it a keyboard reader meets
+     * a control that is invisible, focusable, and does nothing.
+     */
+    visibility: hidden;
+    opacity: 0;
+    transition: opacity 120ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wave-docs-code__copy {
+      transition: none;
+    }
+  }
+
+  html[data-wave-docs-code-ready] .wave-docs-code__copy {
+    visibility: visible;
+  }
+
+  .wave-docs-code:hover .wave-docs-code__copy,
+  .wave-docs-code:focus-within .wave-docs-code__copy,
+  /* A title bar already reserves the space, so there is nothing to reveal. */
+  .wave-docs-code:has(.wave-docs-code__title) .wave-docs-code__copy {
+    opacity: 1;
+  }
+
+  /*
+   * A control that only appears on hover does not exist on a phone. This is
+   * the whole of the mobile story for copy, and it is one query.
+   */
+  @media (hover: none) {
+    .wave-docs-code__copy {
+      opacity: 1;
+    }
+  }
+
+  .wave-docs-code__copy:hover {
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /* The success state, swapped by CSS rather than by React: no component owns
+   * a button, so there is no state to re-render and nothing to hydrate. */
+  .wave-docs-code__copy[data-copied='true'] {
+    border-color: var(--wave-docs-callout-tip);
+    color: var(--wave-docs-callout-tip);
+  }
+
+  .wave-docs-code__copy[data-copied='true'] > * {
+    visibility: hidden;
+  }
+
+  .wave-docs-code__copy[data-copied='true']::after {
+    content: '\2713';
+    position: absolute;
+  }
+
+  /*
+   * ⚠️ AND THE FAILURE STATE, WHICH HAD NO RULE AT ALL. The runtime has always
+   * written `data-copied="false"` and announced "Copy failed. Select the code
+   * and press Control or Command + C." — to a live region, so a screen-reader
+   * user was told and a sighted user saw a button that simply did nothing.
+   *
+   * The most common way to land here is not exotic: `next dev` reached from a
+   * phone over `http://192.168.x.x:3000` is not a secure context, so
+   * `navigator.clipboard` is undefined and no amount of pressing helps. A
+   * silent no-op is the worst possible answer to that.
+   */
+  .wave-docs-code__copy[data-copied='false'] {
+    border-color: var(--wave-docs-callout-caution);
+    color: var(--wave-docs-callout-caution);
+  }
+
+  .wave-docs-code__copy[data-copied='false'] > * {
+    visibility: hidden;
+  }
+
+  .wave-docs-code__copy[data-copied='false']::after {
+    /* A cross, not a warning triangle: it pairs with the tick above at the
+     * same weight, and the triangle reads as a page-level alert. */
+    content: '\00d7';
+    position: absolute;
+  }
+
+  /*
+   * The live region. Visually hidden rather than `display: none`, which most
+   * screen readers skip entirely — an announcement nobody hears is not one.
+   */
+  .wave-docs-code__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /*
+   * A fence whose language is in `excludeLangs` never reaches Shiki, so it has
+   * none of the rules below: no background, no border, no padding, no radius,
+   * no monospace sizing and no horizontal scroll. It rendered as a wall of UA
+   * default text bleeding out of the reading column — `excludeLangs` shipped
+   * as half a feature, and this is the other half. Everything a consumer then
+   * renders in its place (a Mermaid diagram, say) overrides it from their own
+   * unlayered CSS, which beats every layer here.
+   */
+  .wave-docs-prose pre:not(.shiki) {
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    background-color: var(--wave-docs-code-block-bg);
+    overflow-x: auto;
+    font-family: var(--wave-docs-font-mono);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    tab-size: 2;
+  }
+
   .wave-docs-prose .shiki {
     padding: 1rem 1.125rem;
     border: 1px solid var(--wave-docs-border);
@@ -572,9 +1015,8 @@
    * wide block — which makes it the one focusable element in this package that
    * had no focus style. */
   .wave-docs-prose .shiki:focus-visible {
-    outline: 2px solid transparent;
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   .wave-docs-prose .shiki code {
@@ -678,6 +1120,87 @@
     border: 0;
     background: none;
     cursor: pointer;
+    /* The UA disclosure triangle, which would sit on top of the thumbnail. */
+    list-style: none;
+  }
+
+  /* Safari still needs the pseudo-element form; it ignores `list-style` here. */
+  .wave-docs-youtube__facade::-webkit-details-marker {
+    display: none;
+  }
+
+  /*
+   * ⚠️ HIDDEN, NOT REMOVED, AND FOCUSABLE EITHER WAY. `display: none` here
+   * would destroy the element the reader just activated, dropping focus to the
+   * top of the document — which is the bug the previous, client-side version
+   * needed a `useEffect` to paper over. Visually hidden keeps focus where the
+   * reader put it and leaves a way to collapse the player again.
+   */
+  .wave-docs-youtube[open] .wave-docs-youtube__facade {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /*
+   * ⚠️ AND VISIBLE AGAIN THE MOMENT IT HAS FOCUS. The rule above ran
+   * unconditionally, so a keyboard reader who pressed Enter to start the video
+   * was left holding focus on a 1×1 clipped element: the focus indicator
+   * disappeared from the page entirely (WCAG 2.4.7), with no way to see that
+   * the next Enter would collapse the player again. `youtube.browser.test.tsx`
+   * asserts focus deliberately *stays* here, which made the hiding rule a
+   * guaranteed failure rather than a possible one.
+   *
+   * Same shape as the skip link: off-screen until focused, a real control when
+   * focused. It overlays the player rather than displacing it, because the
+   * `<details>` has a fixed aspect ratio and reflowing the video under the
+   * reader's cursor to reveal a button is its own defect.
+   *
+   * `:focus-visible` here, where the skip link 700 lines up deliberately uses
+   * `:focus` — the divergence is the point. Clicking the thumbnail focuses this
+   * summary as a side effect of opening the player, and a mouse user does not
+   * want a "Hide video" control appearing over the video they just started.
+   * The reader who needs it is the one who pressed Enter, which is exactly what
+   * `:focus-visible` matches. Unlike the skip link, this element is also inert
+   * to a pointer while hidden — it is 1px, under nothing — so there is no
+   * unreachable-focused-control case to guard against.
+   */
+  .wave-docs-youtube[open] .wave-docs-youtube__facade:focus-visible {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 0.5rem;
+    inset-inline-start: 0.5rem;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0.5rem 0.75rem;
+    overflow: visible;
+    clip-path: none;
+    border-radius: var(--wave-docs-radius-sm);
+    outline: 2px solid var(--wave-docs-accent);
+    /* Inside, not outside: this control is inset 0.5rem over a black player,
+     * and an offset ring would be drawn half onto the video and half off the
+     * rounded corner of the frame. */
+    outline-offset: -2px;
+    background: var(--wave-docs-bg);
+    color: var(--wave-docs-fg);
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  /*
+   * The label follows the action. A `<summary>` that reads "Play video" while
+   * activating it *stops* the video is a control that lies about what it does,
+   * and the state is in the DOM already — no script needed to keep the two in
+   * step.
+   */
+  .wave-docs-youtube[open] .wave-docs-youtube__label-play,
+  .wave-docs-youtube:not([open]) .wave-docs-youtube__label-hide {
+    display: none;
   }
 
   .wave-docs-youtube__thumbnail {
@@ -739,6 +1262,22 @@
 
   /* Nested levels get a guide rail instead of raw indentation, so a deep tree
    * stays readable at 240px wide. */
+  /*
+   * `__item` and `__group-title` are emitted by `sidebar.tsx` and had no rules
+   * at all — markup with a public class name and no definition, which is the
+   * worst of the three options: a consumer targeting it gets no baseline to
+   * override, and a maintainer cannot tell whether it is a hook or a leftover.
+   * They are hooks: the drawer styles items at a different density, and a group
+   * title is the one place a sidebar needs a label that is not a link.
+   */
+  .wave-docs-sidebar__item {
+    margin-block: 0.125rem;
+  }
+
+  .wave-docs-sidebar__group-title {
+    font-weight: 600;
+  }
+
   .wave-docs-sidebar__list:not([data-depth='0']) {
     margin-inline-start: 0.5rem;
     padding-inline-start: 0.5rem;
@@ -865,17 +1404,36 @@
     text-decoration: none;
   }
 
-  /* Indent by heading depth rather than by nesting, so an h4 under an h2 with
-   * no h3 between them still lines up. */
+  /* Indent by heading depth rather than by nesting, so the rule survives a
+   * document that skips a level. Only depth 3 exists — `rehypeCaptureToc`
+   * captures h2 and h3 and nothing deeper, so the rules for 4, 5 and 6 that
+   * used to sit here styled entries that can no longer be produced. */
   .wave-docs-toc__link[data-depth='3'] {
     padding-inline-start: 1.5rem;
   }
-  .wave-docs-toc__link[data-depth='4'] {
-    padding-inline-start: 2.25rem;
+
+  /* The back-to-top link, styled as a peer of the entries rather than as a
+   * floating control — it is the last stop in the rail's reading order. */
+  .wave-docs-toc__top {
+    display: inline-block;
+    margin-block-start: 0.75rem;
+    padding-inline-start: 0.75rem;
+    border-inline-start: 2px solid transparent;
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.8125rem;
+    text-decoration: none;
   }
-  .wave-docs-toc__link[data-depth='5'],
-  .wave-docs-toc__link[data-depth='6'] {
-    padding-inline-start: 3rem;
+
+  .wave-docs-toc__top:hover {
+    color: var(--wave-docs-fg);
+  }
+
+  .wave-docs-sidebar__external {
+    /* Baseline-ish against the label, and never a flex item that grows. */
+    margin-inline-start: 0.25rem;
+    flex: none;
+    vertical-align: -0.05em;
+    color: var(--wave-docs-fg-subtle);
   }
 
   .wave-docs-toc__link:hover {
@@ -892,6 +1450,334 @@
   @media (prefers-reduced-motion: no-preference) {
     .wave-docs-toc__link {
       transition: color 120ms ease-out, border-color 120ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Layout
+ *
+ * The shell `docs.Layout` renders. Every class here is fixed by
+ * `docs/adr/001-shell-contract.md` and is public API from 0.3.0.
+ *
+ * These are the first width-based media queries in this file. Before them there
+ * were none at all — every `@media` was `prefers-color-scheme`,
+ * `prefers-reduced-motion` or `forced-colors` — so there was no mobile layout,
+ * and no CSS for a layout component to use.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  /*
+   * Mobile first, and single-column by construction: the sidebar and the TOC
+   * are not laid out at all below 64rem, so nothing reserves a track for them.
+   */
+  .wave-docs-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0 1.5rem;
+    /* 1rem on a phone, not 1.5rem: 48px of side padding is 15% of a 320px
+     * screen, and it took the reading column to 272px — under the 280px this
+     * package treats as the floor for a usable measure. Measured. */
+    padding-inline: 1rem;
+    /* Without this, `max-width` at the 100rem cap applies to the *content* box
+     * and the shell renders 48px wider than the token says — measured 1648
+     * against a declared 1600. */
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 30rem) {
+    .wave-docs-layout {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  /*
+   * ⚠️ `contents`, NOT `none`, AND THAT IS NOT A STYLE PREFERENCE.
+   *
+   * The drawer `<dialog>` lives inside this wrapper, so that one nav DOM can
+   * serve both breakpoints. An element inside a `display: none` subtree
+   * generates no boxes at all — including a dialog promoted to the top layer —
+   * so `showModal()` would open a drawer that paints nothing, on every
+   * viewport narrower than 64rem. Which is to say: on the phones this drawer
+   * exists for.
+   *
+   * `contents` makes the wrapper generate no box of its own, so it reserves no
+   * grid track, while the closed dialog inside stays hidden by the UA's own
+   * `dialog:not([open]) { display: none }`.
+   */
+  .wave-docs-layout__sidebar {
+    display: contents;
+  }
+
+  .wave-docs-layout__toc {
+    display: none;
+  }
+
+  /*
+   * ⚠️ `min-width: 0`, AND `minmax(0, 1fr)` ON EVERY CONTENT TRACK BELOW.
+   *
+   * `1fr` is shorthand for `minmax(auto, 1fr)`, and `auto` floors at the
+   * content's min-content width — so a wide table pushes the track past the
+   * viewport and takes the whole document into horizontal scroll. Measured with
+   * both removed: 1048px of document inside a 1024px viewport.
+   *
+   * MEASURED, AND WORTH KNOWING BEFORE YOU DELETE ONE: they are redundant with
+   * each other, not jointly required. Removing `minmax(0, 1fr)` alone passes,
+   * and removing `min-width: 0` alone passes; only removing both reproduces the
+   * overflow. They are kept as a pair because they fail in opposite directions
+   * — the track constraint protects a child that does not carry `min-width`,
+   * and `min-width: 0` protects a track someone respells — and because the one
+   * that is left looks arbitrary without the other beside it.
+   *
+   * No unit test can see any of this: the bug needs a wide child and a real
+   * layout engine, and jsdom reports every width as 0.
+   * `src/styles.browser.test.ts` is what stops a "simplification" here from
+   * reintroducing it silently.
+   */
+  .wave-docs-layout__main {
+    min-width: 0;
+    padding-block: 2rem 4rem;
+  }
+
+  /* 16rem sidebar + 46rem measure + two 1.5rem gutters = 65rem, so the sidebar
+   * arrives when there is room for it and not one pixel sooner. A 60rem
+   * breakpoint introduces it exactly where it starts eating the measure. */
+  @media (min-width: 64rem) {
+    .wave-docs-layout {
+      grid-template-columns: var(--wave-docs-sidebar-width) minmax(0, 1fr);
+    }
+
+    /*
+     * ⚠️ THE MOST DELETABLE-LOOKING LINE IN THIS FILE. IT IS NOT DELETABLE.
+     *
+     * `display: contents` makes the dialog box vanish from layout **and from
+     * the accessibility tree**, so the `<DocsSidebar>` inside it becomes the
+     * sticky column directly. That is what lets one nav serve both breakpoints:
+     * one landmark, one copy of the links in the payload, nothing to keep in
+     * step. Remove it and the desktop sidebar disappears entirely — or, if
+     * someone "fixes" that by rendering a second sidebar outside the dialog,
+     * every page ships its nav twice and a screen-reader user gets two
+     * identical navigation landmarks.
+     *
+     * `:not(:modal)` so the drawer still opens as a real modal at any width;
+     * it is the same element, and a 64rem viewport with a 200% zoom is a
+     * narrow one.
+     */
+    dialog.wave-docs-layout__drawer:not(:modal) {
+      display: contents;
+    }
+
+    .wave-docs-layout__sidebar {
+      display: block;
+      position: sticky;
+      top: var(--wave-docs-header-height);
+      /* `dvh`, not `vh`: with a mobile URL bar showing, `vh` is taller than the
+       * visible viewport, so the last few nav items sit under the chrome and
+       * cannot be reached. */
+      max-height: calc(100dvh - var(--wave-docs-header-height));
+      overflow-y: auto;
+      /* Without this, reaching the end of the nav keeps scrolling — the article
+       * jumps under the reader's cursor while they are looking at the sidebar. */
+      overscroll-behavior: contain;
+      /* Reserves the scrollbar's width whether or not it is showing, so the
+       * column does not jump when the nav grows past a screen. Costs ~15px on
+       * platforms with classic scrollbars; a jumping column costs more. */
+      scrollbar-gutter: stable;
+      padding-block: 2rem;
+    }
+  }
+
+  @media (min-width: 80rem) {
+    /*
+     * Inside the query on purpose. As a top-level rule this `:has()` reserves
+     * `--wave-docs-toc-width` of nothing at every width — measured at 390px it
+     * squeezed the article to 94px — because the TOC element is in the DOM at
+     * all sizes and only its `display` changes.
+     */
+    .wave-docs-layout:has(.wave-docs-layout__toc) {
+      grid-template-columns:
+        var(--wave-docs-sidebar-width)
+        minmax(0, 1fr)
+        var(--wave-docs-toc-width);
+    }
+
+    .wave-docs-layout__toc {
+      display: block;
+      position: sticky;
+      /* `align-self: start`, or the sticky box stretches to the row height and
+       * has nothing left to travel within. */
+      align-self: start;
+      top: var(--wave-docs-header-height);
+      max-height: calc(100dvh - var(--wave-docs-header-height));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-block: 2rem;
+    }
+  }
+
+  /* One declaration, for the only screenshot anyone takes on a 2560px display:
+   * uncapped, the sidebar pins to the far-left bezel and the TOC to the
+   * far-right, about 1500px apart, with the text floating between them. */
+  @media (min-width: 100rem) {
+    .wave-docs-layout {
+      max-width: var(--wave-docs-shell-width);
+      margin-inline: auto;
+    }
+  }
+
+  /* -------------------------------------------------------------------------
+   * Header
+   * ---------------------------------------------------------------------- */
+
+  .wave-docs-layout__header {
+    position: sticky;
+    top: 0;
+    /* Above the sticky sidebar and TOC, which establish their own stacking
+     * contexts; below the search dialog, which portals to `<body>`. */
+    z-index: 20;
+    height: var(--wave-docs-header-height);
+    background-color: var(--wave-docs-bg);
+    border-block-end: 1px solid var(--wave-docs-border);
+  }
+
+  .wave-docs-layout__header-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    height: 100%;
+    /* Matches the grid's own cap and gutters, so the brand lines up with the
+     * sidebar and the actions with the TOC rather than floating past both. */
+    max-width: var(--wave-docs-shell-width);
+    margin-inline: auto;
+    padding-inline: 1rem;
+    box-sizing: border-box;
+  }
+
+  @media (min-width: 30rem) {
+    .wave-docs-layout__header-inner {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  .wave-docs-layout__title {
+    font-weight: 600;
+    /* The brand is not a link target here and must not swallow the row: a long
+     * product name would otherwise push search off the right edge. */
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Pushes search and actions to the end, and stays correct when `title` is
+   * absent — which is why it is on the search wrapper rather than a margin on
+   * the title that would not exist. */
+  .wave-docs-layout__search {
+    margin-inline-start: auto;
+  }
+
+  .wave-docs-layout__actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    /* When `search={false}` there is no auto margin ahead of this, so it
+     * carries its own. Both set, only one ever has room to apply. */
+    margin-inline-start: auto;
+  }
+
+  .wave-docs-layout__nav-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* 44px: the smallest target iOS and WCAG 2.5.8 both accept, and this is
+     * the only control on a phone that reaches the rest of the site. */
+    width: 2.75rem;
+    height: 2.75rem;
+    /* Optical alignment: the icon's own padding already insets it from the
+     * screen edge, so the button hangs left of the text below it without this. */
+    margin-inline-start: -0.75rem;
+    border: 0;
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-muted);
+    cursor: pointer;
+  }
+
+  .wave-docs-layout__nav-trigger:hover {
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /* -------------------------------------------------------------------------
+   * Drawer
+   * ---------------------------------------------------------------------- */
+
+  dialog.wave-docs-layout__drawer {
+    /* A full-height panel against the inline start edge, not a centred box.
+     * `margin` rather than `inset`, because a dialog is centred by `margin:
+     * auto` in the UA sheet and only a margin overrides that. */
+    margin: 0 auto 0 0;
+    box-sizing: border-box;
+    width: min(20rem, 85vw);
+    max-width: none;
+    height: 100dvh;
+    max-height: none;
+    padding: 1.5rem 1rem;
+    border: 0;
+    border-inline-end: 1px solid var(--wave-docs-border);
+    background-color: var(--wave-docs-bg);
+    color: var(--wave-docs-fg);
+    overflow-y: auto;
+    /* Reaching the end of the nav must not start scrolling the page behind. */
+    overscroll-behavior: contain;
+  }
+
+  dialog.wave-docs-layout__drawer::backdrop {
+    background-color: oklch(0.2 0.02 262 / 0.55);
+  }
+
+  .wave-docs-layout__drawer-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin-block-end: 0.5rem;
+    margin-inline-start: auto;
+    border: 0;
+    border-radius: var(--wave-docs-radius-sm);
+    background: none;
+    color: var(--wave-docs-fg-muted);
+    cursor: pointer;
+  }
+
+  .wave-docs-layout__drawer-close:hover {
+    background-color: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg);
+  }
+
+  /*
+   * ⚠️ SCOPED TO OUR DRAWER, DELIBERATELY. `html:has(dialog:modal)` would lock
+   * the page for a consumer's own modal too — and unlock it again the moment
+   * ours closed underneath theirs.
+   */
+  html:has(dialog.wave-docs-layout__drawer:modal) {
+    overflow: hidden;
+  }
+
+  /*
+   * Drawer furniture, hidden once the drawer is a column.
+   *
+   * ⚠️ AFTER the rules it overrides, not up with the other 64rem block. Same
+   * specificity means source order decides, and declared earlier this lost to
+   * the `display: inline-flex` above at every width — leaving a menu button
+   * and a close button sitting in a desktop layout that has nothing to open or
+   * close. Measured at 1280px: `flex`, not `none`.
+   */
+  @media (min-width: 64rem) {
+    .wave-docs-layout__nav-trigger,
+    .wave-docs-layout__drawer-close {
+      display: none;
     }
   }
 }
@@ -929,11 +1815,9 @@
   }
 
   .wave-docs-search-trigger:focus-visible,
-  .wave-docs-search-close:focus-visible,
-  .wave-docs-search-result-link:focus-visible {
-    outline: 2px solid transparent;
+  .wave-docs-search-close:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
-    box-shadow: var(--wave-docs-ring);
   }
 
   /* The label is the flexible half of the trigger; the shortcut hint beside it
@@ -962,7 +1846,10 @@
     justify-content: center;
     /* Not centred: a dialog that grows downward from a fixed top does not
      * shift under the reader as results stream in. */
-    padding: 10vh 1rem 1rem;
+    /* `dvh`, not `vh`: on a phone `vh` is the viewport with the URL bar
+     * *retracted*, so a dialog sized against it is taller than what the reader
+     * can actually see and its bottom edge sits under the browser chrome. */
+    padding: 10dvh 1rem 1rem;
     background: oklch(0.2 0.02 265 / 0.5);
     backdrop-filter: blur(2px);
   }
@@ -972,12 +1859,12 @@
     flex-direction: column;
     width: 100%;
     max-width: 34rem;
-    max-height: min(32rem, 80vh);
+    max-height: min(32rem, 80dvh);
     overflow: hidden;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
     background: var(--wave-docs-bg);
-    box-shadow: 0 24px 48px -12px oklch(0 0 0 / 0.3);
+    box-shadow: 0 24px 48px -12px var(--wave-docs-shadow);
   }
 
   .wave-docs-search-input-row {
@@ -1015,9 +1902,9 @@
     font-size: 1rem;
   }
 
-  /* Not `outline: 2px solid transparent` like every other control here: the
-   * row above already draws a real outline, and a second one on the input
-   * would double up in forced-colors mode. */
+  /* The one `outline: none` in the file, and it is not a missing indicator:
+   * the row around the input draws a real outline on `:has(:focus-visible)`,
+   * and a second one on the input itself would double up. */
   .wave-docs-search-input:focus {
     outline: none;
   }
@@ -1134,46 +2021,5 @@
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-}
-
-/* ---------------------------------------------------------------------------
- * Forced colours
- *
- * Windows High Contrast and its kin drop `box-shadow` entirely and replace
- * every colour with one from the user's palette. Every focus indicator in this
- * package is a `box-shadow` ring, so without this block the package would
- * *remove* the UA outline from every focusable surface it styles and draw
- * nothing in its place — a strictly worse page than shipping no CSS at all.
- *
- * `Highlight` rather than a token: user-chosen system colours are the whole
- * point of the mode, and `--wave-docs-accent` is forced to something else
- * anyway. This list must stay in step with every `:focus-visible` rule above;
- * `src/styles.test.ts` fails if one appears without its entry here.
- * ------------------------------------------------------------------------ */
-
-@layer components {
-  @media (forced-colors: active) {
-    .wave-docs-skip-link:focus,
-    .wave-docs-prose a:focus-visible,
-    .wave-docs-sidebar :is(a, button):focus-visible,
-    .wave-docs-toc a:focus-visible,
-    .wave-docs-youtube__facade:focus-visible,
-    .wave-docs-table-scroll:focus-visible,
-    .wave-docs-prose .shiki:focus-visible,
-    .wave-docs-search-trigger:focus-visible,
-    .wave-docs-search-close:focus-visible,
-    .wave-docs-search-result-link:focus-visible {
-      outline: 3px solid Highlight;
-      outline-offset: 2px;
-    }
-
-    /* Inward, like their normal-mode rules: one is clipped by the dialog, the
-     * other by the scrolling results list. */
-    .wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible),
-    .wave-docs-search-result-active {
-      outline: 2px solid Highlight;
-      outline-offset: -2px;
-    }
   }
 }
