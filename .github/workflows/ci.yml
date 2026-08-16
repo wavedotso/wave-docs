@@ -121,6 +121,17 @@ jobs:
       - name: Check runtime requirements
         run: pnpm exec vitest run --project node src/entry-runtime.test.ts
 
+      # Must follow the build, and DID NOT. `manifest.test.ts` carries three
+      # `it.skipIf(!existsSync(dist))` blocks — the `'use client'` directive
+      # surviving the build, every subpath resolving to a file that exists, and
+      # every runtime export being documented — and `pnpm test` above runs on a
+      # fresh checkout where `dist/` does not exist yet. All three skipped in
+      # every CI run this workflow has ever had, silently, so the guard against
+      # a bundler upgrade dropping a directive was never once executed here.
+      # Re-run after the build, where they can actually see the output.
+      - name: Check the built manifest
+        run: pnpm exec vitest run --project node src/manifest.test.ts
+
       # Must follow the build: it bundles each `'use client'` entry from
       # dist/ and renders a corpus to compare payload shapes. Every number the
       # README quotes about size or speed has a budget entry behind it, so a

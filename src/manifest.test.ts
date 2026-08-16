@@ -332,3 +332,75 @@ describe('exports map', () => {
     },
   );
 });
+
+/**
+ * "Nothing undocumented is exported."
+ *
+ * ⚠️ THE CHANGESET CLAIMED THIS WAS ENFORCED BY A TEST BEFORE THIS TEST
+ * EXISTED, and the README states it as a guarantee ("a name that is not in the
+ * table above is not importable"). It was neither: five runtime names —
+ * `DOCS_ERROR_PREFIX`, `DEFAULT_DOCS_THEMES`, `CALLOUT_TYPES`,
+ * `defaultMarkdownComponents`, `DOCS_CONTENT_ID` — shipped as public API
+ * documented in no file, so a consumer who imported one was depending on
+ * something this package did not consider public and would rename without a
+ * major.
+ *
+ * Two halves, because a guarantee about "importable names" needs both:
+ *
+ * - every **subpath** in `exports` appears in the README;
+ * - every **runtime name** each subpath exports appears in the README.
+ *
+ * The second half reads `dist/`, which is what makes it real — a name is public
+ * when the built module exports it, not when the source says so. It is
+ * therefore build-order dependent, and CI runs it in the post-build step rather
+ * than the ordinary one.
+ */
+describe('the documented surface', () => {
+  const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const subpaths = Object.keys(section(manifest, 'exports')).filter(
+    // `./package.json` is a resolver convention, and `./styles.css` is a file
+    // you import for its side effect — neither is a name anyone calls.
+    (key) => key !== '.' && key !== './package.json' && key !== './styles.css',
+  );
+
+  it('names every subpath somewhere in the README', () => {
+    expect(subpaths.length).toBeGreaterThan(10);
+
+    // Either spelling: the Entry points table writes `@waveso/docs/next`, the
+    // Components table writes `react/skip-link` beside the component's name.
+    const undocumented = subpaths.filter(
+      (key) => !readme.includes(key.slice('./'.length)),
+    );
+
+    expect(undocumented).toEqual([]);
+  });
+
+  it.skipIf(!existsSync(path.join(ROOT, 'dist')))(
+    'names every runtime export somewhere in the README',
+    async () => {
+      const undocumented: string[] = [];
+
+      for (const key of subpaths) {
+        const target = section(manifest, 'exports')[key];
+        const file = isRecord(target) ? target.default : target;
+        if (typeof file !== 'string' || !file.endsWith('.js')) continue;
+
+        const module: Record<string, unknown> = await import(
+          path.join(ROOT, file)
+        );
+        for (const name of Object.keys(module)) {
+          // Word-boundary, so `DocsError` is not credited to a README mention
+          // of `DocsErrorCode`.
+          if (!new RegExp(`\\b${name}\\b`).test(readme)) {
+            undocumented.push(`${key} → ${name}`);
+          }
+        }
+      }
+
+      // The guard on the guard: `import()` returning empty namespaces for every
+      // subpath would otherwise make this pass while checking nothing.
+      expect(subpaths.length).toBeGreaterThan(10);
+      expect(undocumented).toEqual([]);
+    },
+  );
+});

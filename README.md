@@ -148,12 +148,12 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/next` | Node | `createDocsRoute`, `createDocsSitemap`, `createDocsRedirects` |
 | `@waveso/docs/source` | Node | `createDocsSource`, `resolveDocsConfig` |
 | `@waveso/docs/render` | Node | `createDocsRenderer`, `resolveMarkdownLink` |
-| `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS` |
+| `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS`, `DEFAULT_DOCS_THEMES` |
 | `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex` |
 | `@waveso/docs/react/<name>` | Browser + RSC | Nine components, one per subpath — see [Components](#components) |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
-| `@waveso/docs/errors` | Any | `DocsErrorCode`, `DocsError`, `isDocsError` |
+| `@waveso/docs/errors` | Any | `DocsErrorCode`, `DocsError`, `isDocsError`, `DOCS_ERROR_PREFIX` |
 | `@waveso/docs/styles.css` | — | The stylesheet |
 
 The Node-only subpaths carry `"browser": null`, so importing one from client code fails with a located *module not found* rather than quietly bundling `node:fs`.
@@ -174,7 +174,7 @@ The shell has three breakpoints, in `rem` so they scale with the reader's base f
 
 Set `--wave-docs-font-sans: inherit` to hand the whole package your own typeface.
 
-Every subpath is enumerated in `exports` — there is no wildcard. A name that is not in the table above is not importable, which is what makes "nothing undocumented is exported" a guarantee rather than an intention.
+Every subpath is enumerated in `exports` — there is no wildcard. A name that is not documented here is not importable, and that is a guarantee rather than an intention: `manifest.test.ts` enumerates the runtime exports of every built subpath and fails the build on one this README does not mention.
 
 ## Components
 
@@ -187,10 +187,10 @@ Every component takes data as props and imports nothing from `next/*` — the ad
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
 | `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap. Host-agnostic |
-| `Callout` | `react/callout` | Note · tip · important · warning · caution |
+| `Callout` | `react/callout` | Note · tip · important · warning · caution. `CALLOUT_TYPES` is the list |
 | `YouTube` | `react/youtube` | Click-to-load facade |
-| `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<main>`. `docs.Layout` renders one |
-| `createMarkdownComponents` | `react/markdown-components` | The element → component map |
+| `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<main>`; `DOCS_CONTENT_ID` is that id. `docs.Layout` renders one |
+| `createMarkdownComponents` | `react/markdown-components` | The element → component map. `defaultMarkdownComponents` is the unwired one |
 
 ### Layout
 
