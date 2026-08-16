@@ -410,3 +410,77 @@ describe('the documented surface', () => {
     },
   );
 });
+
+/**
+ * The clauses of the stability policy a test can hold.
+ *
+ * The policy is in the README, and most of it is a promise about future
+ * behaviour that no test can check — "dropping a React major gets its own
+ * release" is a commitment, not an invariant. Three parts are checkable, and
+ * those are exactly the parts that rot first: a floor that drifts from the
+ * documented one, a peer range narrowed without anyone noticing, and a
+ * third-party type in a public signature that nobody remembers is now this
+ * package's problem too.
+ */
+describe('the stability policy', () => {
+  const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const policy = readme.slice(readme.indexOf('## Stability'));
+
+  it('exists, and says the thing that matters first', () => {
+    // The guard on the guard: a missing section would make every slice below
+    // empty and every assertion vacuous.
+    expect(policy.length).toBeGreaterThan(500);
+    expect(policy).toContain('breaking changes land in minors');
+  });
+
+  it('documents the Node floor the manifest actually declares', () => {
+    /*
+     * Two places said 20.19.0 and 22.12.0 once, and the README was the wrong
+     * one. A floor is the first thing a reader checks before installing, so it
+     * is the worst single number in the file to have stale.
+     */
+    const engines = section(manifest, 'engines');
+    const declared = String(engines.node ?? '');
+    // The version, not the range syntax: the README writes a floor as prose
+    // and the manifest as a range, and comparing `>=22.12.0` to "22.12.0"
+    // would fail on the punctuation rather than on the number.
+    const version = /(\d+\.\d+\.\d+)/.exec(declared)?.[1];
+
+    expect(version).toBeDefined();
+    expect(policy).toContain(version as string);
+  });
+
+  it('names every peer whose major it promises to treat as breaking', () => {
+    /*
+     * "Dropping a Next or React major is breaking" is only a promise if the
+     * policy names the peers it is about. A peer added later — `next/og`, a
+     * future adapter — inherits the promise silently otherwise.
+     */
+    for (const peer of Object.keys(section(manifest, 'peerDependencies'))) {
+      expect(policy.toLowerCase()).toContain(peer.toLowerCase());
+    }
+  });
+
+  it('claims CSS class names and emitted hast as covered', () => {
+    /*
+     * The two clauses packages usually omit, and omitting them is how a
+     * "patch" reflows everyone's site. Asserted as text because that is what
+     * they are — a commitment — and a commitment quietly deleted is the whole
+     * failure mode.
+     */
+    expect(policy).toContain('CSS class names');
+    expect(policy).toContain('hast');
+    expect(policy).toContain('wave-docs-');
+  });
+
+  it('names the third-party types it has adopted', () => {
+    /*
+     * Each of these appears in a public signature, so that library's next
+     * major is this package's major. A type added to the surface without a
+     * line here is a break this package would pass on without naming.
+     */
+    for (const owned of ['PluggableList', 'MiniSearch', 'Root']) {
+      expect(policy).toContain(owned);
+    }
+  });
+});

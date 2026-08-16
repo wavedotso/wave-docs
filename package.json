@@ -1,7 +1,7 @@
 {
   "name": "@waveso/docs",
   "version": "0.2.0",
-  "description": "Markdown documentation for Next.js \u2014 parsed to hast in Node at build time, rendered as your own React components, zero parser bytes in the browser",
+  "description": "Zero parser bytes in the browser: markdown docs for Next.js, built to hast in Node and rendered as your components",
   "type": "module",
   "sideEffects": [
     "*.css"
@@ -9,15 +9,11 @@
   "license": "MIT",
   "author": "Wave (https://github.com/wavedotso)",
   "keywords": [
-    "documentation",
-    "docs",
-    "markdown",
-    "remark",
-    "rehype",
-    "shiki",
     "nextjs",
+    "documentation",
+    "markdown",
     "react-server-components",
-    "static-site"
+    "shiki"
   ],
   "repository": {
     "type": "git",

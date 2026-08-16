@@ -868,6 +868,53 @@ If you extend the frontmatter schema, use `.exactOptional()` rather than `.optio
 > inside the package, which is where that cast belongs. Without the flag,
 > `Link={Link}` compiles exactly as shown above.
 
+## Stability
+
+**This is `0.x`, and `0.x` means breaking changes land in minors.** They will be
+listed, with the migration, in the changelog. What follows is what counts as
+breaking — which is the part most packages leave unsaid until someone is angry.
+
+### What is public API
+
+| | Covered |
+| --- | --- |
+| Every subpath in `exports`, and every runtime name it exports | ✅ enforced by `manifest.test.ts` |
+| Exported types, including `DocsErrorCode`'s members | ✅ enforced by `error-taxonomy.test.ts` |
+| **CSS class names** — `wave-docs-*`, and the shell's element tree | ✅ frozen in [ADR 001](docs/adr/001-shell-contract.md) |
+| **The hast this emits** — element names, and the attributes on them | ✅ the same policy as the types |
+| Layout tokens — the five custom properties above | ✅ |
+| Anything reachable only through `dist/` internals, or a private module | ❌ |
+
+The two in bold are the ones usually omitted, and omitting them is how a
+package ships a "patch" that silently reflows everyone's site. If you can write
+a selector against it or read it out of `RenderedDoc.hast`, this package owes
+you a changelog entry before it moves.
+
+### Four clauses
+
+**Dropping a major of `next`, `react` or `react-dom` is breaking; adding one is
+not.** Widening `peerDependencies` to accept the next major is a minor and
+always safe to take. Narrowing it — dropping React 19 once React 20 has settled
+— is breaking, gets its own release, and will not be bundled with features.
+
+**The Node floor follows LTS, and moving it is breaking.** It rises when a
+version leaves maintenance, not when a shiny builtin appears. Today `22.12.0`.
+
+**A third-party type in this package's signature makes that library's major
+ours.** `unified`'s `PluggableList` is in `remarkPlugins`, `MiniSearch`'s
+`Options` is in `miniSearchOptions`, and hast's `Root` is in `RenderedDoc`. When
+one of those releases a breaking major, so does this — a package that quietly
+re-exports someone else's break is worse than one that names it.
+
+**Zod is a dependency, not a peer, and that is deliberate.** Your Zod is yours.
+When you extend the frontmatter schema, take `z` from
+`@waveso/docs/frontmatter`.
+
+### What is not covered
+
+The rendered *appearance* — colours, spacing, the type scale — is design, and it
+will change without a major. The class names it hangs on will not.
+
 ## Design notes
 
 <details>
