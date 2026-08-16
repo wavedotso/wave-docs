@@ -1,6 +1,3 @@
-allowBuilds:
-  esbuild: set this to true or false
-
 # pnpm 11 configuration.
 #
 # This is the config file, not just a workspace manifest: since pnpm 11, .npmrc
@@ -16,6 +13,33 @@ minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - '@waveso/*'
 
-# No `allowBuilds` entry: this package's entire dependency tree contains zero
-# pre/post-install scripts (verified). If an entry ever appears here, read it —
-# an unexplained one is indistinguishable from a supply-chain compromise.
+# One package in the tree ships an install script, and it is denied.
+#
+# ⚠️ THIS FILE PREVIOUSLY READ `esbuild: set this to true or false` — the literal
+# placeholder pnpm writes when it meets an unapproved build and nobody answers.
+# It is not a boolean, so pnpm could not decide, ignored the build and failed the
+# install with ERR_PNPM_IGNORED_BUILDS. It was committed by a `git add -A`, and
+# it broke `pnpm install --frozen-lockfile` on every fresh checkout — which is
+# every CI run, and only CI, because a warm `node_modules` answers "Already up
+# to date" without ever resolving. Directly beneath it sat a comment asserting
+# there was no `allowBuilds` entry at all.
+#
+# `esbuild` arrives through `vite`, which arrives through `vitest`. It is a
+# devDependency and reaches no consumer, but the posture stands on its own:
+# `rolldown` was chosen over `esbuild` for this repo's own tooling precisely to
+# avoid an install script, and allowing one in by the back door would make that
+# choice decorative.
+#
+# `false`, not merely unapproved, and verified rather than assumed: with the
+# script denied, `pnpm test` (701) and `pnpm test:browser` (48) both pass on a
+# cold install. They can, because the binary comes from the platform-specific
+# optional dependency pnpm installs anyway (`@esbuild/darwin-arm64` and
+# friends) — esbuild's `postinstall` is a fallback downloader for the case where
+# that is missing, not the thing that puts the binary there. `optimizeDeps` in
+# the browser project is the load-bearing user of it, and it works.
+#
+# If a NEW name appears in this list, read it before answering. An unexplained
+# install script is indistinguishable from a supply-chain compromise, and the
+# placeholder above is exactly what it looks like when nobody read it.
+allowBuilds:
+  esbuild: false

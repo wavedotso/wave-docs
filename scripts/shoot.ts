@@ -16,10 +16,20 @@
  * pnpm shoot --check    # fail if any shot differs from the committed one
  * ```
  *
- * `--check` is what CI runs on a pull request touching `src/styles.css`,
- * `src/react/**` or `site/`. A stylesheet change that reflows the shell should
- * fail on the pull request that made it, not be discovered in the README six
- * releases later.
+ * ⚠️ `--check` IS A LOCAL TOOL, NOT A CI GATE, and the distinction is not a
+ * preference. These PNGs are compared byte for byte, and bytes do not survive a
+ * change of operating system: `--wave-docs-font-sans` resolves to SF Pro on the
+ * machine that shot the committed images and to DejaVu/Liberation on a Linux
+ * runner, so every pixel of text differs. No tolerance rescues that — the glyphs
+ * are different shapes, not slightly moved ones. It was wired into CI on the
+ * assumption that a pixel diff is a pixel diff, and removed before it ever ran.
+ *
+ * Use it after touching `src/styles.css` or `src/react/**` to see whether the
+ * shell moved, then run without `--check` to commit the new images
+ * deliberately. The regression it was meant to catch is covered properly by the
+ * browser tier, which asserts geometry rather than pixels — zero gap between a
+ * code frame's title and its body, one background across all four shell
+ * containers — in the same engine everywhere.
  */
 
 import { createServer } from 'node:http';
