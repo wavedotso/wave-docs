@@ -409,6 +409,55 @@ describe('the dark ramp', () => {
   });
 });
 
+describe('the copy button', () => {
+  /**
+   * Both states the runtime writes have a rule, not just the happy one.
+   *
+   * ⚠️ `data-copied="false"` HAD NONE. The runtime set it from the beginning
+   * and announced "Copy failed. Select the code and press Control or Command +
+   * C." into a live region — so a screen-reader user was told and a sighted
+   * user watched a button do nothing at all. The most common way to reach it is
+   * not exotic: `next dev` opened from a phone over `http://192.168.x.x:3000`
+   * is not a secure context, `navigator.clipboard` is undefined there, and no
+   * amount of pressing again will help.
+   *
+   * The attribute reaching the DOM is `code-runtime.test.tsx`; that CSS acts on
+   * it is here, because the two halves fail independently and each looks
+   * correct on its own.
+   */
+  it.each(['true', 'false'])(
+    'gives data-copied="%s" a visible treatment',
+    (state) => {
+      const selector = `.wave-docs-code__copy[data-copied='${state}']`;
+      expect(sheet).toContain(`${selector} {`);
+
+      const block = readBlock(sheet, sheet.indexOf(`${selector} {`));
+      // A colour, so the button changes rather than merely carrying an
+      // attribute — and a `::after` glyph, so the change is not colour alone
+      // (WCAG 1.4.1).
+      expect(block).toMatch(/color:/);
+      expect(sheet).toContain(`${selector}::after`);
+    },
+  );
+
+  it('tells the two states apart by more than colour', () => {
+    // Success is a tick and failure a cross; identical glyphs would make the
+    // pair distinguishable only by hue.
+    const tick = readBlock(
+      sheet,
+      sheet.indexOf(".wave-docs-code__copy[data-copied='true']::after"),
+    );
+    const cross = readBlock(
+      sheet,
+      sheet.indexOf(".wave-docs-code__copy[data-copied='false']::after"),
+    );
+
+    expect(tick).toContain('content:');
+    expect(cross).toContain('content:');
+    expect(tick).not.toBe(cross);
+  });
+});
+
 describe('the cascade contract', () => {
   it('declares nothing outside a @layer', () => {
     const top = RULES.filter((rule) => rule.depth === 0);

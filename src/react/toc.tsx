@@ -56,9 +56,15 @@ function flattenTocIds(entries: TocEntry[]): string[] {
  * out of sync on duplicate headings.
  *
  * Scrolling itself is left to the browser: the links are real anchors, and
- * smooth scrolling is applied in CSS under
- * `@media (prefers-reduced-motion: no-preference)`. Doing it in JavaScript
- * means reimplementing that check, and getting it wrong makes people ill.
+ * nothing here calls `scrollTo`. Doing it in JavaScript means reimplementing
+ * the `prefers-reduced-motion` check, and getting that wrong makes people ill.
+ *
+ * ⚠️ AND THE STYLESHEET SETS NO `scroll-behavior: smooth` EITHER, deliberately
+ * — this comment used to say it did. Next 16 suppresses smooth scrolling
+ * across a route change only when `<html>` carries
+ * `data-scroll-behavior="smooth"`, an attribute only the host can set, so a
+ * package-level rule would smooth-scroll every navigation and no reader could
+ * turn it off. `styles.css` says the same at greater length.
  */
 export function DocsToc({
   entries,

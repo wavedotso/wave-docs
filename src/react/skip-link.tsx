@@ -2,9 +2,12 @@ import type { ReactNode } from 'react';
 
 /**
  * The `id` this link targets, and the one `createDocsRoute` puts on its
- * `<article>`. Defined in a private module so the Node adapter can read it
- * without importing this `'use client'` file; re-exported here because this is
- * the documented import path.
+ * `<main>`. Defined in a private module so the two halves cannot spell it
+ * differently; re-exported here because this is the documented import path.
+ *
+ * (This comment used to call the file a `'use client'` module. It is not one
+ * and never was — `SkipLink` is an anchor with no state, so it is a Server
+ * Component like everything else here that does not need a browser.)
  */
 import { DOCS_CONTENT_ID } from '../docs-content-id.js';
 

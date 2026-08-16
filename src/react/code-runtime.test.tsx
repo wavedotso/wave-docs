@@ -297,6 +297,58 @@ describe('DocsCodeRuntime', () => {
     expect(copyButton().dataset.copied).toBe('false');
   });
 
+  it('shows the failure, rather than announcing it to nobody who can see', async () => {
+    /*
+     * `data-copied="false"` was written by the runtime from the beginning and
+     * had no rule in the stylesheet — so a screen-reader user was told the copy
+     * failed and a sighted user watched a button do nothing at all. The most
+     * common way to land here is `next dev` opened from a phone over
+     * `http://192.168.x.x:3000`, which is not a secure context and never will
+     * be, so "press it again" is not a recovery.
+     *
+     * The stylesheet is asserted in `styles.test.ts`; what this pins is that
+     * the attribute reaches the DOM for CSS to act on, in the failure case as
+     * well as the success one.
+     */
+    const user = setupUser({ secure: false, works: false });
+    document.execCommand = vi.fn(() => false);
+    render(<DocContent hast={trees.plain as never} />);
+
+    await user.click(copyButton());
+
+    expect(copyButton().matches('[data-copied="false"]')).toBe(true);
+    expect(copyButton().matches('[data-copied="true"]')).toBe(false);
+  });
+
+  it('keeps the second copy indicator for its full two seconds', async () => {
+    /*
+     * The timer id was discarded, so two copies inside the window left two
+     * timers running and the first cleared the second's indicator early: press
+     * copy, press it again a second later, and the tick disappears after one
+     * second instead of two. Reads as "did that work?" to the reader.
+     */
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = setupUser();
+      render(<DocContent hast={trees.plain as never} />);
+
+      await user.click(copyButton());
+      vi.advanceTimersByTime(1000);
+      await user.click(copyButton());
+
+      // 1.5s after the second copy: the first copy's timer has now fired, and
+      // must not have taken this indicator with it.
+      vi.advanceTimersByTime(1500);
+      expect(copyButton().dataset.copied).toBe('true');
+
+      // And it still clears on its own schedule rather than never.
+      vi.advanceTimersByTime(600);
+      expect(copyButton().dataset.copied).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('never renames the button it is announcing about', async () => {
     /*
      * Mutating the accessible name of the element that currently has focus is

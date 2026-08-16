@@ -546,7 +546,8 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
     throw docsError(
       'invalid-frontmatter',
       `Could not parse the frontmatter block in ${relativePath}: ${reason}`,
-      // js-yaml's own error carries the line and column inside the block, which
+      // The YAML parser's own error carries the line and column inside the
+      // block, which
       // `reason` flattens away; the cause keeps it for anyone who unwraps.
       { cause: err },
     );

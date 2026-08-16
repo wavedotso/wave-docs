@@ -168,7 +168,16 @@ export interface DocsMeta {
 export interface TocEntry {
   id: string;
   text: string;
-  /** Heading level, 2–6. `h1` is the page title and is never in the TOC. */
+  /**
+   * Heading level. `h1` is the page title and is never in the TOC.
+   *
+   * In practice **2 or 3**: the capture stops at `h3`, measured on a synthetic
+   * API reference where taking `h2`–`h6` gave 104 entries against 32. Deeper
+   * headings keep their ids and permalinks, so they stay deep-linkable and
+   * still open their own sections in search — only the rail entry is dropped.
+   * `number` rather than `2 | 3` because `rehypePlugins` is the escape hatch
+   * for putting them back, and a literal union would make that a type error.
+   */
   depth: number;
   children: TocEntry[];
 }

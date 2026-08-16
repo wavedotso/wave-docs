@@ -40,7 +40,10 @@ import type { SearchDialogProps } from './search-dialog.js';
  * adapter `@waveso/docs/next` uses for the markdown layer, so the two halves
  * cannot disagree about what `next/link` accepts.
  *
- * The cast is real and this is the only place in the package that needs one.
+ * The cast is real, and `next-nav.tsx` needs the identical one — this comment
+ * claimed to be the only place, which was wrong the moment the shell landed.
+ * Both are `next/link` crossing into `DocsLinkProps`, and both go through
+ * `wrapNextLink`, which is the one adapter they share.
  * `DocsLinkProps` extends React's anchor props, where every optional is
  * `| undefined`; Next's `LinkProps` declares `onClick?`, `onMouseEnter?` and
  * `onTouchStart?` *without* it, so under `exactOptionalPropertyTypes` — which

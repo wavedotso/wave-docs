@@ -888,6 +888,33 @@
   }
 
   /*
+   * ⚠️ AND THE FAILURE STATE, WHICH HAD NO RULE AT ALL. The runtime has always
+   * written `data-copied="false"` and announced "Copy failed. Select the code
+   * and press Control or Command + C." — to a live region, so a screen-reader
+   * user was told and a sighted user saw a button that simply did nothing.
+   *
+   * The most common way to land here is not exotic: `next dev` reached from a
+   * phone over `http://192.168.x.x:3000` is not a secure context, so
+   * `navigator.clipboard` is undefined and no amount of pressing helps. A
+   * silent no-op is the worst possible answer to that.
+   */
+  .wave-docs-code__copy[data-copied='false'] {
+    border-color: var(--wave-docs-callout-caution);
+    color: var(--wave-docs-callout-caution);
+  }
+
+  .wave-docs-code__copy[data-copied='false'] > * {
+    visibility: hidden;
+  }
+
+  .wave-docs-code__copy[data-copied='false']::after {
+    /* A cross, not a warning triangle: it pairs with the tick above at the
+     * same weight, and the triangle reads as a page-level alert. */
+    content: '\00d7';
+    position: absolute;
+  }
+
+  /*
    * The live region. Visually hidden rather than `display: none`, which most
    * screen readers skip entirely — an announcement nobody hears is not one.
    */

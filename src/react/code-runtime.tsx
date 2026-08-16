@@ -174,10 +174,35 @@ async function copy(
         // where there is no secure context and no amount of retrying helps.
         'Copy failed. Select the code and press Control or Command + C.';
 
-  window.setTimeout(() => {
-    button.removeAttribute('data-copied');
-  }, COPIED_MS);
+  /*
+   * ⚠️ THE PREVIOUS TIMER IS CANCELLED FIRST. The id used to be discarded, so
+   * two copies inside `COPIED_MS` left two timers running and the first one
+   * cleared the second's indicator early — press copy, press it again a second
+   * later, and the tick vanishes after one second instead of two. Small, and
+   * exactly the kind of thing a reader reads as "did that work?".
+   *
+   * Keyed on the button, so two frames on one page keep their own timers.
+   */
+  const existing = timers.get(button);
+  if (existing !== undefined) window.clearTimeout(existing);
+
+  timers.set(
+    button,
+    window.setTimeout(() => {
+      timers.delete(button);
+      button.removeAttribute('data-copied');
+    }, COPIED_MS),
+  );
 }
+
+/**
+ * The pending "clear the indicator" timer per button.
+ *
+ * A `WeakMap`, so a button removed by a client-side navigation takes its entry
+ * with it — this module is a page-lifetime singleton and a `Map` here would
+ * hold every code block the reader ever copied from.
+ */
+const timers = new WeakMap<HTMLElement, number>();
 
 async function writeClipboard(text: string): Promise<boolean> {
   /*
