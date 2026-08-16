@@ -1029,6 +1029,30 @@
     border: 0;
     background: none;
     cursor: pointer;
+    /* The UA disclosure triangle, which would sit on top of the thumbnail. */
+    list-style: none;
+  }
+
+  /* Safari still needs the pseudo-element form; it ignores `list-style` here. */
+  .wave-docs-youtube__facade::-webkit-details-marker {
+    display: none;
+  }
+
+  /*
+   * ⚠️ HIDDEN, NOT REMOVED, AND FOCUSABLE EITHER WAY. `display: none` here
+   * would destroy the element the reader just activated, dropping focus to the
+   * top of the document — which is the bug the previous, client-side version
+   * needed a `useEffect` to paper over. Visually hidden keeps focus where the
+   * reader put it and leaves a way to collapse the player again.
+   */
+  .wave-docs-youtube[open] .wave-docs-youtube__facade {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .wave-docs-youtube__thumbnail {

@@ -139,9 +139,16 @@ describe('markdown components', () => {
     );
 
     expect(html).toContain('i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
-    expect(html).toContain('aria-label="Play video: YouTube video player"');
-    // The whole point: no player bytes until someone asks for them.
-    expect(html).not.toContain('<iframe');
+    expect(html).toContain('Play video: YouTube video player');
+    /*
+     * The iframe IS in the markup now — there is no JavaScript left to insert
+     * it later — and it costs nothing because a `loading="lazy"` iframe inside
+     * a closed `<details>` is never requested. Measured in Chromium; the
+     * assertion lives in `youtube.browser.test.tsx`, since a network request
+     * is not something this environment can see.
+     */
+    expect(html).toContain('<details');
+    expect(html).toContain('loading="lazy"');
   });
 
   it('lets a consumer replace the youtube component', () => {

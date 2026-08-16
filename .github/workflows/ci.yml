@@ -110,6 +110,12 @@ jobs:
       - name: Type-check the README examples
         run: pnpm run check:readme
 
+      # Must follow the build: the `'use client'` directive is a property of
+      # the built output, and a bundler that dropped it would leave the source
+      # looking correct.
+      - name: Check the server component boundary
+        run: pnpm exec vitest run --project node src/server-boundary.test.ts
+
       # Must follow the build: it bundles `dist/` to measure what each entry
       # point requires, and an entry with no builtins is the claim being made.
       - name: Check runtime requirements

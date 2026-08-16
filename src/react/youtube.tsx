@@ -1,6 +1,3 @@
-'use client';
-
-import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 export interface YouTubeProps {
@@ -17,36 +14,44 @@ export interface YouTubeProps {
 const DEFAULT_TITLE = 'YouTube video player';
 
 /**
- * Click-to-load YouTube embed.
+ * Click-to-load YouTube embed, with **no client JavaScript at all**.
  *
  * An eager `<iframe>` costs ~137 KB of embed document plus ~580 KB gzipped of
- * player JavaScript, on every page view, whether or not anyone presses play.
- * A facade costs one ~15 KB JPEG and loads the rest on demand. On a docs page
- * with three videos that is the difference between a good Lighthouse score and
- * a bad one.
+ * player JavaScript on every page view, whether or not anyone presses play. A
+ * facade costs one ~15 KB JPEG and loads the rest on demand.
+ *
+ * ## Why `<details>` and not `useState`
+ *
+ * This was a `'use client'` component, and that made it the one thing in
+ * `defaultMarkdownComponents` that crossed the client boundary — so every page
+ * carried a reference to it whether or not it embedded a video. Measured on
+ * the smoke build over a corpus containing no YouTube URL anywhere: its code
+ * was in a client chunk **referenced from the prerendered HTML and the flight
+ * payload of every page**, and afterwards it is in no chunk at all.
+ *
+ * Be precise about the size, because the tempting number is the wrong one:
+ * that chunk was 41 KB raw / 12.70 KB brotli, but it was a *shared* chunk and
+ * most of it was not this component. Total client JavaScript went 610.8 KB to
+ * 609.2 KB raw. The win here is a client boundary removed from the path every
+ * consumer renders — one fewer hydration root, and a default map that is now
+ * provably server-only — not a large byte saving.
+ *
+ * `<details>` does the same job in markup. Measured in Chromium: an
+ * `<iframe loading="lazy">` inside a **closed** `<details>` issues no request
+ * at all, and issues one the moment it opens — so the facade still defers the
+ * player, without a state hook, a hydration root or a client reference. Native
+ * also brings the keyboard handling and the disclosure semantics the button
+ * version had to spell out.
+ *
+ * The summary stays in the DOM once open, visually hidden rather than removed:
+ * removing the element under the reader's focus is what the old version needed
+ * a `useEffect` to paper over, and a hidden-but-focusable control keeps focus
+ * where the reader put it *and* leaves them a way to collapse it again.
  *
  * `hqdefault.jpg` rather than `maxresdefault.jpg` deliberately: maxres does not
  * exist for uploads below 1280×720 and 404s to a broken image with no fallback.
  */
 export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const frameRef = useRef<HTMLIFrameElement>(null);
-
-  // Move focus on the transition, and only on it. The button that started
-  // playback unmounted under the reader's focus, so without this a keyboard
-  // user is dropped back at the top of the document.
-  //
-  // Keyed to `isPlaying` rather than done in the `ref`: an inline ref callback
-  // has a new identity every render, so React detaches and re-attaches it and
-  // calls `focus()` again. Any unrelated parent re-render — a theme toggle, a
-  // version switcher, `router.refresh()` — would then pull the keyboard out of
-  // whatever the reader had started typing into.
-  useEffect(() => {
-    if (isPlaying) {
-      frameRef.current?.focus();
-    }
-  }, [isPlaying]);
-
   // Only reachable if the pipeline emitted a malformed element; a missing id
   // can only ever produce a broken player, so render nothing at all.
   if (!id) {
@@ -58,38 +63,15 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
   // or escaping the path.
   const safeId = encodeURIComponent(id);
   // Blank is absent: `title=""` reaches us the same untrusted way `id` does,
-  // and it would name the button "Play video:" and the frame nothing at all.
+  // and it would name the control "Play video:" and the frame nothing at all.
   const label = title?.trim() || DEFAULT_TITLE;
   const rootClassName = ['wave-docs-youtube', className]
     .filter(Boolean)
     .join(' ');
 
-  if (isPlaying) {
-    return (
-      <div className={rootClassName}>
-        <iframe
-          className="wave-docs-youtube__frame"
-          // `youtube-nocookie.com` defers the tracking cookie until playback,
-          // which is what makes this embeddable without a consent banner.
-          src={`https://www.youtube-nocookie.com/embed/${safeId}?autoplay=1&rel=0`}
-          title={label}
-          loading="lazy"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          ref={frameRef}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className={rootClassName}>
-      <button
-        type="button"
-        className="wave-docs-youtube__facade"
-        onClick={() => setIsPlaying(true)}
-        aria-label={`Play video: ${label}`}
-      >
+    <details className={rootClassName}>
+      <summary className="wave-docs-youtube__facade">
         {/* biome-ignore lint/performance/noImgElement: a facade thumbnail is a
             remote YouTube URL on a host we do not control; routing it through
             an image optimiser buys nothing and this package cannot import
@@ -97,7 +79,7 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
         <img
           className="wave-docs-youtube__thumbnail"
           src={`https://i.ytimg.com/vi/${safeId}/hqdefault.jpg`}
-          // Decorative: the button's own label names the video.
+          // Decorative: the summary's own text names the video.
           alt=""
           width={480}
           height={360}
@@ -122,7 +104,25 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
             />
           </svg>
         </span>
-      </button>
-    </div>
+        <span className="wave-docs-sr-only">{`Play video: ${label}`}</span>
+      </summary>
+      <iframe
+        className="wave-docs-youtube__frame"
+        /*
+         * `loading="lazy"` is LOAD-BEARING, not an optimisation. It is the only
+         * reason a closed `<details>` costs nothing: an eager iframe inside one
+         * is fetched immediately in every engine tested, which would make this
+         * an eager embed wearing a facade's markup — the exact 717 KB the
+         * component exists to avoid, now invisible in review.
+         */
+        loading="lazy"
+        // `youtube-nocookie.com` defers the tracking cookie until playback,
+        // which is what makes this embeddable without a consent banner.
+        src={`https://www.youtube-nocookie.com/embed/${safeId}?rel=0`}
+        title={label}
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </details>
   );
 }

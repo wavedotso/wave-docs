@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { YouTube } from './youtube.js';
 
@@ -19,6 +19,14 @@ function getFrame(): HTMLIFrameElement {
   return frame;
 }
 
+function getDetails(): HTMLDetailsElement {
+  const details = document.querySelector('details');
+  if (details === null) {
+    throw new Error('expected a disclosure in the document');
+  }
+  return details;
+}
+
 function getThumbnail(): HTMLImageElement {
   const image = document.querySelector('img');
   if (image === null) {
@@ -28,164 +36,118 @@ function getThumbnail(): HTMLImageElement {
 }
 
 describe('YouTube', () => {
-  it('loads no player at all until the reader asks for one', () => {
+  it('ships no client JavaScript', () => {
+    /*
+     * The whole point of the rewrite. As a `'use client'` component this was
+     * the one thing in `defaultMarkdownComponents` crossing the client
+     * boundary, so every page carried a reference to it whether or not it
+     * embedded a video — measured on a corpus with no YouTube URL in it
+     * anywhere, its code was in a client chunk the prerendered HTML pointed at.
+     *
+     * `renderToStaticMarkup` is the assertion: a client component cannot be
+     * rendered this way at all, and a `<details>` needs no hook to work.
+     */
+    const html = renderToStaticMarkup(<YouTube id={VIDEO_ID} />);
+
+    expect(html).toContain('<details');
+    expect(html).toContain('<iframe');
+    expect(html).not.toContain('<button');
+  });
+
+  it('starts closed, with the player deferred', () => {
     render(<YouTube id={VIDEO_ID} />);
 
-    // The entire reason this component exists: an eager embed costs ~700 KB
-    // per video on every page view, pressed or not.
-    expect(document.querySelector('iframe')).toBeNull();
-    expect(screen.getByRole('button')).toBeInTheDocument();
+    /*
+     * The iframe is in the markup now — it has to be, with no JavaScript to
+     * insert it later — and `loading="lazy"` is what stops it being fetched.
+     * Measured in Chromium: an eager iframe inside a closed `<details>` is
+     * requested immediately, a lazy one is not requested until it opens. jsdom
+     * cannot see a network request, so the deferral itself is asserted in
+     * `youtube.browser.test.tsx`; what belongs here is that the attribute the
+     * deferral depends on is present at all.
+     */
+    expect(getDetails().open).toBe(false);
+    expect(getFrame()).toHaveAttribute('loading', 'lazy');
     expect(getThumbnail()).toBeInTheDocument();
   });
 
   it('requests the thumbnail every upload has', () => {
     render(<YouTube id={VIDEO_ID} />);
 
-    // `maxresdefault.jpg` does not exist below 1280×720 and 404s to a broken
-    // image with no fallback, which is worse than a soft-looking thumbnail.
+    // `maxresdefault` does not exist below 1280×720 and 404s to a broken
+    // image with no fallback.
     expect(getThumbnail().src).toBe(
       `https://i.ytimg.com/vi/${VIDEO_ID}/hqdefault.jpg`,
     );
   });
 
   it('names the video it is about to play', () => {
-    render(<YouTube id={VIDEO_ID} title="Deploying to Vercel" />);
+    render(<YouTube id={VIDEO_ID} title="How caching works" />);
 
     expect(
-      screen.getByRole('button', { name: 'Play video: Deploying to Vercel' }),
+      screen.getByText('Play video: How caching works'),
     ).toBeInTheDocument();
+    expect(getFrame()).toHaveAttribute('title', 'How caching works');
   });
 
   it('falls back to a generic name when markdown carries no title', () => {
     render(<YouTube id={VIDEO_ID} />);
 
     expect(
-      screen.getByRole('button', { name: 'Play video: YouTube video player' }),
+      screen.getByText('Play video: YouTube video player'),
     ).toBeInTheDocument();
   });
 
   it('falls back to a generic name when the title is blank', () => {
-    // `title` arrives as an unvalidated attribute like `type` does, and a blank
-    // one would leave the button announced as "Play video:" — a name with no
-    // object. Empty is absent.
+    // `title=""` reaches this the same untrusted way `id` does, and would
+    // otherwise name the control "Play video:" and the frame nothing at all.
     render(<YouTube id={VIDEO_ID} title="   " />);
 
     expect(
-      screen.getByRole('button', { name: 'Play video: YouTube video player' }),
+      screen.getByText('Play video: YouTube video player'),
     ).toBeInTheDocument();
+    expect(getFrame()).toHaveAttribute('title', 'YouTube video player');
   });
 
-  it('swaps in the nocookie player when the button is clicked', async () => {
-    const user = userEvent.setup();
-    render(<YouTube id={VIDEO_ID} title="Deploying to Vercel" />);
-
-    await user.click(screen.getByRole('button'));
-
-    const frame = getFrame();
-    // `youtube-nocookie.com` is what makes this embeddable with no consent
-    // banner; a slip back to `youtube.com` sets a tracking cookie on load.
-    expect(frame.src).toContain('https://www.youtube-nocookie.com/embed/');
-    expect(frame.src).toContain(VIDEO_ID);
-    // Nobody presses play twice.
-    expect(frame.src).toContain('autoplay=1');
-    expect(frame.title).toBe('Deploying to Vercel');
-    expect(frame).toHaveAttribute('allowfullscreen');
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-  });
-
-  it('starts playback when Enter is pressed on the focused button', async () => {
+  it('opens on click, with no handler of ours', async () => {
     const user = userEvent.setup();
     render(<YouTube id={VIDEO_ID} />);
 
-    screen.getByRole('button').focus();
-    await user.keyboard('{Enter}');
+    await user.click(screen.getByText(/^Play video:/));
 
-    // Free from a real `<button>`, and absent from the `div` + `onClick` this
-    // could have been — which is the point of asserting it.
-    expect(getFrame().src).toContain('autoplay=1');
+    expect(getDetails().open).toBe(true);
   });
 
-  it('starts playback when Space is pressed on the focused button', async () => {
-    const user = userEvent.setup();
-    render(<YouTube id={VIDEO_ID} />);
+  /*
+   * Enter/Space on the summary, and where focus lands after it opens, are in
+   * `youtube.browser.test.tsx`. jsdom implements `<summary>`'s click toggle
+   * but not its keyboard activation, so asserting it here would assert
+   * nothing — and the deferral those keys are supposed to trigger is a network
+   * request jsdom cannot see either.
+   */
 
-    screen.getByRole('button').focus();
-    await user.keyboard('[Space]');
+  it('keeps a crafted id inside the embed path', () => {
+    // The id comes from markdown, so it is untrusted input spliced into a URL.
+    render(<YouTube id="abc?autoplay=1&evil=1" />);
 
-    expect(getFrame().src).toContain('autoplay=1');
-  });
-
-  it('moves focus into the player that replaced the button', async () => {
-    const user = userEvent.setup();
-    render(<YouTube id={VIDEO_ID} />);
-
-    await user.click(screen.getByRole('button'));
-
-    // The button unmounted under the reader's focus. Without the ref handing it
-    // to the frame, a keyboard user is dropped at the top of the document.
-    expect(document.activeElement).toBe(getFrame());
-  });
-
-  it('leaves focus alone once the reader has moved it on', async () => {
-    const user = userEvent.setup();
-    const { rerender } = render(<YouTube id={VIDEO_ID} />);
-    await user.click(screen.getByRole('button'));
-    expect(document.activeElement).toBe(getFrame());
-
-    const elsewhere = document.createElement('input');
-    document.body.append(elsewhere);
-    elsewhere.focus();
-
-    // Any unrelated parent state change re-renders the playing branch — a theme
-    // toggle, a version switcher, `router.refresh()`. Moving focus from an
-    // inline `ref` callback made every one of them steal the keyboard back:
-    // the callback's identity changes each render, so React detaches it and
-    // calls the new one, mid-sentence into whatever the reader was typing.
-    rerender(<YouTube id={VIDEO_ID} title="Deploying to Vercel" />);
-
-    expect(document.activeElement).toBe(elsewhere);
-    elsewhere.remove();
-  });
-
-  it('keeps a crafted id inside the embed path', async () => {
-    const user = userEvent.setup();
-    render(<YouTube id="../../watch?v=x&autoplay=0" />);
-
-    await user.click(screen.getByRole('button'));
-
-    // The id comes from markdown. Encoded, it can add no parameters and climb
-    // out of no path.
-    expect(getFrame().src).toBe(
-      'https://www.youtube-nocookie.com/embed/' +
-        '..%2F..%2Fwatch%3Fv%3Dx%26autoplay%3D0?autoplay=1&rel=0',
+    const src = getFrame().src;
+    expect(src).toContain('abc%3Fautoplay%3D1%26evil%3D1');
+    expect(src.startsWith('https://www.youtube-nocookie.com/embed/')).toBe(
+      true,
     );
   });
 
   it('renders nothing when the pipeline emitted no id', () => {
     const { container } = render(<YouTube />);
 
-    // A player with no video can only be a broken player.
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders a block root, which is why the paragraph is replaced upstream', () => {
-    // The shipped bug, reproduced through the parser that caused it: React
-    // builds `<p><div>` happily with `appendChild`, but the HTML parser closes
-    // the paragraph at the `<div>`, so the hydrated DOM stops matching the
-    // server output and React 19 remounts the root.
-    const warn = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const html = renderToStaticMarkup(
-      <p>
-        <YouTube id={VIDEO_ID} />
-      </p>,
-    );
-    warn.mockRestore();
+    // A `<details>` inside a `<p>` is invalid HTML and hydrates as a mismatch;
+    // `remarkYouTube` lifts the node out of its paragraph for this reason.
+    const html = renderToStaticMarkup(<YouTube id={VIDEO_ID} />);
 
-    const host = document.createElement('div');
-    host.innerHTML = html;
-
-    expect(host.querySelector('p > .wave-docs-youtube')).toBeNull();
-    // Ejected to a sibling of the paragraph it was written inside.
-    expect(host.querySelector(':scope > .wave-docs-youtube')).not.toBeNull();
+    expect(html.startsWith('<details')).toBe(true);
   });
 });
