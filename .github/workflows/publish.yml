@@ -60,7 +60,7 @@ jobs:
       # here writes the ~/.npmrc that references it, because there is no
       # actions/setup-node `registry-url` step.
       - name: Create release PR or publish
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v2.1.0
         with:
           publish: pnpm run release
           title: 'chore: version packages'
