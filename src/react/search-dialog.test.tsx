@@ -560,7 +560,13 @@ describe('SearchDialog', () => {
       const location = option.querySelector(
         '.wave-docs-search-result-location',
       );
-      expect(location?.textContent).toBe(
+      // The page, not the anchor. `#peer-dependencies` is slugged from the
+      // heading printed directly above it, so showing it would spend the line
+      // restating line one — and on a real site it is the part that pushes the
+      // route past the ellipsis.
+      expect(location?.textContent).toBe('/docs/guide/install');
+      // The link still carries it, which is what makes the hit a deep link.
+      expect(option.querySelector('a')?.getAttribute('href')).toBe(
         '/docs/guide/install#peer-dependencies',
       );
       // Hidden from the tree, or it would be announced as well as the name.

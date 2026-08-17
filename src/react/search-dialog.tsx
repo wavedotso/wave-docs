@@ -598,7 +598,7 @@ function SearchResultOption({
        * say is the heading, and the heading opens the accessible name.
        */}
       <span className="wave-docs-search-result-location" aria-hidden="true">
-        {hit.href}
+        {toDisplayPath(hit.href)}
       </span>
     </>
   );
@@ -783,6 +783,27 @@ function toSearchHit(result: unknown): SearchHit | undefined {
 
 function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
   return hit !== undefined;
+}
+
+/**
+ * The route, without its anchor, for display only.
+ *
+ * ⚠️ THE ANCHOR IS NOISE HERE, AND ALMOST ALWAYS A REPEAT. A section's anchor
+ * is slugged from its heading, so `/docs/styling#layout-tokens` under a row
+ * whose first line already reads "Layout tokens" spends its width restating
+ * it — and on a real site it is the part that pushes the line past the
+ * ellipsis.
+ *
+ * What the line is for is "which page does this land on", and the path answers
+ * that on its own. Two rows from the same page showing the same path is not
+ * ambiguity: they *are* the same page, and their headings above say which part.
+ *
+ * Display only. `hit.href` keeps the anchor, so the link still deep-links to
+ * the section — that is the whole point of section-scoped records.
+ */
+function toDisplayPath(href: string): string {
+  const hash = href.indexOf('#');
+  return hash === -1 ? href : href.slice(0, hash);
 }
 
 /**
