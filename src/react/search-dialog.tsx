@@ -95,6 +95,22 @@ export interface SearchDialogProps {
    * reached, not because the search cannot find things.
    */
   pageSize?: number | undefined;
+  /**
+   * Shortest query that runs. Defaults to 2.
+   *
+   * A single character is not a query — measured on this package's own docs,
+   * "a" matches 100% of the corpus, "i" 97%, "s" 93%. Answering those wastes a
+   * render and, worse, teaches a reader mid-word that search returns noise.
+   *
+   * ⚠️ TWO, NOT THREE, AND THE DIFFERENCE MATTERS ON A DOCS SITE. Three would
+   * refuse `ts`, `js`, `id`, `h1`, `px` — every one a real query here, and each
+   * one selective: 10%, 17%, 14%, 3%, 0%. The noise is at one character, so
+   * that is where the floor goes.
+   *
+   * A word like `is` still matches 83%; that is a stopword problem rather than
+   * a length one, and `miniSearchOptions.processTerm` is the tool for it.
+   */
+  minQueryLength?: number | undefined;
   /** Input debounce in milliseconds. Defaults to 120. */
   debounceMs?: number | undefined;
   /** Extra class names for the trigger button, e.g. a navbar's own layout. */
@@ -151,6 +167,7 @@ export function SearchDialog({
   placeholder = 'Search documentation',
   dialogLabel = 'Search documentation',
   pageSize = 20,
+  minQueryLength = 2,
   debounceMs = 120,
   className,
   miniSearchOptions,
@@ -344,7 +361,9 @@ export function SearchDialog({
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed === '') {
+    // Below the floor is treated exactly like an empty query: no request for
+    // the index, no search, no results. The status line says why.
+    if (trimmed.length < minQueryLength) {
       setHits([]);
       setActiveIndex(0);
       setVisibleCount(pageSize);
@@ -372,7 +391,7 @@ export function SearchDialog({
       isCancelled = true;
       clearTimeout(timer);
     };
-  }, [query, ensureIndex, pageSize, debounceMs]);
+  }, [query, ensureIndex, pageSize, debounceMs, minQueryLength]);
 
   /**
    * Reveal another page when the reader nears the end of the list.
@@ -594,6 +613,7 @@ export function SearchDialog({
                   status={status}
                   query={query.trim()}
                   hitCount={hits.length}
+                  minQueryLength={minQueryLength}
                 />
               </div>
             </div>,
@@ -725,11 +745,13 @@ function SearchStatus({
   status,
   query,
   hitCount,
+  minQueryLength,
 }: {
   status: IndexStatus;
   query: string;
   /** Everything the index matched. Nothing is withheld, so this is the total. */
   hitCount: number;
+  minQueryLength: number;
 }): ReactNode {
   let message: string | null = null;
   let modifier = '';
@@ -739,6 +761,15 @@ function SearchStatus({
     modifier = ' wave-docs-search-status-error';
   } else if (query === '') {
     message = 'Start typing to search the documentation.';
+    modifier = ' wave-docs-search-status-hint';
+  } else if (query.length < minQueryLength) {
+    /*
+     * Said, not silently done. A dialog that answers nothing and explains
+     * nothing reads as broken — and this is the state every reader passes
+     * through on the way to their real query, so it is the one place the
+     * wording has to be encouragement rather than an error.
+     */
+    message = `Keep typing — ${minQueryLength} characters or more.`;
     modifier = ' wave-docs-search-status-hint';
   } else if (status !== 'ready') {
     // 'idle' too: a query typed before the index resolved is still waiting.

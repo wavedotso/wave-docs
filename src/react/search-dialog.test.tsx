@@ -625,6 +625,63 @@ describe('SearchDialog', () => {
       }
     });
 
+    it('does not answer a one-character query', async () => {
+      /*
+       * Measured on this package's own docs: "a" matches 100% of the corpus,
+       * "i" 97%, "s" 93%. A single character is not a query, it is the reader
+       * halfway through typing one — and answering it with everything teaches
+       * them that search returns noise.
+       */
+      /*
+       * ⚠️ `debounceMs={0}`, AND THAT IS WHAT MAKES THIS ABLE TO FAIL. "No
+       * options yet" is also true for the 120ms the default debounce has not
+       * fired in, so the first version of this test passed with the floor
+       * deleted — it was measuring the debounce, not the floor. With no
+       * debounce, a query that runs produces options on the next tick, and one
+       * that is refused never does.
+       *
+       * Asserting on `fetch` does not work either: the index is prefetched when
+       * the dialog opens, before any query.
+       */
+      const user = userEvent.setup();
+      render(
+        <SearchDialog
+          indexUrl={INDEX_URL}
+          navigate={() => undefined}
+          debounceMs={0}
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: 'Search' }));
+      await user.type(screen.getByRole('combobox'), 'i');
+
+      await waitFor(() => {
+        expect(screen.getByText(/Keep typing/)).toBeTruthy();
+      });
+      expect(screen.queryAllByRole('option')).toHaveLength(0);
+
+      // The control: one more character and the same dialog answers.
+      await user.type(screen.getByRole('combobox'), 'n');
+      await waitFor(() => {
+        expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+      });
+    });
+
+    it('answers a two-character query, which a docs site is full of', async () => {
+      /*
+       * The reason the floor is two and not three. `ts`, `js`, `id`, `h1` and
+       * `px` are all real queries here and all selective — 10%, 17%, 14%, 3%,
+       * 0% — so a three-character floor would refuse the useful half of the
+       * short queries to block the useless one.
+       */
+      const { user, trigger } = renderDialog();
+      // `js` reaches "Next.js" in this fixture; `ts`, `id` and `h1` are the
+      // same shape on a real corpus.
+      await search(user, trigger, 'js');
+
+      expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+      expect(screen.queryByText(/Keep typing/)).toBeNull();
+    });
+
     it('renders one page of results, and declares the whole set', async () => {
       /*
        * `pageSize` is a window, not a ceiling. The DOM holds one page, and

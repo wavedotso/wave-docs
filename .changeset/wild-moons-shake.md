@@ -46,6 +46,10 @@ createDocsRoute({
 
 Every row now shows the page it lands on — the route without its anchor, which is slugged from the heading printed directly above it and so spent the line restating line one. The link keeps the anchor, so a hit still deep-links to its section. One slot, one meaning — the intermediate repair, which gave page rows the route and left the trail on the others, was worse than either: "Styling" under one row was a page and "/docs/styling" under the next was an address. **Breaking:** `.wave-docs-search-result-breadcrumb`, `.wave-docs-search-result-crumb` and `.wave-docs-search-result-crumb-separator` are replaced by a single `.wave-docs-search-result-location`, because a breadcrumb it is not. The words are still what a screen reader hears — a route read aloud is punctuation — so the option's `aria-label` carries "Layout tokens, Styling" while the visible line carries the address.
 
+**A query is at least two characters.** Measured on this package's own documentation: `a` matches 100% of the corpus, `i` 97%, `s` 93%. One character is not a query, it is a reader halfway through typing one, and answering it with everything teaches them that search returns noise. Below the floor nothing runs and the dialog says "Keep typing — 2 characters or more" rather than looking broken.
+
+Two rather than three, and the difference matters on a docs site: three would refuse `ts`, `js`, `id`, `h1` and `px`, each of them a real query here and each selective — 10%, 17%, 14%, 3%, 0%. The noise is at one character, so that is where the floor goes. `minQueryLength` moves it.
+
 **There is no result cap any more.** `maxResults` was a hard ceiling of 8: on a *six-page* site "docs" matches 18, so ten results simply could not be reached, and the live region announced "8 results" — not a smaller truth but a false one.
 
 The ceiling was justified by a claim nobody had measured, and measuring it did not support the claim. On a 300-page corpus (2,100 records) a MiniSearch query costs **1.3–3.0 ms**, and rendering *every* matching row costs **40 ms**, 128 ms at 4× CPU throttle. The search was never the problem, and the DOM only becomes one in the thousands.
