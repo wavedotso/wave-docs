@@ -2058,18 +2058,6 @@
     color: var(--wave-docs-callout-caution);
   }
 
-  /*
-   * The cap bit. A footnote rather than a message: it sits under a full list
-   * the reader is already looking at, so it needs to be findable without
-   * competing with the results above it.
-   */
-  .wave-docs-search-status-truncated {
-    padding-block: 0.625rem;
-    border-block-start: 1px solid var(--wave-docs-border);
-    color: var(--wave-docs-fg-muted);
-    font-size: 0.75rem;
-  }
-
   /* The live region must stay in the accessibility tree to be announced, so it
    * is hidden the same way as any other visually-hidden text — never
    * `display: none`. */

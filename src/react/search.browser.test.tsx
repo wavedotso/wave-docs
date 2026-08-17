@@ -116,6 +116,28 @@ describe('the search dialog sizes to its content', () => {
     expect(results.scrollHeight).toBeGreaterThan(results.clientHeight);
   });
 
+  it('scrolls, so a window of results is not a ceiling on them', () => {
+    /*
+     * The behaviour behind `pageSize`: the list renders a page and reveals the
+     * next as the reader nears the end. What this pins is the precondition —
+     * that the results list is the scrollport, and that reaching its end is a
+     * measurable event rather than the dialog simply overflowing.
+     *
+     * The reveal itself is `search-dialog.test.tsx`, which can drive the
+     * component; jsdom cannot scroll, so the two halves live apart.
+     */
+    mount(30);
+    const results = document.querySelector('.wave-docs-search-results');
+    if (!(results instanceof HTMLElement)) throw new Error('no results list');
+
+    expect(results.scrollHeight).toBeGreaterThan(results.clientHeight);
+
+    results.scrollTop = results.scrollHeight;
+    const remaining =
+      results.scrollHeight - results.scrollTop - results.clientHeight;
+    expect(remaining).toBeLessThan(results.clientHeight);
+  });
+
   it('keeps the empty-state message visible, not merely present', () => {
     /*
      * The risk in shrinking the dialog: collapsing it so far that "No results

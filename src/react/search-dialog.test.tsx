@@ -625,13 +625,19 @@ describe('SearchDialog', () => {
       }
     });
 
-    it('caps the list at maxResults', async () => {
+    it('renders one page of results, and declares the whole set', async () => {
+      /*
+       * `pageSize` is a window, not a ceiling. The DOM holds one page, and
+       * `aria-setsize` carries the real total — a listbox rendering 1 of 2 that
+       * says "1 of 1" tells a reader they have reached the end when they have
+       * not, which is the same lie the old hard cap told out loud.
+       */
       const user = userEvent.setup();
       render(
         <SearchDialog
           indexUrl={INDEX_URL}
           navigate={() => undefined}
-          maxResults={1}
+          pageSize={1}
         />,
       );
       // `install` matches two sections of the Installation page.
@@ -641,46 +647,43 @@ describe('SearchDialog', () => {
         'install',
       );
 
-      expect(screen.getAllByRole('option')).toHaveLength(1);
+      const options = screen.getAllByRole('option');
+      expect(options).toHaveLength(1);
+      expect(options[0]?.getAttribute('aria-setsize')).toBe('2');
+      expect(options[0]?.getAttribute('aria-posinset')).toBe('1');
+      // And the announcement is the whole set, because nothing is withheld.
+      expect(screen.getByRole('status').textContent).toBe('2 results');
     });
 
-    it('says so when the cap hides results, rather than passing as the total', async () => {
+    it('reveals the next page when the keyboard walks past the window', async () => {
       /*
-       * ⚠️ THE CAP USED TO BE SILENT, AND THE DEFAULT WAS 8. On a six-page site
-       * "docs" matches 18 — so ten were unreachable, and the live region
-       * announced "8 results", which is not a smaller truth but a false one. A
-       * reader who sees a full list and no note assumes it is the whole list,
-       * and stops refining the query that would have found the rest.
+       * The window has to widen, or `aria-activedescendant` points at an id
+       * that is not in the DOM — a listbox that silently stops responding to
+       * ArrowDown for anyone navigating by keyboard.
        */
       const user = userEvent.setup();
       render(
         <SearchDialog
           indexUrl={INDEX_URL}
           navigate={() => undefined}
-          maxResults={1}
+          pageSize={1}
         />,
       );
-      await search(
+      const input = await search(
         user,
         screen.getByRole('button', { name: 'Search' }),
         'install',
       );
 
-      expect(screen.getByText(/Showing 1 of 2/)).toBeTruthy();
-      // The announcer reports what the index matched, then what is shown.
-      expect(screen.getByRole('status').textContent).toBe(
-        '2 results, showing 1',
-      );
-    });
+      expect(screen.getAllByRole('option')).toHaveLength(1);
+      await user.keyboard('{ArrowDown}');
 
-    it('stays quiet when everything matched is on screen', async () => {
-      // The other half: a note on a complete list is noise, and one that
-      // appears regardless would teach readers to ignore it.
-      const { user, trigger } = renderDialog();
-      await search(user, trigger, 'install');
-
-      expect(screen.queryByText(/Showing/)).toBeNull();
-      expect(screen.getByRole('status').textContent).toBe('2 results');
+      await waitFor(() => {
+        expect(screen.getAllByRole('option')).toHaveLength(2);
+      });
+      // And the second option is the one the input now points at.
+      const active = input.getAttribute('aria-activedescendant');
+      expect(screen.getAllByRole('option')[1]?.id).toBe(active);
     });
 
     it('portals the dialog out of the trigger’s stacking context', async () => {
@@ -1032,7 +1035,7 @@ describe('SearchDialog', () => {
           triggerLabel={label}
           placeholder={label}
           dialogLabel={label}
-          maxResults={count}
+          pageSize={count}
           debounceMs={count}
           className={label}
           miniSearchOptions={options}

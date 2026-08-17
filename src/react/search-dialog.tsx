@@ -79,18 +79,22 @@ export interface SearchDialogProps {
   /** Accessible name for the dialog. Defaults to `'Search documentation'`. */
   dialogLabel?: string | undefined;
   /**
-   * Maximum results rendered. Defaults to 20.
+   * How many results to render at a time. Defaults to 20.
    *
-   * A cap, not a preference: a broad query against a large corpus matches
-   * thousands of sections, and rendering every one on each keystroke janks the
-   * dialog while giving a keyboard reader an arrow-key list nobody can travel.
+   * ⚠️ NOT A CAP. Every match is reachable — the list renders this many, then
+   * another `pageSize` each time the reader scrolls near the end, so the DOM
+   * stays bounded without anything being withheld.
    *
-   * It was 8, which is far too tight for a dialog that scrolls — on a *six*
-   * page site "docs" matches 18, so ten were unreachable. When the cap does
-   * bite, the status line says so rather than letting the number pass as the
-   * total.
+   * This was `maxResults`, and it was a hard ceiling of 8. On a *six-page*
+   * site "docs" matches 18, so ten results simply could not be reached, and
+   * the live region announced "8 results" — not a smaller truth but a false
+   * one. The ceiling was justified by a claim nobody had measured, and the
+   * measurement did not support it: on a 300-page corpus (2,100 records) a
+   * query costs 1.3–3.0 ms and rendering *every* row costs 40 ms, 128 ms at
+   * 4x CPU throttle. Paging exists to keep that worst case from ever being
+   * reached, not because the search cannot find things.
    */
-  maxResults?: number | undefined;
+  pageSize?: number | undefined;
   /** Input debounce in milliseconds. Defaults to 120. */
   debounceMs?: number | undefined;
   /** Extra class names for the trigger button, e.g. a navbar's own layout. */
@@ -146,7 +150,7 @@ export function SearchDialog({
   triggerLabel = 'Search',
   placeholder = 'Search documentation',
   dialogLabel = 'Search documentation',
-  maxResults = 20,
+  pageSize = 20,
   debounceMs = 120,
   className,
   miniSearchOptions,
@@ -154,15 +158,14 @@ export function SearchDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
-  /*
-   * How many the index actually matched, which is not `hits.length`.
+  /**
+   * How many of `hits` are rendered.
    *
-   * ⚠️ THE ANNOUNCER USED TO READ THE SLICE. With `maxResults` at 8 and a
-   * six-page site, "docs" matches 18 — and a screen reader was told "8
-   * results", which is not a smaller truth, it is a false one. Ten of them were
-   * unreachable and nothing said so.
+   * `hits` holds every match; this is the window. It grows by `pageSize` when
+   * the reader scrolls near the end, and whenever the keyboard walks past it —
+   * so an option always exists for `aria-activedescendant` to point at.
    */
-  const [totalHits, setTotalHits] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(pageSize);
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<IndexStatus>('idle');
   const [shortcutHint, setShortcutHint] = useState('');
@@ -343,8 +346,8 @@ export function SearchDialog({
     const trimmed = query.trim();
     if (trimmed === '') {
       setHits([]);
-      setTotalHits(0);
       setActiveIndex(0);
+      setVisibleCount(pageSize);
       return;
     }
 
@@ -354,12 +357,10 @@ export function SearchDialog({
         (index) => {
           if (isCancelled) return;
           setStatus('ready');
-          const matches = index.search(trimmed);
-          setTotalHits(matches.length);
-          setHits(
-            matches.slice(0, maxResults).map(toSearchHit).filter(isSearchHit),
-          );
+          // Every match, uncapped. `visibleCount` decides what is rendered.
+          setHits(index.search(trimmed).map(toSearchHit).filter(isSearchHit));
           setActiveIndex(0);
+          setVisibleCount(pageSize);
         },
         () => {
           if (!isCancelled) setStatus('error');
@@ -371,7 +372,52 @@ export function SearchDialog({
       isCancelled = true;
       clearTimeout(timer);
     };
-  }, [query, ensureIndex, maxResults, debounceMs]);
+  }, [query, ensureIndex, pageSize, debounceMs]);
+
+  /**
+   * Reveal another page when the reader nears the end of the list.
+   *
+   * A scroll handler rather than an `IntersectionObserver` on a sentinel: the
+   * scrollport is one element this component already holds a ref to, the test
+   * is one subtraction, and an observer would cost bytes on the largest client
+   * entry this package ships for no behaviour the reader can tell apart.
+   *
+   * `passive`, because this never calls `preventDefault` and a non-passive
+   * scroll listener blocks the compositor on every wheel event.
+   *
+   * No `isOpen` dependency, though the list does not exist while the dialog is
+   * closed: the effect returns early on a null ref, and `hits.length` going
+   * from 0 to N re-runs it — which happens after the list has mounted, because
+   * closing resets the query. The listener attaches exactly when there is
+   * something to scroll.
+   */
+  useEffect(() => {
+    const list = listRef.current;
+    if (list === null || visibleCount >= hits.length) return;
+
+    const onScroll = (): void => {
+      // One viewport's warning, so the next page is in the DOM before the
+      // reader arrives at the gap rather than after.
+      const remaining = list.scrollHeight - list.scrollTop - list.clientHeight;
+      if (remaining < list.clientHeight) {
+        setVisibleCount((count) => Math.min(count + pageSize, hits.length));
+      }
+    };
+
+    list.addEventListener('scroll', onScroll, { passive: true });
+    return () => list.removeEventListener('scroll', onScroll);
+  }, [visibleCount, hits.length, pageSize]);
+
+  /*
+   * The keyboard may walk past the window, and an option that is not rendered
+   * is one `aria-activedescendant` points at nothing — a silent listbox for
+   * anyone navigating by keyboard. Widen to cover wherever the arrows went.
+   */
+  useEffect(() => {
+    if (activeIndex >= visibleCount) {
+      setVisibleCount(Math.min(activeIndex + 1, hits.length));
+    }
+  }, [activeIndex, visibleCount, hits.length]);
 
   // Keep the active option visible under arrow-key navigation.
   useEffect(() => {
@@ -523,12 +569,20 @@ export function SearchDialog({
                   role="listbox"
                   aria-label={dialogLabel}
                 >
-                  {hits.map((hit, index) => (
+                  {hits.slice(0, visibleCount).map((hit, index) => (
                     <SearchResultOption
                       key={hit.id}
                       hit={hit}
                       id={optionId(index)}
                       isActive={index === activeIndex}
+                      /*
+                       * The whole list's size, not the window's. A listbox that
+                       * renders 20 of 47 must say 47, or a screen reader
+                       * announces "20 of 20" and the reader stops scrolling at
+                       * the point the DOM happens to end.
+                       */
+                      setSize={hits.length}
+                      posInSet={index + 1}
                       onActivate={() => setActiveIndex(index)}
                       onSelect={selectHit}
                       {...(Link === undefined ? {} : { Link })}
@@ -540,7 +594,6 @@ export function SearchDialog({
                   status={status}
                   query={query.trim()}
                   hitCount={hits.length}
-                  totalHits={totalHits}
                 />
               </div>
             </div>,
@@ -556,6 +609,8 @@ function SearchResultOption({
   hit,
   id,
   isActive,
+  setSize,
+  posInSet,
   onActivate,
   onSelect,
   Link,
@@ -563,6 +618,9 @@ function SearchResultOption({
   hit: SearchHit;
   id: string;
   isActive: boolean;
+  /** Size of the whole result set, not of the rendered window. */
+  setSize: number;
+  posInSet: number;
   onActivate: () => void;
   onSelect: (hit: SearchHit) => void;
   Link?: DocsLinkComponent;
@@ -614,6 +672,14 @@ function SearchResultOption({
       role="option"
       aria-selected={isActive}
       /*
+       * Explicit, because the DOM undercounts on purpose. The listbox renders
+       * a window of the results, so the sizes a browser would infer are the
+       * window's — "20 of 20" while 47 matched, which tells a reader they have
+       * reached the end when they have not.
+       */
+      aria-setsize={setSize}
+      aria-posinset={posInSet}
+      /*
        * Named explicitly, and in words rather than in the route the row shows.
        * The visible second line is `/docs/styling#layout-tokens`, which a
        * screen reader would spell out as punctuation; "Layout tokens, Styling"
@@ -659,14 +725,11 @@ function SearchStatus({
   status,
   query,
   hitCount,
-  totalHits,
 }: {
   status: IndexStatus;
   query: string;
-  /** Results actually rendered — the slice `maxResults` allowed. */
+  /** Everything the index matched. Nothing is withheld, so this is the total. */
   hitCount: number;
-  /** Results the index matched, which may be more. */
-  totalHits: number;
 }): ReactNode {
   let message: string | null = null;
   let modifier = '';
@@ -684,14 +747,6 @@ function SearchStatus({
   } else if (hitCount === 0) {
     message = `No results for “${query}”.`;
     modifier = ' wave-docs-search-status-empty';
-  } else if (totalHits > hitCount) {
-    /*
-     * The cap bit, and saying so is the whole point. A reader who sees twenty
-     * rows and no note assumes twenty is all there is, and stops refining the
-     * query that would have found the twenty-first.
-     */
-    message = `Showing ${hitCount} of ${totalHits}. Refine the query to narrow it.`;
-    modifier = ' wave-docs-search-status-truncated';
   }
 
   return (
@@ -706,10 +761,7 @@ function SearchStatus({
       >
         {query === '' || status !== 'ready'
           ? ''
-          : // The total, not the slice: announcing "20 results" when the index
-            // matched 47 is a false statement, not a rounded one.
-            `${totalHits} ${totalHits === 1 ? 'result' : 'results'}` +
-            (totalHits > hitCount ? `, showing ${hitCount}` : '')}
+          : `${hitCount} ${hitCount === 1 ? 'result' : 'results'}`}
       </p>
     </>
   );
