@@ -42,9 +42,7 @@ function row(heading: string, crumb: string): string {
     <div class="wave-docs-search-result" role="option" aria-selected="false" tabindex="-1">
       <a class="wave-docs-search-result-link" tabindex="-1" href="/docs/x">
         <span class="wave-docs-search-result-heading">${heading}</span>
-        <span class="wave-docs-search-result-breadcrumb">
-          <span class="wave-docs-search-result-crumb">${crumb}</span>
-        </span>
+        <span class="wave-docs-search-result-location">${crumb}</span>
       </a>
     </div>`;
 }
@@ -58,7 +56,7 @@ function mount(count: number, status?: string): HTMLElement {
   document.head.append(style);
 
   const rows = Array.from({ length: count }, (_, index) =>
-    row(`Result ${index}`, 'Installation'),
+    row(`Result ${index}`, '/docs/installation#result'),
   ).join('');
 
   document.body.innerHTML = `

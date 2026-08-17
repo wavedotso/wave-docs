@@ -1999,20 +1999,39 @@
     line-height: 1.4;
   }
 
-  .wave-docs-search-result-breadcrumb {
-    color: var(--wave-docs-fg-subtle);
-    font-size: 0.75rem;
-    line-height: 1.4;
-  }
-
-  /* A crumb never wraps mid-title: the trail reads as a path or not at all.
-   * The breadcrumb line itself is free to wrap between crumbs. */
-  .wave-docs-search-result-crumb {
+  /*
+   * Where the hit lands, as a route.
+   *
+   * ⚠️ RENAMED FROM `…-breadcrumb` / `…-crumb`, WHICH IS BREAKING AND
+   * DELIBERATE. This used to be a trail of human names — "Installation ›
+   * Requirements" — and a page's own record, whose heading IS its page title,
+   * got no line at all rather than repeat itself. That left a list where some
+   * rows had two lines and some had one.
+   *
+   * The first repair gave those rows the route and kept the trail on the
+   * others, which was worse: one slot carrying two different kinds of thing,
+   * so "Styling" under one row was a page and "/docs/styling" under the next
+   * was an address. Now every row shows the route, always, and the class is
+   * named for what it holds — a breadcrumb it is not.
+   *
+   * The words live in the option's `aria-label`, because a route read aloud is
+   * punctuation.
+   */
+  .wave-docs-search-result-location {
+    display: block;
+    /* One line, ellipsised. A real site's routes reach
+     * `/docs/api/reference/authentication#rotating-keys`, and a wrapped route
+     * makes the row two different heights depending on its depth — the raggedness
+     * this whole change exists to remove. */
+    overflow: hidden;
     white-space: nowrap;
-  }
-
-  .wave-docs-search-result-crumb-separator {
-    margin-inline: 0.25rem;
+    text-overflow: ellipsis;
+    color: var(--wave-docs-fg-subtle);
+    font-family: var(--wave-docs-font-mono);
+    /* Smaller than the trail was: a monospace face reads larger at the same
+     * size, and this line is a reference rather than something to read. */
+    font-size: 0.6875rem;
+    line-height: 1.5;
   }
 
   .wave-docs-search-status {
@@ -2037,6 +2056,18 @@
 
   .wave-docs-search-status-error {
     color: var(--wave-docs-callout-caution);
+  }
+
+  /*
+   * The cap bit. A footnote rather than a message: it sits under a full list
+   * the reader is already looking at, so it needs to be findable without
+   * competing with the results above it.
+   */
+  .wave-docs-search-status-truncated {
+    padding-block: 0.625rem;
+    border-block-start: 1px solid var(--wave-docs-border);
+    color: var(--wave-docs-fg-muted);
+    font-size: 0.75rem;
   }
 
   /* The live region must stay in the accessibility tree to be announced, so it

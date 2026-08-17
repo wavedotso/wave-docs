@@ -78,7 +78,18 @@ export interface SearchDialogProps {
   placeholder?: string | undefined;
   /** Accessible name for the dialog. Defaults to `'Search documentation'`. */
   dialogLabel?: string | undefined;
-  /** Maximum results rendered. Defaults to 8. */
+  /**
+   * Maximum results rendered. Defaults to 20.
+   *
+   * A cap, not a preference: a broad query against a large corpus matches
+   * thousands of sections, and rendering every one on each keystroke janks the
+   * dialog while giving a keyboard reader an arrow-key list nobody can travel.
+   *
+   * It was 8, which is far too tight for a dialog that scrolls — on a *six*
+   * page site "docs" matches 18, so ten were unreachable. When the cap does
+   * bite, the status line says so rather than letting the number pass as the
+   * total.
+   */
   maxResults?: number | undefined;
   /** Input debounce in milliseconds. Defaults to 120. */
   debounceMs?: number | undefined;
@@ -135,7 +146,7 @@ export function SearchDialog({
   triggerLabel = 'Search',
   placeholder = 'Search documentation',
   dialogLabel = 'Search documentation',
-  maxResults = 8,
+  maxResults = 20,
   debounceMs = 120,
   className,
   miniSearchOptions,
@@ -143,6 +154,15 @@ export function SearchDialog({
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
+  /*
+   * How many the index actually matched, which is not `hits.length`.
+   *
+   * ⚠️ THE ANNOUNCER USED TO READ THE SLICE. With `maxResults` at 8 and a
+   * six-page site, "docs" matches 18 — and a screen reader was told "8
+   * results", which is not a smaller truth, it is a false one. Ten of them were
+   * unreachable and nothing said so.
+   */
+  const [totalHits, setTotalHits] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<IndexStatus>('idle');
   const [shortcutHint, setShortcutHint] = useState('');
@@ -323,6 +343,7 @@ export function SearchDialog({
     const trimmed = query.trim();
     if (trimmed === '') {
       setHits([]);
+      setTotalHits(0);
       setActiveIndex(0);
       return;
     }
@@ -333,12 +354,10 @@ export function SearchDialog({
         (index) => {
           if (isCancelled) return;
           setStatus('ready');
+          const matches = index.search(trimmed);
+          setTotalHits(matches.length);
           setHits(
-            index
-              .search(trimmed)
-              .slice(0, maxResults)
-              .map(toSearchHit)
-              .filter(isSearchHit),
+            matches.slice(0, maxResults).map(toSearchHit).filter(isSearchHit),
           );
           setActiveIndex(0);
         },
@@ -521,6 +540,7 @@ export function SearchDialog({
                   status={status}
                   query={query.trim()}
                   hitCount={hits.length}
+                  totalHits={totalHits}
                 />
               </div>
             </div>,
@@ -563,28 +583,23 @@ function SearchResultOption({
     onSelect(hit);
   }
 
-  const trail = toBreadcrumbs(hit);
-
   const body = (
     <>
       <span className="wave-docs-search-result-heading">{hit.heading}</span>
-      {trail.length === 0 ? null : (
-        <span className="wave-docs-search-result-breadcrumb">
-          {trail.map((crumb, index) => (
-            <span className="wave-docs-search-result-crumb" key={crumb.key}>
-              {index === 0 ? null : (
-                <span
-                  className="wave-docs-search-result-crumb-separator"
-                  aria-hidden="true"
-                >
-                  ›
-                </span>
-              )}
-              {crumb.text}
-            </span>
-          ))}
-        </span>
-      )}
+      {/*
+       * ⚠️ `aria-hidden`, AND THE NAME BELOW SAYS SOMETHING ELSE. A route read
+       * aloud is punctuation, one character at a time —
+       * "slash docs slash styling hash layout dash tokens" — which is worse
+       * than useless as a result's name. The visible line is a sighted
+       * reader's affordance for "where does this land"; the announced name
+       * answers the same question in words.
+       *
+       * Not a WCAG 2.5.3 problem: the visible label a speech-input user would
+       * say is the heading, and the heading opens the accessible name.
+       */}
+      <span className="wave-docs-search-result-location" aria-hidden="true">
+        {hit.href}
+      </span>
     </>
   );
 
@@ -599,15 +614,15 @@ function SearchResultOption({
       role="option"
       aria-selected={isActive}
       /*
-       * Named explicitly rather than from its own content. The separators are
-       * `aria-hidden` and the crumbs are adjacent inline spans, so the computed
-       * name ran them together — "InstallationRequirements" — and the visual
-       * `margin-inline` that separates them for a sighted reader contributes
-       * nothing to the accessibility tree. Commas here are what the trail
-       * sounds like read aloud, and `›` stays out of it: more than one screen
-       * reader pronounces it.
+       * Named explicitly, and in words rather than in the route the row shows.
+       * The visible second line is `/docs/styling#layout-tokens`, which a
+       * screen reader would spell out as punctuation; "Layout tokens, Styling"
+       * is the same fact in the form a listener can use.
+       *
+       * Commas because that is what a path sounds like read aloud, and `›`
+       * stays out of it: more than one screen reader pronounces it.
        */
-      aria-label={[hit.heading, ...trail.map((crumb) => crumb.text)].join(', ')}
+      aria-label={spokenName(hit)}
       // Options are never tab stops in the combobox pattern: focus stays in
       // the input and `aria-activedescendant` does the pointing.
       tabIndex={-1}
@@ -644,10 +659,14 @@ function SearchStatus({
   status,
   query,
   hitCount,
+  totalHits,
 }: {
   status: IndexStatus;
   query: string;
+  /** Results actually rendered — the slice `maxResults` allowed. */
   hitCount: number;
+  /** Results the index matched, which may be more. */
+  totalHits: number;
 }): ReactNode {
   let message: string | null = null;
   let modifier = '';
@@ -665,6 +684,14 @@ function SearchStatus({
   } else if (hitCount === 0) {
     message = `No results for “${query}”.`;
     modifier = ' wave-docs-search-status-empty';
+  } else if (totalHits > hitCount) {
+    /*
+     * The cap bit, and saying so is the whole point. A reader who sees twenty
+     * rows and no note assumes twenty is all there is, and stops refining the
+     * query that would have found the twenty-first.
+     */
+    message = `Showing ${hitCount} of ${totalHits}. Refine the query to narrow it.`;
+    modifier = ' wave-docs-search-status-truncated';
   }
 
   return (
@@ -679,7 +706,10 @@ function SearchStatus({
       >
         {query === '' || status !== 'ready'
           ? ''
-          : `${hitCount} ${hitCount === 1 ? 'result' : 'results'}`}
+          : // The total, not the slice: announcing "20 results" when the index
+            // matched 47 is a false statement, not a rounded one.
+            `${totalHits} ${totalHits === 1 ? 'result' : 'results'}` +
+            (totalHits > hitCount ? `, showing ${hitCount}` : '')}
       </p>
     </>
   );
@@ -756,40 +786,25 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
 }
 
 /**
- * The second line of a result: where the thing on the first line lives.
+ * What a result is called when it is read aloud.
  *
- * For a section hit that is the page, then any enclosing headings — `ancestors`
- * deliberately excludes the page title so the index does not carry it twice.
+ * Words, not the route the row displays. `/docs/styling#layout-tokens` is
+ * punctuation to a screen reader — spelled out slash by slash — so the visible
+ * line and the announced name deliberately carry the same fact in two forms:
+ * the route for a sighted reader scanning for where a hit lands, and
+ * "Layout tokens, Styling" for a listener.
  *
- * ## The page's own record
+ * `ancestors` deliberately excludes the page title, so the page comes first
+ * here and the enclosing headings follow, outermost first.
  *
- * A page's lead record carries `heading === title` and no ancestors (see
- * `extractSearchRecords`), so a trail built the same way would repeat the one
- * string already printed above it. "Installation" over "Installation" is not a
- * path, it is a rendering glitch.
- *
- * ⚠️ THE ANSWER TO THAT WAS "NO SECOND LINE", AND IT WAS WRONG. Six of this
- * site's twenty-nine records are lead records, so a search showed a list where
- * some rows had two lines and some had one — ragged, and worse, the bare rows
- * were the ones that said least: a row reading only "Wave Docs" gives a reader
- * no idea what it opens.
- *
- * So a lead record gets the route instead. It is the honest answer to the
- * question the second line is asking, it costs the index nothing (`href` is
- * already stored), and it is the one row where a path is genuinely more useful
- * than a title — the reader is being offered the top of a page rather than a
- * place inside one.
+ * A page's own record carries `heading === title` and no ancestors, so its name
+ * is the heading alone — "Styling, Styling" is not a path, it is a stutter.
  */
-function toBreadcrumbs(hit: SearchHit): Array<{ key: string; text: string }> {
+function spokenName(hit: SearchHit): string {
   if (hit.ancestors.length === 0 && hit.heading === hit.title) {
-    return [{ key: hit.href, text: hit.href }];
+    return hit.heading;
   }
-
-  let trail = '';
-  return [hit.title, ...hit.ancestors].map((text) => {
-    trail = trail === '' ? text : `${trail}/${text}`;
-    return { key: trail, text };
-  });
+  return [hit.heading, hit.title, ...hit.ancestors].join(', ');
 }
 
 function trapFocus(root: HTMLElement | null, event: KeyboardEvent): void {

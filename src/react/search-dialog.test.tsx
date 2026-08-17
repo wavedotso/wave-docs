@@ -543,22 +543,28 @@ describe('SearchDialog', () => {
   });
 
   describe('results', () => {
-    it('announces the heading and its trail as one name', async () => {
+    it('announces the words, and shows the route', async () => {
       const { user, trigger } = renderDialog();
       await search(user, trigger, 'install');
 
-      // Page title first, then the ancestor headings the record carries. The
-      // separators are `aria-hidden` and the crumbs are adjacent inline spans,
-      // so left to name-from-content this read "InstallationRequirements".
+      /*
+       * The two forms of the same fact. A screen reader gets the page and the
+       * enclosing headings as words — a route read aloud is punctuation,
+       * spelled slash by slash — while the visible line is the address, which
+       * is what a sighted reader scans for.
+       */
       const option = screen.getByRole('option', {
         name: 'Peer dependencies, Installation, Requirements',
       });
 
-      // Visually the trail is still a path, separator and all.
-      const crumbs = [
-        ...option.querySelectorAll('.wave-docs-search-result-crumb'),
-      ].map((crumb) => crumb.textContent);
-      expect(crumbs).toEqual(['Installation', '›Requirements']);
+      const location = option.querySelector(
+        '.wave-docs-search-result-location',
+      );
+      expect(location?.textContent).toBe(
+        '/docs/guide/install#peer-dependencies',
+      );
+      // Hidden from the tree, or it would be announced as well as the name.
+      expect(location?.getAttribute('aria-hidden')).toBe('true');
     });
 
     it('gives a page’s lead hit its route, not a repeat of its own title', async () => {
@@ -583,14 +589,13 @@ describe('SearchDialog', () => {
       const { user, trigger } = renderDialog();
       await search(user, trigger, 'install');
 
-      const lead = screen.getByRole('option', {
-        name: 'Installation, /docs/guide/install',
-      });
-      const crumbs = [
-        ...lead.querySelectorAll('.wave-docs-search-result-crumb'),
-      ].map((crumb) => crumb.textContent);
+      // Named by its heading alone: "Installation, Installation" is a stutter,
+      // not a path.
+      const lead = screen.getByRole('option', { name: 'Installation' });
 
-      expect(crumbs).toEqual(['/docs/guide/install']);
+      expect(
+        lead.querySelector('.wave-docs-search-result-location')?.textContent,
+      ).toBe('/docs/guide/install');
     });
 
     it('gives every row a second line, so the list is not ragged', async () => {
@@ -604,9 +609,13 @@ describe('SearchDialog', () => {
       expect(options.length).toBeGreaterThan(1);
 
       for (const option of options) {
-        expect(
-          option.querySelectorAll('.wave-docs-search-result-crumb').length,
-        ).toBeGreaterThan(0);
+        const location = option.querySelector(
+          '.wave-docs-search-result-location',
+        );
+        // Present, and always the same kind of thing. The defect this replaced
+        // was a slot that held a page name under one row and an address under
+        // the next.
+        expect(location?.textContent).toMatch(/^\/docs\//);
       }
     });
 
@@ -627,6 +636,45 @@ describe('SearchDialog', () => {
       );
 
       expect(screen.getAllByRole('option')).toHaveLength(1);
+    });
+
+    it('says so when the cap hides results, rather than passing as the total', async () => {
+      /*
+       * ⚠️ THE CAP USED TO BE SILENT, AND THE DEFAULT WAS 8. On a six-page site
+       * "docs" matches 18 — so ten were unreachable, and the live region
+       * announced "8 results", which is not a smaller truth but a false one. A
+       * reader who sees a full list and no note assumes it is the whole list,
+       * and stops refining the query that would have found the rest.
+       */
+      const user = userEvent.setup();
+      render(
+        <SearchDialog
+          indexUrl={INDEX_URL}
+          navigate={() => undefined}
+          maxResults={1}
+        />,
+      );
+      await search(
+        user,
+        screen.getByRole('button', { name: 'Search' }),
+        'install',
+      );
+
+      expect(screen.getByText(/Showing 1 of 2/)).toBeTruthy();
+      // The announcer reports what the index matched, then what is shown.
+      expect(screen.getByRole('status').textContent).toBe(
+        '2 results, showing 1',
+      );
+    });
+
+    it('stays quiet when everything matched is on screen', async () => {
+      // The other half: a note on a complete list is noise, and one that
+      // appears regardless would teach readers to ignore it.
+      const { user, trigger } = renderDialog();
+      await search(user, trigger, 'install');
+
+      expect(screen.queryByText(/Showing/)).toBeNull();
+      expect(screen.getByRole('status').textContent).toBe('2 results');
     });
 
     it('portals the dialog out of the trigger’s stacking context', async () => {
