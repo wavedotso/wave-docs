@@ -682,6 +682,64 @@ describe('SearchDialog', () => {
       expect(screen.queryByText(/Keep typing/)).toBeNull();
     });
 
+    it('does not scroll the list when a pointer moves over a result', async () => {
+      /*
+       * ⚠️ THE BUG THIS PREVENTS, IN FULL. Pointing at a row half-clipped by
+       * the top or bottom edge set the active index, which fired the
+       * scroll-into-view meant for arrow keys — so the row snapped flush and
+       * the whole list moved under the cursor, which then landed on a
+       * different row. Measured in Chromium: a 28px jump from hovering the
+       * visible sliver of a clipped row.
+       *
+       * jsdom has no layout, so what is asserted here is the wiring: a pointer
+       * never reaches `scrollIntoView`, and a key always does.
+       * `search.browser.test.tsx` measures the scroll position itself.
+       */
+      const spy = vi.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = spy;
+
+      try {
+        const { user, trigger } = renderDialog();
+        await search(user, trigger, 'install');
+        spy.mockClear();
+
+        await user.hover(screen.getAllByRole('option')[1] as HTMLElement);
+        expect(spy).not.toHaveBeenCalled();
+
+        // The control: the same movement by keyboard must still scroll, or
+        // this test would pass against a component that never scrolls at all.
+        await user.keyboard('{ArrowDown}');
+        await waitFor(() => {
+          expect(spy).toHaveBeenCalled();
+        });
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it('starts a new result set at the top of the list', async () => {
+      /*
+       * The scroll-into-view used to do this by accident, because a fresh
+       * search reset the active index to 0. Now that it only runs for the
+       * keyboard, a reader who scrolled halfway down one query's results would
+       * otherwise keep that offset into the next.
+       */
+      const { user, trigger } = renderDialog();
+      await search(user, trigger, 'install');
+
+      const list = screen.getByRole('listbox');
+      list.scrollTop = 40;
+
+      await user.clear(screen.getByRole('combobox'));
+      await user.type(screen.getByRole('combobox'), 'keyboard');
+      await waitFor(() => {
+        expect(screen.getAllByRole('option').length).toBeGreaterThan(0);
+      });
+
+      expect(list.scrollTop).toBe(0);
+    });
+
     it('renders one page of results, and declares the whole set', async () => {
       /*
        * `pageSize` is a window, not a ceiling. The DOM holds one page, and

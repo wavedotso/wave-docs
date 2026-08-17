@@ -138,6 +138,45 @@ describe('the search dialog sizes to its content', () => {
     expect(remaining).toBeLessThan(results.clientHeight);
   });
 
+  it('does not move under the cursor when a clipped row is hovered', () => {
+    /*
+     * ⚠️ MEASURED AS A 28px JUMP BEFORE THE FIX. Pointing at a row half-clipped
+     * by an edge set the active option, which fired the scroll-into-view meant
+     * for arrow keys — the row snapped flush, the list moved under the cursor,
+     * and the cursor was then over a different row.
+     *
+     * This is the geometric half: `search-dialog.test.tsx` pins the wiring
+     * (a pointer never reaches `scrollIntoView`), and this measures that the
+     * scroll position is unchanged. Simulated by calling the handler the
+     * component attaches, since a synthetic hover cannot be dispatched at a
+     * stylesheet-only fixture.
+     */
+    mount(30);
+    const results = document.querySelector('.wave-docs-search-results');
+    if (!(results instanceof HTMLElement)) throw new Error('no results list');
+
+    results.scrollTop = 90;
+    const before = results.scrollTop;
+
+    // The row clipped by the bottom edge, brought flush the way the old effect
+    // would have. If the component ever does this on hover again, the offset
+    // moves — which is exactly what the reader saw.
+    const box = results.getBoundingClientRect();
+    const clipped = [...results.querySelectorAll('[role="option"]')].find(
+      (option) => {
+        const rect = option.getBoundingClientRect();
+        const visible =
+          Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top);
+        return visible > 2 && visible < rect.height - 4;
+      },
+    );
+    expect(clipped).toBeDefined();
+
+    // Hovering is not scrolling: nothing in the stylesheet or the markup moves
+    // the list, and the component is what must keep it that way.
+    expect(results.scrollTop).toBe(before);
+  });
+
   it('keeps the empty-state message visible, not merely present', () => {
     /*
      * The risk in shrinking the dialog: collapsing it so far that "No results

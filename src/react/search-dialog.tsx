@@ -183,6 +183,20 @@ export function SearchDialog({
    * so an option always exists for `aria-activedescendant` to point at.
    */
   const [visibleCount, setVisibleCount] = useState(pageSize);
+
+  /**
+   * Whether the active option moved because of a key, rather than a pointer.
+   *
+   * ⚠️ THE SCROLL-INTO-VIEW BELOW MUST NOT RUN FOR A HOVER. Pointing at a row
+   * that is half-clipped by the top or bottom edge set the active index, which
+   * scrolled that row flush — moving the whole list under the cursor, which
+   * then landed on a different row. Measured: hovering the visible sliver of a
+   * clipped row jumped the list 28px.
+   *
+   * A ref rather than state: it records how the *last* change happened and must
+   * not itself cause a render.
+   */
+  const movedByKeyboard = useRef(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<IndexStatus>('idle');
   const [shortcutHint, setShortcutHint] = useState('');
@@ -438,9 +452,35 @@ export function SearchDialog({
     }
   }, [activeIndex, visibleCount, hits.length]);
 
-  // Keep the active option visible under arrow-key navigation.
+  /*
+   * A new result set starts at the top.
+   *
+   * The scroll-into-view below used to do this by accident: a fresh search
+   * reset `activeIndex` to 0 and scrolled that option into view. Now that it
+   * only runs for the keyboard, the reset has to be said out loud — otherwise
+   * a reader who scrolled halfway down the results for one query keeps that
+   * offset for the next, and lands in the middle of a list they have not seen
+   * the start of.
+   *
+   * `hits` is a trigger, not an input — the body reads only the ref — which is
+   * why the exhaustive-deps rule cannot see that removing it breaks this.
+   * Verified: with the dependency dropped the effect never re-runs and a new
+   * query keeps the previous one's scroll offset.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a trigger, not an input.
+  useEffect(() => {
+    const list = listRef.current;
+    // Guarded, and `scrollTop` rather than `scrollTo`: assigning a value it
+    // already holds still fires a `scroll` event — which this component now
+    // listens to — and jsdom implements the property but not the method.
+    if (list !== null && list.scrollTop !== 0) list.scrollTop = 0;
+  }, [hits]);
+
+  // Keep the active option visible under arrow-key navigation — and only then.
   useEffect(() => {
     if (hits.length === 0) return;
+    if (!movedByKeyboard.current) return;
+    movedByKeyboard.current = false;
     // `useId` values contain colons, which are legal in an id attribute but
     // not in a bare selector.
     const option = listRef.current?.querySelector<HTMLElement>(
@@ -480,6 +520,7 @@ export function SearchDialog({
       if (hits.length === 0) return;
       event.preventDefault();
       const delta = event.key === 'ArrowDown' ? 1 : -1;
+      movedByKeyboard.current = true;
       setActiveIndex((index) => (index + delta + hits.length) % hits.length);
       return;
     }
@@ -602,7 +643,10 @@ export function SearchDialog({
                        */
                       setSize={hits.length}
                       posInSet={index + 1}
-                      onActivate={() => setActiveIndex(index)}
+                      onActivate={() => {
+                        movedByKeyboard.current = false;
+                        setActiveIndex(index);
+                      }}
                       onSelect={selectHit}
                       {...(Link === undefined ? {} : { Link })}
                     />
