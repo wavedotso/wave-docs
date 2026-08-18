@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime';
 
 import { hasCodeFrame } from '../code-frame.js';
+import type { CodeRuntimeLabels } from './code-runtime.js';
 import { DocsCodeRuntime } from './code-runtime.js';
 import type { MarkdownComponents } from './markdown-components.js';
 import { defaultMarkdownComponents } from './markdown-components.js';
@@ -26,6 +27,16 @@ export interface DocContentProps {
    * choice rather than as a mistake.
    */
   className?: string | undefined;
+  /**
+   * The two things the copy runtime announces, for a site that is not in
+   * English.
+   *
+   * Here rather than on `docs.Layout` because this is the component that mounts
+   * the runtime, and it is the one no consumer can avoid — the hand-rolled route
+   * in the README renders it directly. Forwarded only when set, so a site that
+   * overrides nothing sends no extra props across the boundary.
+   */
+  labels?: CodeRuntimeLabels | undefined;
 }
 
 /**
@@ -72,6 +83,7 @@ export function DocContent({
   hast,
   components,
   className,
+  labels,
 }: DocContentProps): ReactNode {
   return (
     <div
@@ -81,7 +93,7 @@ export function DocContent({
           : `wave-docs-prose ${className}`
       }
     >
-      {hasCodeFrame(hast) ? <DocsCodeRuntime /> : null}
+      {hasCodeFrame(hast) ? <DocsCodeRuntime {...labels} /> : null}
       {toJsxRuntime(hast, {
         Fragment,
         jsx,

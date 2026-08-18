@@ -24,6 +24,18 @@ export interface CalloutProps {
   type?: string | undefined;
   /** Overrides the default label ("Note", "Warning", …). */
   title?: string | undefined;
+  /**
+   * Default headings per type, for a site that is not in English.
+   *
+   * `title` still wins — it is what a single callout in the markdown asked for,
+   * and this is what every callout on the site is called otherwise.
+   *
+   * Here rather than resolved by the caller so that {@link normalizeCalloutType}
+   * stays the one place that decides what an unrecognised type falls back to. A
+   * caller picking the heading itself would need that rule too, and a second
+   * copy of it is a second thing to keep in step.
+   */
+  labels?: Partial<Record<CalloutType, string>> | undefined;
   className?: string | undefined;
   children?: ReactNode;
 }
@@ -95,6 +107,7 @@ function normalizeCalloutType(value: string | undefined): CalloutType {
 export function Callout({
   type,
   title,
+  labels,
   className,
   children,
 }: CalloutProps): ReactNode {
@@ -102,7 +115,7 @@ export function Callout({
   // Blank is absent: `title` arrives as an unvalidated attribute like `type`,
   // and an empty one leaves the callout with no accessible name at all — the
   // one thing this component exists to provide.
-  const label = title?.trim() || CALLOUT_LABELS[kind];
+  const label = title?.trim() || labels?.[kind] || CALLOUT_LABELS[kind];
 
   return (
     <aside

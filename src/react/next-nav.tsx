@@ -29,12 +29,19 @@ export interface DocsNextNavProps {
   nav: DocNavNode[];
   label?: string | undefined;
   closeLabel?: string | undefined;
+  /** Passed through to the tree. See `DocsSidebarProps.expandGroup`. */
+  expandGroup?: string | undefined;
+  collapseGroup?: string | undefined;
+  externalLink?: string | undefined;
 }
 
 export function DocsNextNav({
   nav,
   label,
   closeLabel,
+  expandGroup,
+  collapseGroup,
+  externalLink,
 }: DocsNextNavProps): ReactNode {
   return (
     <DocsNav
@@ -43,6 +50,9 @@ export function DocsNextNav({
       Link={Link}
       {...(label === undefined ? {} : { label })}
       {...(closeLabel === undefined ? {} : { closeLabel })}
+      {...(expandGroup === undefined ? {} : { expandGroup })}
+      {...(collapseGroup === undefined ? {} : { collapseGroup })}
+      {...(externalLink === undefined ? {} : { externalLink })}
     />
   );
 }

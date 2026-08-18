@@ -24,6 +24,7 @@ import { VFile } from 'vfile';
 import type { DocsHighlighter, DocsLang, DocsThemes } from './highlighter.js';
 import { createDocsHighlighter, DEFAULT_DOCS_THEMES } from './highlighter.js';
 import { rehypeCaptureToc } from './plugins/rehype-capture-toc.js';
+import type { RehypeCodeFrameOptions } from './plugins/rehype-code-frame.js';
 import { rehypeCodeFrame } from './plugins/rehype-code-frame.js';
 import {
   rehypeNormalizeCodeLanguage,
@@ -192,6 +193,16 @@ export interface DocsRendererOptions {
    * than a monochrome block of DSL.
    */
   excludeLangs?: readonly string[] | undefined;
+  /**
+   * Accessible names for the copy button, for a site that is not in English.
+   *
+   * ⚠️ `rehypeCodeFrame` HAS TAKEN A `copyLabel` SINCE IT WAS WRITTEN AND
+   * NOTHING EVER PASSED ONE. The plugin is private, so the option was
+   * unreachable from every entry point — the README said the label was
+   * configurable and it was not. Baked into the HTML at build time, so
+   * overriding it costs no client bytes.
+   */
+  codeLabels?: RehypeCodeFrameOptions | undefined;
 }
 
 /**
@@ -562,7 +573,7 @@ async function buildProcessor(
         ? {}
         : { exclude: options.excludeLangs }),
     })
-    .use(rehypeCodeFrame)
+    .use(rehypeCodeFrame, options.codeLabels ?? {})
     .use(rehypeShikiFromHighlighter, highlighter as ShikiHighlighter, {
       themes,
       /*

@@ -8,10 +8,22 @@ export interface YouTubeProps {
    * fallback is generic — pass a real one where you have it.
    */
   title?: string | undefined;
+  /**
+   * The closed facade's control. Default `'Play video: {title}'`.
+   *
+   * `{title}` is replaced with {@link YouTubeProps.title}. A placeholder rather
+   * than concatenation because a translator has to be able to move the name
+   * within the sentence — several languages put it first.
+   */
+  playLabel?: string | undefined;
+  /** The open facade's control. Default `'Hide video: {title}'`. */
+  hideLabel?: string | undefined;
   className?: string | undefined;
 }
 
 const DEFAULT_TITLE = 'YouTube video player';
+const DEFAULT_PLAY_LABEL = 'Play video: {title}';
+const DEFAULT_HIDE_LABEL = 'Hide video: {title}';
 
 /**
  * Click-to-load YouTube embed, with **no client JavaScript at all**.
@@ -51,7 +63,13 @@ const DEFAULT_TITLE = 'YouTube video player';
  * `hqdefault.jpg` rather than `maxresdefault.jpg` deliberately: maxres does not
  * exist for uploads below 1280×720 and 404s to a broken image with no fallback.
  */
-export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
+export function YouTube({
+  id,
+  title,
+  playLabel,
+  hideLabel,
+  className,
+}: YouTubeProps): ReactNode {
   // Only reachable if the pipeline emitted a malformed element; a missing id
   // can only ever produce a broken player, so render nothing at all.
   if (!id) {
@@ -114,9 +132,11 @@ export function YouTube({ id, title, className }: YouTubeProps): ReactNode {
          * accessibility tree rather than merely off-screen.
          */}
         <span className="wave-docs-sr-only wave-docs-youtube__label-play">
-          {`Play video: ${label}`}
+          {(playLabel ?? DEFAULT_PLAY_LABEL).replace('{title}', label)}
         </span>
-        <span className="wave-docs-youtube__label-hide">{`Hide video: ${label}`}</span>
+        <span className="wave-docs-youtube__label-hide">
+          {(hideLabel ?? DEFAULT_HIDE_LABEL).replace('{title}', label)}
+        </span>
       </summary>
       <iframe
         className="wave-docs-youtube__frame"

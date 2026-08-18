@@ -62,6 +62,10 @@ export interface DocsNavProps {
   label?: string | undefined;
   /** Accessible name for the close button. */
   closeLabel?: string | undefined;
+  /** Passed through to the tree. See `DocsSidebarProps.expandGroup`. */
+  expandGroup?: string | undefined;
+  collapseGroup?: string | undefined;
+  externalLink?: string | undefined;
 }
 
 export function DocsNav({
@@ -70,6 +74,9 @@ export function DocsNav({
   Link,
   label = 'Documentation',
   closeLabel = 'Close navigation',
+  expandGroup,
+  collapseGroup,
+  externalLink,
 }: DocsNavProps): ReactNode {
   const ref = useRef<HTMLDialogElement | null>(null);
 
@@ -155,7 +162,15 @@ export function DocsNav({
           <path d="M4 4l8 8M12 4l-8 8" />
         </svg>
       </button>
-      <DocsSidebar nav={nav} pathname={pathname} label={label} Link={Link} />
+      <DocsSidebar
+        nav={nav}
+        pathname={pathname}
+        label={label}
+        Link={Link}
+        {...(expandGroup === undefined ? {} : { expandGroup })}
+        {...(collapseGroup === undefined ? {} : { collapseGroup })}
+        {...(externalLink === undefined ? {} : { externalLink })}
+      />
     </dialog>
   );
 }

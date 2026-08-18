@@ -1,16 +1,16 @@
 {
   "client": {
     "code-runtime": {
-      "max": 1000,
-      "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. It is one delegated listener and one live region; if this grows past a kilobyte it has stopped being that."
+      "max": 1150,
+      "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. One delegated listener, one live region, and the two messages it announces \u2014 which are props now rather than string literals, because they are the only strings this package speaks to a screen reader at run time and they were English on every site in every language. If this grows past a kilobyte and a half it has stopped being one listener."
     },
     "nav": {
-      "max": 2300,
+      "max": 2450,
       "note": "The drawer: a dialog, a close-on-navigate effect and an eight-line `command` fallback, plus the sidebar it wraps \u2014 so it moves whenever the sidebar does, and it did, for the drawer's own scroll-into-view fix. Growth beyond that means behaviour moved out of the browser and into us, which is the direction to argue about."
     },
     "next-nav": {
-      "max": 2400,
-      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper."
+      "max": 2550,
+      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper. Moves whenever `sidebar` does, and it did, for the drawer's scroll fix and then for the tree's three translatable strings."
     },
     "next-search": {
       "max": 9700,
@@ -21,8 +21,8 @@
       "note": "The whole keyboard-first dialog: focus trap, combobox wiring, result rendering. The single largest thing this package ships to a browser, and the one worth defending line by line."
     },
     "sidebar": {
-      "max": 1900,
-      "note": "A tree with disclosure groups and no router import. Raised twice, both times deliberately and both times by a client-only necessity: 1.37 KB \u2192 1.8 KB when scroll-into-view and the external-link icon landed, and 1.8 KB \u2192 1.9 KB when that scroll learned to run for the mobile drawer as well \u2014 the effect was keyed on `pathname` alone, and inside a `display: none` `<dialog>` there is no scrollport to measure, so on a phone it had never run at all. The cost is one `toggle` listener on the closest dialog. If this approaches the search dialog's 9 KB, the navigation has grown a feature that belongs on the server."
+      "max": 2000,
+      "note": "A tree with disclosure groups and no router import. Raised three times, each time for a client-only necessity: 1.37 \u2192 1.8 KB for scroll-into-view and the external-link icon; 1.8 \u2192 1.9 KB when that scroll learned to run for the mobile drawer, where a `display: none` dialog had always left it with no scrollport to measure; 1.9 \u2192 2.0 KB for the three strings this tree renders \u2014 the two disclosure verbs and the external-link suffix \u2014 which were hardcoded English under a `labels` prop claiming to be a site's whole translatable chrome. If this approaches the dialog's 9 KB, the navigation has grown a feature that belongs on the server."
     },
     "toc": {
       "max": 900,

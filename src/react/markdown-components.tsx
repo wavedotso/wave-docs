@@ -2,6 +2,8 @@ import type { ComponentProps, ComponentType, JSX, ReactNode } from 'react';
 
 import type { CalloutProps } from './callout.js';
 import { Callout } from './callout.js';
+import type { DocsLabels } from './shell-labels.js';
+import type { CalloutType } from './callout.js';
 import type { YouTubeProps } from './youtube.js';
 import { YouTube } from './youtube.js';
 
@@ -74,7 +76,38 @@ export interface MarkdownComponentsOptions {
   Link?: DocsLinkComponent | undefined;
   /** Optimising image component, e.g. `next/image`. Falls back to `<img>`. */
   Image?: DocsImageComponent | undefined;
+  /**
+   * Overrides for the strings this map renders itself.
+   *
+   * Five callout headings, the external-link suffix, a wide table's region
+   * name and the YouTube facade's three — every one of them hardcoded English
+   * until this existed, on a shell whose `labels` prop claimed to be the whole
+   * of a site's translatable chrome.
+   *
+   * All server-rendered, so overriding them costs no client bytes.
+   */
+  labels?: MarkdownLabels | undefined;
 }
+
+/** The subset of `DocsLabels` this map is responsible for. */
+export type MarkdownLabels = Pick<
+  DocsLabels,
+  | 'externalLink'
+  | 'table'
+  | 'calloutNote'
+  | 'calloutTip'
+  | 'calloutImportant'
+  | 'calloutWarning'
+  | 'calloutCaution'
+  | 'youtubeTitle'
+  | 'youtubePlay'
+  | 'youtubeHide'
+>;
+
+/** Default, and the only string here a reader sees without a screen reader. */
+const DEFAULT_EXTERNAL_LINK = '(opens in a new tab)';
+/** Default name for a wide table's scroll region. */
+const DEFAULT_TABLE = 'Table';
 
 /** Schemes we send to a new tab. `mailto:`/`tel:` are left to the OS. */
 const HTTP_SCHEME = /^https?:\/\//i;
@@ -177,7 +210,10 @@ function toDimension(value: number | string | undefined): number | undefined {
   return undefined;
 }
 
-function createAnchor(Link: DocsLinkComponent | undefined) {
+function createAnchor(
+  Link: DocsLinkComponent | undefined,
+  externalLink: string,
+) {
   return function MarkdownAnchor({
     href,
     children,
@@ -211,7 +247,10 @@ function createAnchor(Link: DocsLinkComponent | undefined) {
       return (
         <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
           {children}
-          <span className="wave-docs-sr-only"> (opens in a new tab)</span>
+          {/* The leading space is markup, not copy: it separates the suffix
+              from the link text for a screen reader, and a translator should
+              not have to remember to type it. */}
+          <span className="wave-docs-sr-only"> {externalLink}</span>
         </a>
       );
     }
@@ -318,23 +357,25 @@ function createImage(Image: DocsImageComponent | undefined) {
  * `<section>` is a `region` landmark, so the tab stop announces itself instead
  * of being a mystery stop in the tab order.
  */
-function MarkdownTable({
-  className,
-  ...rest
-}: ComponentProps<'table'>): ReactNode {
-  return (
-    <section
-      className="wave-docs-table-scroll"
-      aria-label="Table"
-      // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard scrolling — see above.
-      tabIndex={0}
-    >
-      <table
-        {...rest}
-        className={joinClassNames('wave-docs-table', className)}
-      />
-    </section>
-  );
+function createTable(label: string) {
+  return function MarkdownTable({
+    className,
+    ...rest
+  }: ComponentProps<'table'>): ReactNode {
+    return (
+      <section
+        className="wave-docs-table-scroll"
+        aria-label={label}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard scrolling — see above.
+        tabIndex={0}
+      >
+        <table
+          {...rest}
+          className={joinClassNames('wave-docs-table', className)}
+        />
+      </section>
+    );
+  };
 }
 
 /**
@@ -355,12 +396,75 @@ function MarkdownTable({
 export function createMarkdownComponents(
   options: MarkdownComponentsOptions = {},
 ): MarkdownComponents {
+  const labels = options.labels ?? {};
+  const calloutTitles = calloutTitleMap(labels);
+
   return {
-    a: createAnchor(options.Link),
+    a: createAnchor(options.Link, labels.externalLink ?? DEFAULT_EXTERNAL_LINK),
     img: createImage(options.Image),
-    table: MarkdownTable,
-    callout: Callout,
-    youtube: YouTube,
+    table: createTable(labels.table ?? DEFAULT_TABLE),
+    /*
+     * The per-type headings go in as a map, and `Callout` picks. Resolving the
+     * heading here would need its rule for an unrecognised `type` — an
+     * attribute that arrives unvalidated out of the markdown — and a second copy
+     * of that rule is a second thing to keep in step. `undefined` when nothing
+     * is set, so an unconfigured site renders exactly the element it did before.
+     */
+    callout: (props: CalloutProps) => (
+      <Callout
+        {...props}
+        {...(calloutTitles === undefined ? {} : { labels: calloutTitles })}
+      />
+    ),
+    youtube: (props: YouTubeProps) => (
+      <YouTube {...youtubeDefaults(labels, props)} />
+    ),
+  };
+}
+
+/** The five headings as `Callout` wants them, or `undefined` if none are set. */
+function calloutTitleMap(
+  labels: MarkdownLabels,
+): Partial<Record<CalloutType, string>> | undefined {
+  const titles: Partial<Record<CalloutType, string>> = {};
+  let found = false;
+  for (const [type, key] of Object.entries(CALLOUT_LABEL_KEYS) as Array<
+    [CalloutType, keyof MarkdownLabels]
+  >) {
+    const value = labels[key];
+    if (value !== undefined) {
+      titles[type] = value;
+      found = true;
+    }
+  }
+  return found ? titles : undefined;
+}
+
+/** Which `DocsLabels` key names a given callout type's heading. */
+const CALLOUT_LABEL_KEYS = {
+  note: 'calloutNote',
+  tip: 'calloutTip',
+  important: 'calloutImportant',
+  warning: 'calloutWarning',
+  caution: 'calloutCaution',
+} as const satisfies Record<CalloutType, keyof MarkdownLabels>;
+
+/** `props`, with the site's YouTube strings filled in. */
+function youtubeDefaults(
+  labels: MarkdownLabels,
+  props: YouTubeProps,
+): YouTubeProps {
+  return {
+    ...props,
+    ...(props.title === undefined && labels.youtubeTitle !== undefined
+      ? { title: labels.youtubeTitle }
+      : {}),
+    ...(labels.youtubePlay === undefined
+      ? {}
+      : { playLabel: labels.youtubePlay }),
+    ...(labels.youtubeHide === undefined
+      ? {}
+      : { hideLabel: labels.youtubeHide }),
   };
 }
 

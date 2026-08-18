@@ -242,6 +242,80 @@ describe('the shell in another language', () => {
     }
   });
 
+  it('reaches the sidebar tree, four components down', async () => {
+    /*
+     * ⚠️ THE HOP THAT WAS MISSING FOR EVERY STRING BUT THESE FOUR. The
+     * disclosure verbs and the external-link suffix are rendered by
+     * `DocsSidebar`, which is `DocsLayoutShell` → `DocsNextNav` → `DocsNav` →
+     * `DocsSidebar` from here — and a prop dropped at any of those four hops is
+     * silent, which is exactly how `DocsNav`'s own `label` came to be documented,
+     * defaulted and never passed.
+     *
+     * A group and an external link, because those are the two nodes that render
+     * them, and `NAV` above has neither.
+     */
+    render(
+      <DocsLayoutShell
+        nav={[
+          {
+            /*
+             * With an `href`, deliberately. A group without one renders a single
+             * button whose name is the group title; only the linked form has the
+             * separate icon-only toggle these two labels name, so a group without
+             * an href would make this assertion unfailable.
+             */
+            type: 'group',
+            title: 'Reference',
+            href: '/docs/reference',
+            children: [
+              { type: 'page', title: 'API', href: '/docs/api', slug: 'api' },
+            ],
+          },
+          {
+            type: 'link',
+            title: 'Changelog',
+            href: 'https://example.com/changelog',
+            external: true,
+          },
+        ]}
+        searchIndexUrl="/docs/search-index.json"
+        labels={{
+          expandGroup: 'Abrir {title}',
+          collapseGroup: 'Fechar {title}',
+          externalLink: '(abre num novo separador)',
+        }}
+      >
+        <article id="docs-content">Page body</article>
+      </DocsLayoutShell>,
+    );
+
+    /*
+     * The group holds the active page (`usePathname` is mocked to
+     * `/docs/guide`, so it does not) — closed, then. `hidden: true` because the
+     * whole tree is inside a closed `<dialog>`.
+     */
+    expect(
+      screen.getByRole('button', { name: 'Abrir Reference', hidden: true }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Expand Reference', hidden: true }),
+    ).toBeNull();
+
+    /*
+     * No space between the two: the suffix is its own `<span>`, and
+     * dom-testing-library concatenates each element's text without inserting a
+     * boundary. Real browsers do insert one — the markup carries the space, and
+     * `renderToStaticMarkup` shows `<span> (…)</span>` — so this spelling is a
+     * property of the test library rather than of what a reader hears.
+     */
+    expect(
+      screen.getByRole('link', {
+        name: 'Changelog(abre num novo separador)',
+        hidden: true,
+      }),
+    ).toBeTruthy();
+  });
+
   it('falls back per string, so a partial map is not a half-English shell', () => {
     renderShell({ labels: { openNav: 'Abrir navegação' } });
 

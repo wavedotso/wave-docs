@@ -72,6 +72,7 @@ import type {
   DocsImageProps,
   MarkdownComponents,
 } from './react/markdown-components.js';
+import type { MarkdownLabels } from './react/markdown-components.js';
 import { createMarkdownComponents } from './react/markdown-components.js';
 import { DOCS_CONTENT_ID } from './docs-content-id.js';
 import type { NextLinkComponent } from './react/next-link.js';
@@ -259,27 +260,39 @@ function wrapNextImage(NextImage: NextImageComponent): DocsImageComponent {
 }
 
 /**
- * The component map is built once per process.
+ * A memo for the component map, one per route.
  *
  * `createMarkdownComponents` returns fresh component identities on every call,
  * and a new identity for `a` remounts every link in the document on every
  * render — so this memo is correctness, not micro-optimisation.
+ *
+ * ⚠️ PER ROUTE, NOT PER PROCESS, SINCE THE MAP CLOSES OVER THE ROUTE'S LABELS.
+ * A single process-wide memo would hand the second route the first route's
+ * language. Nothing is lost: `import()` caches the `next/link` and `next/image`
+ * modules itself, so all a second route pays for is two wrapper identities —
+ * and a route's identities only ever have to be stable against themselves,
+ * because the pages that use them come from that same route.
  */
-let nextComponents: Promise<MarkdownComponents> | null = null;
-
-function loadNextComponents(): Promise<MarkdownComponents> {
-  if (nextComponents === null) {
-    nextComponents = buildNextComponents().catch((error: unknown) => {
-      // Evicted on failure so one transient import error does not poison every
-      // later render in the process.
-      nextComponents = null;
-      throw error;
-    });
-  }
-  return nextComponents;
+function createComponentsMemo(
+  labels: MarkdownLabels | undefined,
+): () => Promise<MarkdownComponents> {
+  let memo: Promise<MarkdownComponents> | null = null;
+  return () => {
+    if (memo === null) {
+      memo = buildNextComponents(labels).catch((error: unknown) => {
+        // Evicted on failure so one transient import error does not poison
+        // every later render in the process.
+        memo = null;
+        throw error;
+      });
+    }
+    return memo;
+  };
 }
 
-async function buildNextComponents(): Promise<MarkdownComponents> {
+async function buildNextComponents(
+  labels: MarkdownLabels | undefined,
+): Promise<MarkdownComponents> {
   const [linkMod, imageMod] = await Promise.all([
     importNext(() => import('next/link'), 'next/link'),
     importNext(() => import('next/image'), 'next/image'),
@@ -294,6 +307,7 @@ async function buildNextComponents(): Promise<MarkdownComponents> {
   return createMarkdownComponents({
     Link: wrapNextLink(NextLink),
     Image: wrapNextImage(NextImage),
+    ...(labels === undefined ? {} : { labels }),
   });
 }
 
@@ -372,6 +386,20 @@ export interface DocsRouteOptions<
    * function there. See {@link SerializableSearchOptions}.
    */
   miniSearchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
+  /**
+   * Every string this package renders that is not your content.
+   *
+   * ⚠️ THE ROUTE IS WHERE THEY BELONG, BECAUSE THEY DO NOT ALL LIVE IN ONE
+   * RUNTIME. Four are rendered by the shell, two by the table of contents, nine
+   * by the markdown component map, two by a client-side copy runtime — and two
+   * are baked into the HTML by a rehype plugin at build time. `docs.Layout` can
+   * reach the first four and no more, which is exactly why its own `labels` prop
+   * documented itself as the whole set and covered less than a fifth of it.
+   *
+   * `docs.Layout` forwards these for you, and its `labels` prop still overrides
+   * them per-layout. Set them once here.
+   */
+  labels?: DocsLabels | undefined;
 }
 
 /**
@@ -418,13 +446,19 @@ export interface DocsLayoutProps {
    */
   search?: boolean | DocsLayoutSearchProps | undefined;
   /**
-   * The four strings the shell renders itself: the navigation landmark's name,
-   * the drawer's open and close buttons, and the skip link.
+   * Overrides for the strings the shell renders, over the route's.
    *
-   * Everything else a reader sees is your markdown or your `title`. This is the
-   * whole of what a non-English site has to say — and it is the fifth prop,
-   * added deliberately: a documentation shell nobody can translate is not a
-   * shell for the whole ecosystem.
+   * ⚠️ THIS DOCSTRING USED TO CLAIM TO BE "THE WHOLE OF WHAT A NON-ENGLISH SITE
+   * HAS TO SAY" AND REACHED FOUR STRINGS OF TWENTY-TWO. It could not have
+   * reached the rest: the table of contents is rendered by `docs.Page`, the
+   * callout headings by a component map built when the route is created, and the
+   * copy button is baked into the HTML by a rehype plugin at build time. None of
+   * those is downstream of a layout prop.
+   *
+   * So the set lives on {@link DocsRouteOptions.labels}, which is upstream of
+   * all four runtimes, and this overrides it key by key — for a site with two
+   * shells, or a section in another language. Whole-object replacement would
+   * mean naming one string cost you the other twenty-one.
    */
   labels?: DocsLabels | undefined;
 }
@@ -630,6 +664,37 @@ export interface DocsRoute<
 }
 
 /**
+ * The named subset of `labels`, or `undefined` when none of it is set.
+ *
+ * `undefined` rather than `{}` is the point: every forwarding site here spreads
+ * with `...(x === undefined ? {} : { x })`, so an empty object would still add a
+ * prop — and for the two groups that cross a client boundary that is a prop in
+ * every page's payload, forever, saying nothing.
+ *
+ * `map` goes target-key → `DocsLabels` key, so the rename is visible at the call
+ * site rather than hidden in a component.
+ */
+function pickLabels<TKey extends string>(
+  labels: DocsLabels | undefined,
+  map: Record<TKey, keyof DocsLabels>,
+): Record<TKey, string> | undefined {
+  if (labels === undefined) return undefined;
+
+  const picked: Partial<Record<TKey, string>> = {};
+  let found = false;
+  for (const [target, source] of Object.entries(map) as Array<
+    [TKey, keyof DocsLabels]
+  >) {
+    const value = labels[source];
+    if (value !== undefined) {
+      picked[target] = value;
+      found = true;
+    }
+  }
+  return found ? (picked as Record<TKey, string>) : undefined;
+}
+
+/**
  * `candidate`, once it is known to hold no functions.
  *
  * The cast at the end is the whole point of the function, and
@@ -691,6 +756,49 @@ export function createDocsRoute<
   // afterwards is never found. It was an option; nobody should have turned it
   // off, and `docs.source.invalidate()` is the escape hatch if anyone must.
   const rescanPerRequest = process.env.NODE_ENV !== 'production';
+
+  /*
+   * The route's labels, split by the runtime that renders them.
+   *
+   * Four groups, because they cannot share a channel: the code-frame strings are
+   * baked into the HTML by a rehype plugin, the content strings are closed over
+   * by the component map, the copy-status strings cross into a client runtime,
+   * and the shell's four are resolved by `DocsLayoutShell`. A single `labels`
+   * prop on `docs.Layout` could only ever reach the last group — which is why
+   * that prop's docstring claimed the whole set and delivered four of
+   * twenty-two.
+   *
+   * Each group is `undefined` when nothing in it is set, so an unconfigured site
+   * passes no extra props anywhere and its payload is byte-identical.
+   */
+  /*
+   * `routeLabels`, not `labels`: `Layout` destructures a `labels` prop of its
+   * own, and a binding of the same name at this scope is shadowed inside it —
+   * silently, and in the one function where confusing the host's labels with the
+   * route's would be a bug nothing catches.
+   */
+  const routeLabels = options.labels;
+  const codeLabels = pickLabels(routeLabels, {
+    copyLabel: 'copyCode',
+    copyFromLabel: 'copyCodeFrom',
+  });
+  const contentLabels = pickLabels(routeLabels, {
+    externalLink: 'externalLink',
+    table: 'table',
+    calloutNote: 'calloutNote',
+    calloutTip: 'calloutTip',
+    calloutImportant: 'calloutImportant',
+    calloutWarning: 'calloutWarning',
+    calloutCaution: 'calloutCaution',
+    youtubeTitle: 'youtubeTitle',
+    youtubePlay: 'youtubePlay',
+    youtubeHide: 'youtubeHide',
+  });
+  const copyLabels = pickLabels(routeLabels, {
+    copied: 'copied',
+    copyFailed: 'copyFailed',
+  });
+  const loadComponents = createComponentsMemo(contentLabels);
 
   // Built on first render, not on import: `generateStaticParams` runs in its
   // own pass and has no use for a syntax highlighter.
@@ -783,6 +891,7 @@ export function createDocsRoute<
       ...(options.excludeLangs === undefined
         ? {}
         : { excludeLangs: options.excludeLangs }),
+      ...(codeLabels === undefined ? {} : { codeLabels }),
       ...(options.titleHeading === undefined
         ? {}
         : { titleHeading: options.titleHeading }),
@@ -952,7 +1061,7 @@ export function createDocsRoute<
       return notFound();
     }
 
-    const components = await loadNextComponents();
+    const components = await loadComponents();
 
     /*
      * TWO CHILDREN, AND THEY MUST STAY DIRECT CHILDREN OF THE GRID.
@@ -1001,6 +1110,7 @@ export function createDocsRoute<
         createElement(DocContent, {
           hast: doc.hast,
           components: { ...components, ...options.components },
+          ...(copyLabels === undefined ? {} : { labels: copyLabels }),
         }),
       ),
       /*
@@ -1015,7 +1125,15 @@ export function createDocsRoute<
         : createElement(
             'aside',
             { className: 'wave-docs-layout__toc' },
-            createElement(DocsToc, { entries: doc.toc }),
+            createElement(DocsToc, {
+              entries: doc.toc,
+              ...(routeLabels?.toc === undefined
+                ? {}
+                : { label: routeLabels.toc }),
+              ...(routeLabels?.backToTop === undefined
+                ? {}
+                : { topLabel: routeLabels.backToTop }),
+            }),
           ),
     );
   }
@@ -1112,6 +1230,18 @@ export function createDocsRoute<
        * does not re-run a layout on every client navigation, so a stale read
        * here survives longer than a stale read anywhere else on the route.
        */
+      /*
+       * The route's labels under the layout's, key by key. Same rule as
+       * `miniSearchOptions`: a host that names one has said something more
+       * specific than the route's default, and a host that names three should not
+       * lose the other nineteen by doing so — which a whole-object override
+       * would do.
+       */
+      const shellLabels =
+        options.labels === undefined && labels === undefined
+          ? undefined
+          : { ...options.labels, ...labels };
+
       return createElement(DocsLayoutShell, {
         children,
         nav: await requestScopedSource.nav(),
@@ -1119,7 +1249,7 @@ export function createDocsRoute<
         search: searchProps,
         ...(title === undefined ? {} : { title }),
         ...(actions === undefined ? {} : { actions }),
-        ...(labels === undefined ? {} : { labels }),
+        ...(shellLabels === undefined ? {} : { labels: shellLabels }),
       });
     },
 

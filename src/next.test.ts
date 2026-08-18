@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import MiniSearch from 'minisearch';
 import type { ReactNode } from 'react';
-import { Fragment, isValidElement } from 'react';
+import { Fragment, createElement, isValidElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import {
   afterAll,
@@ -18,6 +18,8 @@ import { z } from 'zod';
 
 import { docFrontmatterSchema } from './frontmatter.js';
 import type { DocsLayoutProps } from './next.js';
+import type { DocsLabels } from './react/shell-labels.js';
+import { DOCS_LABEL_KEYS } from './react/shell-labels.js';
 import {
   createDocsRedirects,
   createDocsRoute,
@@ -1121,5 +1123,142 @@ describe('adapter wiring the renderer depends on', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe('every label reaches a reader', () => {
+  /*
+   * ⚠️ `DocsLayoutProps.labels` USED TO DOCUMENT ITSELF AS "THE WHOLE OF WHAT A
+   * NON-ENGLISH SITE HAS TO SAY" AND COVER FOUR STRINGS OF TWENTY-TWO. A German
+   * site built exactly the documented way shipped `aria-label="On this page"`, a
+   * visible `Back to top`, `aria-label="Tip"` on every callout, `Copy code` on
+   * every fence and `(opens in a new tab)` after every external link — verified
+   * in this repository's own `site/out`, which is how it was found.
+   *
+   * The strings do not share a runtime, which is why one prop could never have
+   * reached them: four are the shell's, two the table of contents', nine the
+   * markdown component map's, two are baked into the HTML by a rehype plugin at
+   * build time, and two are announced by a client-side copy runtime. They are
+   * configured in one place — `createDocsRoute({ labels })` — and split by
+   * runtime from there.
+   *
+   * `LABEL_COVERAGE` is what stops this happening twice: every key of
+   * `DocsLabels` has to name where it is proven, so a key added to the type
+   * without being wired fails here rather than reading as configuration for a
+   * release or two.
+   */
+  const LABEL_COVERAGE: Record<keyof DocsLabels, string> = {
+    // Rendered into the page by `docs.Page`, and asserted below.
+    toc: 'page markup',
+    backToTop: 'page markup',
+    externalLink: 'page markup',
+    table: 'page markup',
+    calloutNote: 'page markup',
+    calloutTip: 'page markup',
+    calloutImportant: 'page markup',
+    calloutWarning: 'page markup',
+    calloutCaution: 'page markup',
+    youtubeTitle: 'page markup',
+    youtubePlay: 'page markup',
+    youtubeHide: 'page markup',
+    copyCode: 'page markup',
+    copyCodeFrom: 'page markup',
+    // The shell needs `next/navigation`, so these are mounted where it can be
+    // mocked. `layout.test.tsx` renders the real components and reads the DOM.
+    nav: 'layout.test.tsx',
+    openNav: 'layout.test.tsx',
+    closeNav: 'layout.test.tsx',
+    skipToContent: 'layout.test.tsx',
+    expandGroup: 'layout.test.tsx',
+    collapseGroup: 'layout.test.tsx',
+    // Announced by the copy runtime, which needs a clipboard and a click.
+    copied: 'code-runtime.test.tsx',
+    copyFailed: 'code-runtime.test.tsx',
+  };
+
+  it('has somewhere that proves each one', () => {
+    expect(Object.keys(LABEL_COVERAGE).sort()).toEqual(
+      [...DOCS_LABEL_KEYS].sort(),
+    );
+  });
+
+  it('renders the page half of them, every one', async () => {
+    /*
+     * Sentinels rather than plausible translations: `'Note'` translated to
+     * `'Hinweis'` and then not rendered leaves the English in place, and a test
+     * looking for German would pass against a page that had simply kept its
+     * default. A string that cannot occur by accident cannot pass by accident.
+     */
+    const labels: DocsLabels = {
+      toc: 'L-TOC',
+      backToTop: 'L-TOP',
+      externalLink: 'L-EXTERNAL',
+      table: 'L-TABLE',
+      calloutNote: 'L-NOTE',
+      calloutTip: 'L-TIP',
+      calloutImportant: 'L-IMPORTANT',
+      calloutWarning: 'L-WARNING',
+      calloutCaution: 'L-CAUTION',
+      youtubeTitle: 'L-VIDEO',
+      youtubePlay: 'L-PLAY {title}',
+      youtubeHide: 'L-HIDE {title}',
+      copyCode: 'L-COPY',
+      copyCodeFrom: 'L-COPY-FROM {title}',
+    };
+
+    const route = createDocsRoute({
+      contentDir: path.join(
+        import.meta.dirname,
+        '__fixtures__',
+        'source',
+        'labels',
+      ),
+      assertLinks: false,
+      labels,
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(Fragment, null, await route.IndexPage()),
+    );
+
+    const missing = Object.entries(labels)
+      .filter(([, value]) => !markup.includes(value.replace(' {title}', '')))
+      .map(([key]) => key);
+
+    expect(missing).toEqual([]);
+
+    // And the placeholders are filled rather than printed: a `{title}` reaching
+    // a reader is worse than an untranslated string, because it looks like a
+    // bug in the site rather than a missing translation.
+    expect(markup).not.toContain('{title}');
+    expect(markup).toContain('L-COPY-FROM config.ts');
+    expect(markup).toContain('L-PLAY L-VIDEO');
+    expect(markup).toContain('L-HIDE L-VIDEO');
+  });
+
+  it('leaves the defaults in place when nothing is set', async () => {
+    // The other direction. A forwarding bug that passed `undefined` as a string,
+    // or an empty object where a default was expected, would show up as an
+    // unnamed region rather than as a failure anywhere else.
+    const route = createDocsRoute({
+      contentDir: path.join(
+        import.meta.dirname,
+        '__fixtures__',
+        'source',
+        'labels',
+      ),
+      assertLinks: false,
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(Fragment, null, await route.IndexPage()),
+    );
+
+    expect(markup).toContain('On this page');
+    expect(markup).toContain('Back to top');
+    expect(markup).toContain('(opens in a new tab)');
+    expect(markup).toContain('aria-label="Table"');
+    expect(markup).toContain('Copy code');
+    expect(markup).toContain('Play video: YouTube video player');
   });
 });

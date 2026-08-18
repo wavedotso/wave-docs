@@ -47,14 +47,27 @@ import { parseCodeMeta } from '../code-meta.js';
 const LANGUAGE_CLASS = /^language-(.+)$/;
 
 export interface RehypeCodeFrameOptions {
-  /** Accessible name when a fence has no title. */
+  /**
+   * Accessible name of the copy button on a fence with no title.
+   * Default `'Copy code'`.
+   */
   copyLabel?: string | undefined;
+  /**
+   * The same button on a titled fence. Default `'Copy code from {title}'`.
+   *
+   * `{title}` is replaced with the fence's own `title="…"`. Two controls both
+   * called "Copy code" are indistinguishable in a screen reader's element list,
+   * which is why the titled form exists at all — and a translator needs to be
+   * able to move the title within the sentence, which concatenation forbade.
+   */
+  copyFromLabel?: string | undefined;
 }
 
 export const rehypeCodeFrame: Plugin<[RehypeCodeFrameOptions?], Root> = (
   options = {},
 ) => {
   const copyLabel = options.copyLabel ?? 'Copy code';
+  const copyFromLabel = options.copyFromLabel ?? 'Copy code from {title}';
 
   /*
    * The document path comes off the vfile rather than out of options, for the
@@ -94,7 +107,9 @@ export const rehypeCodeFrame: Plugin<[RehypeCodeFrameOptions?], Root> = (
         copyButton(
           // Named, on a page with eight code blocks, rather than eight
           // controls all called "Copy code".
-          title === undefined ? copyLabel : `${copyLabel} from ${title}`,
+          title === undefined
+            ? copyLabel
+            : copyFromLabel.replace('{title}', title),
         ),
         node,
       );

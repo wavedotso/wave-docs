@@ -90,16 +90,16 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 13.0 KB |
+| Everything the quick start ships, gzipped | 13.5 KB |
 | Search dialog and router wiring | 9.0 KB |
-| Navigation: sidebar and mobile drawer | 2.2 KB |
+| Navigation: sidebar and mobile drawer | 2.4 KB |
 | Table of contents | 0.9 KB |
-| Copy-button runtime | 0.9 KB |
+| Copy-button runtime | 1.1 KB |
 | hast over the wire vs HTML, prose page | 1.20× |
 | hast over the wire vs HTML, code and tables | 1.12× |
 | Highlighting vs no highlighting | 2.00× |
 
-The first row is the honest total: a reader who lands on a page of your documentation downloads under 13 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 13.5 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
 The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
 
@@ -255,35 +255,13 @@ export default function DocsLayout({ children }: { children: ReactNode }) {
 | `title` | `ReactNode` | — | Brand, at the header start |
 | `actions` | `ReactNode` | — | Header end, after search |
 | `search` | `boolean \| DocsSearchProps` | `true` | The search trigger. An object configures the dialog |
-| `labels` | `DocsLabels` | English | The four strings the shell renders itself |
+| `labels` | `DocsLabels` | the route's | Overrides `createDocsRoute`'s labels, key by key |
 
 Five props, and two of them are small objects. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. The header bar was the one region nothing else could reach — hence `actions`. Two node props can become a slots map later; a slots map cannot become two props.
 
 `search` takes anything `DocsSearch` takes except `indexUrl`, which stays derived from your `basePath`. You do not need to repeat `miniSearchOptions` here to match `createDocsRoute` — the route's own value is forwarded, so the object that built the index is the object that queries it.
 
-`labels` is the whole of what a site not in English has to say to the shell; everything else a reader sees is your markdown or your `title`.
-
-The same `app/docs/layout.tsx` as the quick start, written out instead of re-exported, because passing a prop needs a function:
-
-```tsx
-import type { ReactNode } from 'react';
-import '@waveso/docs/styles.css';
-import { docs } from '@/lib/docs';
-
-export default function Layout(props: { children: ReactNode }) {
-  return docs.Layout({
-    ...props,
-    labels: {
-      nav: 'Documentação',
-      openNav: 'Abrir navegação',
-      closeNav: 'Fechar navegação',
-      skipToContent: 'Ir para o conteúdo',
-    },
-  });
-}
-```
-
-Each key falls back on its own, so a partial map is not a half-translated shell.
+`labels` belongs on `createDocsRoute` — see [Translating the chrome](#translating-the-chrome) — and this prop overrides it key by key, for a site with two shells or a section in another language.
 
 #### The mobile drawer
 
@@ -820,6 +798,55 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
 `titleHeading` defaults on because a document with no `h1` has a broken heading outline and fails every accessibility audit. Turn it off if your layout renders the title itself.
 
 The `<main>` always carries `id="docs-content"`, which is what `SkipLink` targets by default — there is no option to change it, because there was no matching option on `SkipLink` to follow it with, so changing it silently pointed the skip link at nothing. Outside `NODE_ENV=production` the content directory is always re-scanned per request; `docs.source.invalidate()` is the escape hatch if you need to force one.
+
+### Translating the chrome
+
+Twenty-two strings, and every one of them is yours to set. They go on `createDocsRoute` rather than on `docs.Layout`, because they are not all rendered in the same place: four are the shell's, two the table of contents', nine come from the markdown component map, two are baked into the HTML by a rehype plugin at build time, and two are announced by a client-side runtime after a copy. A layout prop is upstream of the first four and nothing else.
+
+```ts
+// lib/docs-pt.ts
+import { createDocsRoute } from '@waveso/docs/next';
+
+export const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  labels: {
+    // The shell
+    nav: 'Documentação',
+    openNav: 'Abrir navegação',
+    closeNav: 'Fechar navegação',
+    skipToContent: 'Ir para o conteúdo',
+    // The navigation tree — `{title}` is the group's own name
+    expandGroup: 'Abrir {title}',
+    collapseGroup: 'Fechar {title}',
+    externalLink: '(abre num novo separador)',
+    // The table of contents
+    toc: 'Nesta página',
+    backToTop: 'Voltar ao topo',
+    // Your content
+    table: 'Tabela',
+    calloutNote: 'Nota',
+    calloutTip: 'Dica',
+    calloutImportant: 'Importante',
+    calloutWarning: 'Aviso',
+    calloutCaution: 'Atenção',
+    youtubeTitle: 'Vídeo do YouTube',
+    youtubePlay: 'Reproduzir: {title}',
+    youtubeHide: 'Esconder: {title}',
+    // Code frames
+    copyCode: 'Copiar código',
+    copyCodeFrom: 'Copiar código de {title}',
+    copied: 'Copiado para a área de transferência.',
+    copyFailed: 'Falhou. Selecione o código e prima Control ou Command + C.',
+  },
+});
+```
+
+Each key falls back on its own, so a partial map is not a half-translated site. `{title}` is a placeholder rather than a function, because three of these cross from a Server Component to a Client one — and because a translator has to be able to move the name within the sentence, which concatenation forbids.
+
+The search dialog's own strings are separate, and reachable through `search={{ … }}` — see [Search](#search).
+
+> [!NOTE]
+> These were hardcoded English until 0.5.0, under a `labels` prop on `docs.Layout` that documented itself as the whole of a site's translatable chrome and reached four strings of the twenty-two. A site built the documented way shipped `aria-label="On this page"`, a visible `Back to top`, `aria-label="Tip"` on every callout and `Copy code` on every fence, in English, whatever language it was written in.
 
 ### Redirects and sitemap
 

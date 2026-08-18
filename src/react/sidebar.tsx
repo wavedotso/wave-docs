@@ -20,8 +20,46 @@ export interface DocsSidebarProps {
   Link?: DocsLinkComponent | undefined;
   /** Accessible name for the landmark. Distinguish multiple navs on a page. */
   label?: string | undefined;
+  /**
+   * A collapsed group's toggle. Default `'Expand {title}'`.
+   *
+   * `{title}` is replaced with the group's own name. A placeholder rather than
+   * a function, because `docs.Layout` sets this from a Server Component and a
+   * function cannot cross that boundary — and because a translator has to be
+   * able to move the name within the sentence.
+   */
+  expandGroup?: string | undefined;
+  /** The same toggle when open. Default `'Collapse {title}'`. */
+  collapseGroup?: string | undefined;
+  /**
+   * Screen-reader suffix on an external link. Default `'(opens in a new tab)'`.
+   *
+   * The separating space is markup, so this is the sentence and nothing else.
+   */
+  externalLink?: string | undefined;
   className?: string | undefined;
 }
+
+/**
+ * The three strings this tree renders, resolved once.
+ *
+ * Threaded as one object rather than three props: `DocsSidebar` → `NavList` →
+ * `NavGroup` → `NavList` is four hops, and three separate parameters at each
+ * one is where a prop gets dropped on the way through — which is exactly how
+ * `DocsNav`'s `label` and `closeLabel` came to be documented, defaulted and
+ * never passed.
+ */
+interface SidebarLabels {
+  expandGroup: string;
+  collapseGroup: string;
+  externalLink: string;
+}
+
+const DEFAULT_SIDEBAR_LABELS: SidebarLabels = {
+  expandGroup: 'Expand {title}',
+  collapseGroup: 'Collapse {title}',
+  externalLink: '(opens in a new tab)',
+};
 
 /** Trailing slashes are a routing detail, not a difference in identity. */
 function normalizeHref(href: string): string {
@@ -101,8 +139,16 @@ export function DocsSidebar({
   pathname,
   Link,
   label = 'Docs',
+  expandGroup,
+  collapseGroup,
+  externalLink,
   className,
 }: DocsSidebarProps): ReactNode {
+  const text: SidebarLabels = {
+    expandGroup: expandGroup ?? DEFAULT_SIDEBAR_LABELS.expandGroup,
+    collapseGroup: collapseGroup ?? DEFAULT_SIDEBAR_LABELS.collapseGroup,
+    externalLink: externalLink ?? DEFAULT_SIDEBAR_LABELS.externalLink,
+  };
   const baseId = useId();
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
@@ -191,6 +237,7 @@ export function DocsSidebar({
         Link={Link}
         toggled={toggled}
         onToggle={handleToggle}
+        text={text}
       />
     </nav>
   );
@@ -274,6 +321,7 @@ interface NavListProps {
   Link: DocsLinkComponent | undefined;
   toggled: Record<string, boolean>;
   onToggle: (key: string, isOpen: boolean) => void;
+  text: SidebarLabels;
   /** Set on the `<ul>` a group's toggle button points `aria-controls` at. */
   id?: string | undefined;
 }
@@ -286,6 +334,7 @@ function NavList({
   Link,
   toggled,
   onToggle,
+  text,
   id,
 }: NavListProps): ReactNode {
   /*
@@ -327,6 +376,7 @@ function NavList({
                   isActive={!node.external && isActiveHref(pathname, node.href)}
                   isNearby={holdsActive}
                   Link={Link}
+                  externalLink={text.externalLink}
                 >
                   {node.title}
                 </NavLink>
@@ -357,6 +407,7 @@ function NavList({
                 Link={Link}
                 toggled={toggled}
                 onToggle={onToggle}
+                text={text}
               />
             );
           default:
@@ -375,6 +426,7 @@ interface NavGroupProps {
   Link: DocsLinkComponent | undefined;
   toggled: Record<string, boolean>;
   onToggle: (key: string, isOpen: boolean) => void;
+  text: SidebarLabels;
 }
 
 function NavGroup({
@@ -385,6 +437,7 @@ function NavGroup({
   Link,
   toggled,
   onToggle,
+  text,
 }: NavGroupProps): ReactNode {
   const listId = `${itemKey}-list`;
   const hasActive = containsActive(node, pathname);
@@ -430,7 +483,10 @@ function NavGroup({
               aria-controls={isOpen ? listId : undefined}
               // The link beside it carries the name, so this icon-only control
               // needs its own — and it must say which group it opens.
-              aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${node.title}`}
+              aria-label={(isOpen
+                ? text.collapseGroup
+                : text.expandGroup
+              ).replace('{title}', node.title)}
               onClick={() => onToggle(itemKey, !isOpen)}
             >
               <Chevron isOpen={isOpen} />
@@ -448,6 +504,7 @@ function NavGroup({
           Link={Link}
           toggled={toggled}
           onToggle={onToggle}
+          text={text}
         />
       ) : null}
     </li>
@@ -461,6 +518,8 @@ interface NavLinkProps {
   /** Close enough to the reader's position to be worth a warm route. */
   isNearby?: boolean | undefined;
   Link: DocsLinkComponent | undefined;
+  /** Only read on the external branch, so the internal one omits it. */
+  externalLink?: string | undefined;
   children: ReactNode;
 }
 
@@ -470,6 +529,7 @@ function NavLink({
   isActive,
   isNearby = false,
   Link,
+  externalLink = DEFAULT_SIDEBAR_LABELS.externalLink,
   children,
 }: NavLinkProps): ReactNode {
   const className = 'wave-docs-sidebar__link';
@@ -504,7 +564,9 @@ function NavLink({
         >
           <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
         </svg>
-        <span className="wave-docs-sr-only"> (opens in a new tab)</span>
+        {/* The leading space is markup: it separates the suffix from the
+            link text, and a translator should not have to type it. */}
+        <span className="wave-docs-sr-only"> {externalLink}</span>
       </a>
     );
   }

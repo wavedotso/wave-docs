@@ -52,6 +52,43 @@ const TRIMMED_LINE_CLASSES: readonly string[] = [];
 let refCount = 0;
 let detach: (() => void) | undefined;
 
+/** The two announcements, for a site that is not in English. */
+export interface CodeRuntimeLabels {
+  /** Announced after a successful copy. Default `'Copied to the clipboard.'` */
+  copied?: string | undefined;
+  /**
+   * Announced after a failed one. Default
+   * `'Copy failed. Select the code and press Control or Command + C.'`
+   */
+  copyFailed?: string | undefined;
+}
+
+const DEFAULT_COPIED = 'Copied to the clipboard.';
+/*
+ * What to do instead, not merely that it failed. The most common way to land
+ * here is `next dev` on a phone over `http://192.168.x.x`, where there is no
+ * secure context and no amount of retrying helps.
+ */
+const DEFAULT_COPY_FAILED =
+  'Copy failed. Select the code and press Control or Command + C.';
+
+/**
+ * Module scope, beside `refCount`, because the listener is a singleton too.
+ *
+ * The runtime installs once per page however many `DocContent`s mount it, so
+ * the messages belong to the installation rather than to a component — and two
+ * mounts with different labels would be a page with two languages in it, which
+ * is not a case worth code. First one in wins, and `refCount` says which.
+ *
+ * Spelled out rather than `Required<CodeRuntimeLabels>`: the props are declared
+ * `string | undefined` for `exactOptionalPropertyTypes`, and `Required` strips
+ * the `?` while leaving the `undefined` in the value type.
+ */
+let messages: { copied: string; copyFailed: string } = {
+  copied: DEFAULT_COPIED,
+  copyFailed: DEFAULT_COPY_FAILED,
+};
+
 /**
  * Mount the copy runtime. Renders nothing.
  *
@@ -61,10 +98,19 @@ let detach: (() => void) | undefined;
  * re-renders and there is no state to get out of step with a page that was
  * server-rendered.
  */
-export function DocsCodeRuntime(): ReactNode {
+export function DocsCodeRuntime({
+  copied,
+  copyFailed,
+}: CodeRuntimeLabels = {}): ReactNode {
   useEffect(() => {
     refCount += 1;
-    if (refCount === 1) detach = install();
+    if (refCount === 1) {
+      messages = {
+        copied: copied ?? DEFAULT_COPIED,
+        copyFailed: copyFailed ?? DEFAULT_COPY_FAILED,
+      };
+      detach = install();
+    }
 
     return () => {
       refCount -= 1;
@@ -73,7 +119,7 @@ export function DocsCodeRuntime(): ReactNode {
         detach = undefined;
       }
     };
-  }, []);
+  }, [copied, copyFailed]);
 
   return null;
 }
@@ -167,12 +213,7 @@ async function copy(
    */
   button.dataset.copied = copied;
   status.textContent =
-    copied === 'true'
-      ? 'Copied to the clipboard.'
-      : // What to do instead, not merely that it failed. The most common way
-        // to land here is `next dev` on a phone over `http://192.168.x.x`,
-        // where there is no secure context and no amount of retrying helps.
-        'Copy failed. Select the code and press Control or Command + C.';
+    copied === 'true' ? messages.copied : messages.copyFailed;
 
   /*
    * ⚠️ THE PREVIOUS TIMER IS CANCELLED FIRST. The id used to be discarded, so

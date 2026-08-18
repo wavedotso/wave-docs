@@ -157,7 +157,23 @@ export function DocsLayoutShell({
 
       <div className="wave-docs-layout">
         <div className="wave-docs-layout__sidebar">
-          <DocsNextNav nav={nav} label={text.nav} closeLabel={text.closeNav} />
+          {/* The three the tree renders are forwarded only when set: they cross
+              into a client component, so an unconfigured site must not pay for
+              them in every page's payload. */}
+          <DocsNextNav
+            nav={nav}
+            label={text.nav}
+            closeLabel={text.closeNav}
+            {...(labels?.expandGroup === undefined
+              ? {}
+              : { expandGroup: labels.expandGroup })}
+            {...(labels?.collapseGroup === undefined
+              ? {}
+              : { collapseGroup: labels.collapseGroup })}
+            {...(labels?.externalLink === undefined
+              ? {}
+              : { externalLink: labels.externalLink })}
+          />
         </div>
         {children}
       </div>

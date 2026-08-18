@@ -297,6 +297,48 @@ describe('DocsCodeRuntime', () => {
     expect(copyButton().dataset.copied).toBe('false');
   });
 
+  it('announces in the language the site is written in', async () => {
+    /*
+     * ⚠️ THESE TWO WERE HARDCODED ENGLISH UNDER A `labels` PROP DOCUMENTING
+     * ITSELF AS "THE WHOLE OF WHAT A NON-ENGLISH SITE HAS TO SAY". They are the
+     * only strings in this package announced to a screen reader at run time —
+     * so a reader on a German site was told, in English, that something they
+     * could not see had happened.
+     *
+     * `DocContent` carries them rather than `docs.Layout`, because this is the
+     * component that mounts the runtime and the one no consumer can avoid: the
+     * hand-rolled route in the README renders it directly.
+     */
+    const user = setupUser();
+    render(
+      <DocContent
+        hast={trees.plain as never}
+        labels={{ copied: 'Copiado.', copyFailed: 'Falhou.' }}
+      />,
+    );
+
+    await user.click(copyButton());
+
+    expect(status()?.textContent).toBe('Copiado.');
+  });
+
+  it('uses the failure message it was given, not only the success one', async () => {
+    // Both, separately. One forwarded and one dropped is the shape of every
+    // half-wired prop in this package's history.
+    const user = setupUser({ secure: false, works: false });
+    document.execCommand = vi.fn(() => false);
+    render(
+      <DocContent
+        hast={trees.plain as never}
+        labels={{ copied: 'Copiado.', copyFailed: 'Falhou. Copie à mão.' }}
+      />,
+    );
+
+    await user.click(copyButton());
+
+    expect(status()?.textContent).toBe('Falhou. Copie à mão.');
+  });
+
   it('shows the failure, rather than announcing it to nobody who can see', async () => {
     /*
      * `data-copied="false"` was written by the runtime from the beginning and
