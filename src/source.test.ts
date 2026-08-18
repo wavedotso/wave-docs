@@ -103,6 +103,23 @@ const describeNodes = (nodes: DocNavNode[]): string[] =>
   });
 
 describe('resolveDocsConfig', () => {
+  it('collapses a run of slashes in the base path', () => {
+    /*
+     * ⚠️ `'//docs'` IS NOT A PATH, IT IS A HOST. A browser reads a leading `//`
+     * as scheme-relative, so `//docs/setup` navigates to the host `docs` — and
+     * `toHref` builds every canonical, every `og:url` and every sitemap entry
+     * from this value, so a single stray slash pointed an entire site off
+     * itself with nothing in the build to say so.
+     */
+    expect(resolveDocsConfig({ contentDir: 'c', basePath: '//docs' }).basePath) //
+      .toBe('/docs');
+    expect(
+      resolveDocsConfig({ contentDir: 'c', basePath: '/a//b/' }).basePath,
+    ).toBe('/a/b');
+    expect(resolveDocsConfig({ contentDir: 'c', basePath: '///' }).basePath) //
+      .toBe('');
+  });
+
   it('applies the documented defaults', () => {
     const resolved = resolveDocsConfig({ contentDir: 'content' });
     expect(resolved).toEqual({
@@ -469,6 +486,36 @@ describe('aliases', () => {
     );
     expect(toAliasRoute('c# guide', '/docs', 'renamed.md')).toBe(
       '/docs/c%23%20guide',
+    );
+
+    /*
+     * ⚠️ AN ALIAS COPIED OUT OF THE ADDRESS BAR USED TO BE ENCODED TWICE. It is
+     * a *former URL*, so `getting%20started` is the ordinary way to write one —
+     * and `encodeSegments` turned the `%` into `%25`, producing a redirect
+     * source of `/docs/getting%2520started` that no request can match. The page
+     * moved, the alias was written, and the old URL still 404'd.
+     *
+     * Both spellings round-trip now, which is the property that matters: the
+     * pasted form decodes and re-encodes to itself, and the readable form has
+     * nothing to decode and encodes as it always did (the assertion above).
+     */
+    expect(toAliasRoute('getting%20started', '/docs', 'renamed.md')).toBe(
+      '/docs/getting%20started',
+    );
+    expect(toAliasRoute('getting started', '/docs', 'renamed.md')).toBe(
+      '/docs/getting%20started',
+    );
+
+    // And the checks see through an escape: `%2E%2E` is `..`, `%28` is `(`.
+    expect(() => toAliasRoute('%2E%2E/up', '/docs', 'renamed.md')).toThrow(
+      /'\.' or '\.\.' segment/,
+    );
+    expect(() => toAliasRoute('old%28x%29', '/docs', 'renamed.md')).toThrow(
+      /redirect pattern syntax/,
+    );
+    // Malformed encoding is named rather than thrown as a bare URIError.
+    expect(() => toAliasRoute('100%-faster', '/docs', 'renamed.md')).toThrow(
+      /not valid percent-encoding/,
     );
   });
 

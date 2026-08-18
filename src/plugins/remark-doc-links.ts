@@ -210,8 +210,12 @@ function decodeSegment(segment: string, href: string): string {
  * Decode BEFORE folding, never after: `%2E%2E%2F` is `../` in disguise, and
  * `foldSegments` is the only thing that refuses a chain climbing out of the
  * content root.
+ *
+ * Exported for `route-path.ts`, which needs the decode without the split:
+ * an alias may carry a literal `#` or `?` — `c# guide` is a page name — and
+ * {@link splitHref} would cut the string there and throw the rest away.
  */
-function decodePath(path: string, href: string): string {
+export function decodePath(path: string, href: string): string {
   return path
     .split('/')
     .map((segment) => decodeSegment(segment, href))

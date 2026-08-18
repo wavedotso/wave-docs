@@ -912,7 +912,18 @@ function toHref(basePath: string, segments: readonly string[]): string {
 }
 
 function normalizeBasePath(basePath: string): string {
-  const trimmed = basePath.trim().replace(/\/+$/, '');
+  /*
+   * ⚠️ RUNS OF SLASHES COLLAPSE, AND A LEADING PAIR IS THE ONE THAT MATTERS.
+   * `basePath: '//docs'` — a typo, or a join that already had a leading slash —
+   * used to survive intact, and `//docs/setup` is not a path at all: a browser
+   * reads a leading `//` as scheme-relative and goes to the host `docs`. Every
+   * canonical, every `og:url` and every sitemap entry on the site pointed off
+   * it, and the build said nothing.
+   */
+  const trimmed = basePath
+    .trim()
+    .replace(/\/{2,}/g, '/')
+    .replace(/\/+$/, '');
   if (trimmed === '') {
     return '';
   }

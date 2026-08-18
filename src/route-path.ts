@@ -9,7 +9,7 @@
  * spell the same page differently produce a redirect no request can match.
  */
 
-import { foldSegments } from './plugins/remark-doc-links.js';
+import { decodePath, foldSegments } from './plugins/remark-doc-links.js';
 import { docsError } from './docs-error.js';
 
 /**
@@ -53,7 +53,39 @@ export function toAliasRoute(
    */
   sourceLabel: string,
 ): string {
-  const trimmed = alias.trim();
+  /*
+   * ⚠️ DECODED FIRST, AND THAT ORDER IS THE FIX. An alias is a former URL, so it
+   * arrives percent-encoded — `aliases: [getting%20started]`, copied straight
+   * out of the address bar, is the ordinary case — and `encodeSegments` below
+   * then encoded it a second time. The redirect's source became
+   * `/docs/getting%2520started`, which no request can ever match: the page
+   * moved, the alias was written, and the old URL still 404'd.
+   *
+   * Round-tripping is the property that matters, and it holds both ways.
+   * `getting%20started` decodes to a space and re-encodes to `%20`; `c# guide`
+   * has no escapes to decode and still encodes to `c%23%20guide`. So an author
+   * who pastes a URL and an author who writes the readable name both get the
+   * route they meant.
+   *
+   * `decodePath` rather than `splitHref`: an alias may carry a literal `#` or
+   * `?`, and splitting at those would silently truncate the name to `c`.
+   *
+   * Both checks below run on the decoded value for the same reason the decode
+   * comes before the fold — `%2E%2E` is `..` in disguise and `%28` is `(`, so
+   * checking the raw text passes exactly the inputs the checks exist to catch.
+   */
+  let trimmed: string;
+  try {
+    trimmed = decodePath(alias.trim(), alias);
+  } catch (error) {
+    throw docsError(
+      'invalid-alias',
+      `@waveso/docs: the alias '${alias}' in ${sourceLabel} is not valid ` +
+        'percent-encoding. Write %25 for a literal percent sign, or write the ' +
+        'former URL as its readable form.',
+      { cause: error },
+    );
+  }
 
   if (trimmed.split('/').some((part) => part === '.' || part === '..')) {
     throw docsError(
