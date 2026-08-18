@@ -10,17 +10,42 @@ import { toAliasRoute } from './route-path.js';
 import type { DocFrontmatter, DocNavNode, RenderedDoc } from './types.js';
 
 // Counting `readdir` is how the scan-once guarantee is asserted.
-const { readdirCalls } = vi.hoisted(() => ({ readdirCalls: { count: 0 } }));
+const { readdirCalls, fsLoad } = vi.hoisted(() => ({
+  readdirCalls: { count: 0 },
+  // Peak concurrent filesystem calls — how the descriptor bound is asserted.
+  fsLoad: { active: 0, peak: 0 },
+}));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
+
+  /*
+   * Counted from call to settlement, which is exactly the window a descriptor
+   * is held. The writes the fixtures do are untracked on purpose — they go
+   * through `...actual` — so the peak is the scan's and nothing else's.
+   */
+  const tracked =
+    (fn: (...args: unknown[]) => unknown) =>
+    async (...args: unknown[]): Promise<unknown> => {
+      fsLoad.active += 1;
+      fsLoad.peak = Math.max(fsLoad.peak, fsLoad.active);
+      try {
+        return await fn(...args);
+      } finally {
+        fsLoad.active -= 1;
+      }
+    };
+
+  // Overloaded signatures; the casts keep the pass-throughs honest.
   return {
     ...actual,
-    readdir: (...args: Parameters<typeof actual.readdir>) => {
+    readdir: (...args: unknown[]) => {
       readdirCalls.count += 1;
-      // Overloaded signature; the cast keeps the pass-through honest.
-      return (actual.readdir as (...a: unknown[]) => unknown)(...args);
+      return tracked(actual.readdir as (...a: unknown[]) => unknown)(...args);
     },
+    readFile: tracked(actual.readFile as (...a: unknown[]) => unknown),
+    stat: tracked(actual.stat as (...a: unknown[]) => unknown),
+    realpath: tracked(actual.realpath as (...a: unknown[]) => unknown),
   };
 });
 
@@ -690,5 +715,52 @@ describe('frontmatterSchema', () => {
       href: '/docs/tuning',
     };
     expect(extractSearchRecords(doc)).toHaveLength(1);
+  });
+});
+
+describe('the scan does not scale its open descriptors with the corpus', () => {
+  it('holds a bounded number of filesystem calls in flight', async () => {
+    /*
+     * ⚠️ EVERY MARKDOWN FILE IN THE TREE WAS OPEN AT ONCE. `scanDir` read its
+     * own pages with a bare `Promise.all` *and* recursed into its
+     * subdirectories with another, so the reads in flight equalled the page
+     * count of the whole tree. On a 1,200-page corpus and the common
+     * 1,024-descriptor soft limit, `next build` died with a bare
+     * `EMFILE: too many open files, open '<contentDir>/p829.md'` — no code, no
+     * mention of the docs scan, and a filename that sends the author to look at
+     * a page which is perfectly fine.
+     *
+     * It got worse as a site grew, which is to say it failed on exactly the
+     * large content sets this package exists for.
+     *
+     * Spread across directories deliberately: the recursion is the half a
+     * per-directory pool does not fix, because a bound applied per level
+     * multiplies across the depth. Only a bound shared by the whole walk holds.
+     */
+    const files: Record<string, string> = {};
+    for (let index = 0; index < 300; index += 1) {
+      files[`s${String(Math.floor(index / 10))}/p${String(index)}.md`] = doc(
+        `Page ${String(index)}`,
+      );
+    }
+    const dir = await makeContentDir(files);
+
+    fsLoad.active = 0;
+    fsLoad.peak = 0;
+    const source = createDocsSource({ contentDir: dir });
+    expect((await source.all()).length).toBe(300);
+
+    /*
+     * The invariant, not the number — `expect(peak).toBe(64)` would fail a
+     * deliberate change to the constant and say nothing about correctness. What
+     * matters is that the cost does not scale with the corpus: 300 pages across
+     * 30 directories had 300 reads in flight before, and has a fixed ceiling
+     * now however many pages there are.
+     */
+    expect(fsLoad.peak).toBeLessThanOrEqual(64);
+
+    // The guard on the guard. A tracker that never fired, or a scan that read
+    // nothing, would satisfy the assertion above by measuring an empty set.
+    expect(fsLoad.peak).toBeGreaterThan(1);
   });
 });

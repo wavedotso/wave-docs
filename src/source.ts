@@ -26,6 +26,7 @@ import type {
   ResolvedDocsConfig,
 } from './types.js';
 import { docsError } from './docs-error.js';
+import { createSemaphore } from './semaphore.js';
 import { encodeSegments, toAliasRoute } from './route-path.js';
 
 /** Markdown only. MDX is deliberately out of scope for this package. */
@@ -33,6 +34,50 @@ const PAGE_EXTENSION = '.md';
 
 /** A directory whose `index.md` is the directory's own route. */
 const INDEX_NAME = 'index';
+
+/**
+ * Filesystem calls in flight across the whole process, at most.
+ *
+ * ⚠️ THE SCAN USED TO OPEN EVERY MARKDOWN FILE AT ONCE. `scanDir` recursed into
+ * its subdirectories in parallel and read that directory's pages with a bare
+ * `Promise.all`, so the number of `readFile` calls in flight equalled the number
+ * of markdown files in the entire tree. On a 1,200-page corpus and the common
+ * 1,024-descriptor soft limit, `next build` died with a bare `EMFILE: too many
+ * open files` — no error code, no mention that this was the docs scan, and
+ * nothing pointing at the fix. Exactly the large content set this package is
+ * for, and the failure got worse as the site grew.
+ *
+ * 64 is far under every default soft limit — 1,024 on Linux and CI images, 256
+ * on an unconfigured macOS shell — so the descriptors stop scaling with the
+ * corpus while staying safe on the tightest of those.
+ *
+ * ⚠️ IT IS NOT FREE, AND THE COST IS NOT THE CONCURRENCY. Measured over 1,201
+ * pages in 49 directories, nine runs, medians: **88 ms ungated, 106 ms at a
+ * bound of 16, 102 ms at 64, 101 ms at 128 and at 256.** Flat from 64 upwards,
+ * which says the ~14 ms is the gate's own per-call overhead — about 3,600
+ * `run` closures — and not the reduced parallelism. libuv's filesystem pool is
+ * four threads by default, so there was never 1,201-way parallelism to lose.
+ *
+ * So the number is chosen for the tightest descriptor limit rather than for
+ * speed, because above 64 there is no speed left to buy. 14 ms sits against a
+ * build that highlights those same 1,201 pages with Shiki, which is three
+ * orders of magnitude more.
+ */
+const SCAN_CONCURRENCY = 64;
+
+/**
+ * The one gate, for the whole process.
+ *
+ * Module scope rather than per-scan, because descriptors are a process resource:
+ * two routes scanning two content directories at once would each stay under a
+ * per-scan bound and together exceed the only one that matters.
+ *
+ * ⚠️ LEAF CALLS ONLY — NEVER THE RECURSION. Gating `scanDir` itself deadlocks as
+ * soon as every slot is held by a directory waiting for a slot to read its
+ * children. Bounding the `readFile`/`readdir`/`stat`/`realpath` calls bounds the
+ * descriptors exactly, and leaves the walk as parallel as it was.
+ */
+const fsGate = createSemaphore(SCAN_CONCURRENCY);
 
 /**
  * A content directory, scanned once and queried many times.
@@ -256,7 +301,7 @@ function buildSource<TFrontmatter extends DocFrontmatter>(
     // exactly this reason.
     cached ??= scan(config).catch((err: unknown) => {
       cached = null;
-      throw err;
+      throw describeScanFailure(err, config.contentDir);
     });
     return cached;
   };
@@ -319,6 +364,41 @@ function buildSource<TFrontmatter extends DocFrontmatter>(
   };
 }
 
+/**
+ * Say that a descriptor exhaustion happened here, and that it was not us.
+ *
+ * `EMFILE`/`ENFILE` arrive from Node as a bare `Error` with no hint of what was
+ * being read, and the message a reader used to get was
+ * `EMFILE: too many open files, open '<contentDir>/p829.md'` and nothing else.
+ * That is a filename out of a corpus of a thousand, from a stack of `dist/`
+ * frames, during a `next build` that mentions no package.
+ *
+ * The scan itself is bounded at {@link SCAN_CONCURRENCY} now, so reaching this
+ * means the limit is lower than that or something else in the process has the
+ * descriptors — which is the useful thing to be told, and the opposite of what a
+ * reader concludes from an error naming one of their own markdown files.
+ *
+ * Only these two codes, and only when the failure is not already ours: a
+ * `broken-symlink` or an `invalid-frontmatter` that came out of the scan is
+ * already a better message than anything this could add.
+ */
+function describeScanFailure(err: unknown, contentDir: string): unknown {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (code !== 'EMFILE' && code !== 'ENFILE') {
+    return err;
+  }
+  return docsError(
+    'descriptor-limit',
+    `the process ran out of file descriptors while scanning ${contentDir}. ` +
+      `The scan holds at most ${String(SCAN_CONCURRENCY)} open at a time, so ` +
+      'something else has them — raise the limit (`ulimit -n`, or ' +
+      '`LimitNOFILE` under systemd) rather than shrinking the corpus. If it ' +
+      'persists with a limit well above that, it is a bug in this package: ' +
+      'https://github.com/wavedotso/wave-docs/issues',
+    { cause: err },
+  );
+}
+
 async function scan<TFrontmatter extends DocFrontmatter>(
   config: ResolvedDocsConfig<TFrontmatter>,
 ): Promise<Scan<TFrontmatter>> {
@@ -331,7 +411,7 @@ async function scan<TFrontmatter extends DocFrontmatter>(
     config,
     // Seeded with the content root so a symlink pointing back at it is caught
     // on the first descent rather than one level down.
-    new Set([await realpath(config.contentDir)]),
+    new Set([await fsGate.run(() => realpath(config.contentDir))]),
   );
   const files: Array<DocFile<TFrontmatter>> = [];
   const bySlug = new Map<string, DocFile<TFrontmatter>>();
@@ -343,7 +423,7 @@ async function scan<TFrontmatter extends DocFrontmatter>(
 
 async function assertContentDir(contentDir: string): Promise<void> {
   try {
-    const stats = await stat(contentDir);
+    const stats = await fsGate.run(() => stat(contentDir));
     if (stats.isDirectory()) {
       return;
     }
@@ -380,8 +460,8 @@ async function scanDir<TFrontmatter extends DocFrontmatter>(
   ancestors: ReadonlySet<string>,
 ): Promise<DirScan<TFrontmatter>> {
   const [meta, entries] = await Promise.all([
-    readDocsMeta(absPath),
-    readdir(absPath, { withFileTypes: true }),
+    fsGate.run(() => readDocsMeta(absPath)),
+    fsGate.run(() => readdir(absPath, { withFileTypes: true })),
   ]);
 
   const classified = await Promise.all(
@@ -472,7 +552,7 @@ async function classifyEntry(
     }
     let target: Stats;
     try {
-      target = await stat(absPath);
+      target = await fsGate.run(() => stat(absPath));
     } catch {
       if (!isPageFile(name)) {
         return SKIP;
@@ -496,7 +576,12 @@ async function classifyEntry(
   if (isDir && !isIgnoredDir(name)) {
     // Resolved, not joined: only a symlink can put a directory inside itself,
     // and `ancestors` can only catch that if both sides are resolved.
-    return { kind: 'dir', absPath, name, realPath: await realpath(absPath) };
+    return {
+      kind: 'dir',
+      absPath,
+      name,
+      realPath: await fsGate.run(() => realpath(absPath)),
+    };
   }
   return SKIP;
 }
@@ -508,7 +593,7 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
   dirSegments: string[],
   config: ResolvedDocsConfig<TFrontmatter>,
 ): Promise<ScannedPage<TFrontmatter>> {
-  const raw = await readFile(filePath, 'utf8');
+  const raw = await fsGate.run(() => readFile(filePath, 'utf8'));
   const relativePath = toPosix(path.relative(config.contentDir, filePath));
 
   let data: unknown;

@@ -914,6 +914,7 @@ try {
 | `invalid-config` | An option passed to this package cannot be used as given. | The message names the option. `siteUrl` must be an absolute origin with no path. |
 | `missing-content-dir` | `contentDir` does not point at a readable directory. | It resolves against `process.cwd()`, which is your project root under `next build`. |
 | `broken-symlink` | A markdown page is reachable only through a broken symbolic link. | Repoint or delete the link; skipping it would silently drop a route. |
+| `descriptor-limit` | The process ran out of file descriptors while scanning the content directory. | Raise the limit — `ulimit -n`, or `LimitNOFILE` under systemd. The scan holds at most 64 open at once, so something else in the process has them. |
 | `invalid-image` | A relative image needs an `imageResolver`, or one returned an unusable shape. | Pass `imageResolver`, or use an absolute `/path` the browser can resolve. |
 | `unknown-theme` | A theme name outside the supported set. | Pass a `highlighter` of your own if you need a theme this package does not load. |
 | `unknown-language` | A fence language outside the loaded set. | Add it to `langs`, or accept the plain-text fallback. |

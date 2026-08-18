@@ -64,6 +64,8 @@ export type DocsErrorCode =
   | 'missing-content-dir'
   /** A markdown page is reachable only through a broken symbolic link. */
   | 'broken-symlink'
+  /** The process ran out of file descriptors while scanning the content. */
+  | 'descriptor-limit'
   /** An `imageResolver` returned an unusable shape, threw, or was needed. */
   | 'invalid-image'
   /** A theme name outside the supported set. */

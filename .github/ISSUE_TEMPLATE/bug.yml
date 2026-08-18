@@ -32,6 +32,7 @@ body:
         - invalid-config
         - missing-content-dir
         - broken-symlink
+        - descriptor-limit
         - invalid-image
         - unknown-theme
         - unknown-language
