@@ -12,18 +12,13 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { DocNavNode, DocsMeta } from './types.js';
 import { docsError } from './docs-error.js';
+import { isSafeHref, opensInNewTab } from './safe-href.js';
 
 /** A `"---Label---"` separator entry. */
 const SEPARATOR_PATTERN = /^---(.+)---$/;
 
 /** The rest wildcard: everything not named explicitly, in place. */
 const REST = '...';
-
-/**
- * `<scheme>:` or protocol-relative `//host` — i.e. a URL that leaves the site.
- * Anything else (`/changelog`, `../pricing`) is internal.
- */
-const ABSOLUTE_HREF_PATTERN = /^(?:[a-zA-Z][a-zA-Z\d+\-.]*:|\/\/)/;
 
 /**
  * Zod mirror of {@link DocsMeta}.
@@ -38,7 +33,27 @@ export const docsMetaSchema = z.strictObject({
     .array(
       z.union([
         z.string(),
-        z.strictObject({ title: z.string(), href: z.string() }),
+        z.strictObject({
+          title: z.string(),
+          /*
+           * ⚠️ THE SAME ALLOWLIST THE MARKDOWN PATH USES, AND `meta.json` WENT
+           * ROUND IT. A hand-written entry reached `<a href>` through
+           * `DocsSidebar` with nothing checking its scheme, while a
+           * `javascript:` link in the markdown beside it was dropped by a check
+           * whose own comment calls it load-bearing. Both end at the same
+           * anchor.
+           *
+           * Refused at parse time rather than dropped at render, because this
+           * file is authored: a nav entry that silently vanishes is the
+           * quietest possible failure, and the author is right there.
+           */
+          href: z.string().refine(isSafeHref, {
+            message:
+              'that is not a scheme this package will put in a link. Use ' +
+              'http(s), mailto, tel, sms, ftp, irc, xmpp, news, feed, git or ' +
+              'matrix — or a path, which needs no scheme at all.',
+          }),
+        }),
       ]),
     )
     .exactOptional(),
@@ -116,7 +131,14 @@ export async function readDocsMeta(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    /*
+     * ⚠️ THE BOM IS OURS TO STRIP HERE TOO. `readFile(…, 'utf8')` leaves it in
+     * and `JSON.parse` refuses it — `Unexpected token '', ...` — so a `meta.json`
+     * saved by an editor that emits one failed the build on a character nobody
+     * can see, in a file the reader is looking straight at. `readPage` learned
+     * this for markdown; this is the same line for the same reason.
+     */
+    parsed = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw docsError(
@@ -169,13 +191,35 @@ export function orderNavEntries(
   const nodes: DocNavNode[] = [];
   let restAt = -1;
 
-  for (const page of pages) {
+  for (const raw of pages) {
+    /*
+     * ⚠️ NFC, BECAUSE THE NAMES IT IS MATCHED AGAINST ARE. `source.ts`
+     * normalises every filename at the `readdir` boundary — macOS hands back
+     * decomposed forms — so `entries[].name` is NFC while a `meta.json` written
+     * on a Mac and saved by an editor that preserves the composition is not.
+     * Two spellings of `café.md`, one in the file listing and one in the
+     * ordering file, and `byName.get` missed: the build failed with
+     * `lists "café", which does not exist` beside a listing of available names
+     * that contains a visually identical `café`.
+     *
+     * Applied to the whole entry rather than only to the name, so the `"..."`
+     * wildcard and a `"---Label---"` separator are compared on the same footing.
+     */
+    const page = typeof raw === 'string' ? raw.normalize('NFC') : raw;
+
     if (typeof page !== 'string') {
       nodes.push({
         type: 'link',
         title: page.title,
         href: page.href,
-        external: ABSOLUTE_HREF_PATTERN.test(page.href),
+        /*
+         * ⚠️ NOT "HAS A SCHEME", WHICH IS WHAT THIS USED TO TEST. `external` is
+         * what makes the sidebar render `target="_blank"` and announce "(opens
+         * in a new tab)", and a `mailto:` entry opens no tab at all — so the
+         * announcement described something that did not happen, to precisely
+         * the reader who cannot see that it did not.
+         */
+        external: opensInNewTab(page.href),
       });
       continue;
     }

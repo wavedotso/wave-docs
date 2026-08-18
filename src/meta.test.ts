@@ -1,5 +1,7 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import type { MetaDirEntry } from './meta.js';
 import { orderNavEntries, parseDocsMeta, readDocsMeta } from './meta.js';
 import type { DocNavNode, DocsMeta } from './types.js';
@@ -174,11 +176,26 @@ describe('orderNavEntries with meta.json pages', () => {
     ]);
   });
 
-  it('marks only protocol and protocol-relative links external', () => {
+  it('marks a link external only when following it opens a tab', () => {
+    /*
+     * ⚠️ THIS TEST USED TO ASSERT THE BUG. It read "only protocol and
+     * protocol-relative links" and expected `mailto:` to be external, because
+     * the implementation tested for a scheme and the test was written from the
+     * implementation. `external` is not "has a scheme" — it is what makes
+     * `DocsSidebar` render `target="_blank"`, an external-link icon and an
+     * "(opens in a new tab)" suffix. Following a `mailto:` opens a mail client
+     * and leaves the page exactly where it was, so a reader using a screen
+     * reader was told about a tab that never appeared.
+     *
+     * `tel:` and `sms:` are the same shape, and the markdown path has always
+     * drawn the line here — `<a href="mailto:…">` in a document gets no
+     * `target` either. The two paths end at the same anchor.
+     */
     const meta: DocsMeta = {
       pages: [
         { title: 'Https', href: 'https://example.com' },
         { title: 'Mail', href: 'mailto:hi@example.com' },
+        { title: 'Phone', href: 'tel:+15550100' },
         { title: 'Protocol relative', href: '//cdn.example.com/x' },
         { title: 'Root relative', href: '/changelog' },
         { title: 'Relative', href: '../pricing' },
@@ -190,7 +207,53 @@ describe('orderNavEntries with meta.json pages', () => {
       node.type === 'link' ? node.external : null,
     );
 
-    expect(external).toEqual([true, true, true, false, false]);
+    expect(external).toEqual([true, false, false, true, false, false]);
+  });
+
+  it('refuses an href whose scheme is not in the allowlist', () => {
+    /*
+     * ⚠️ `meta.json` WENT ROUND THE CHECK THE MARKDOWN PATH CALLS LOAD-BEARING.
+     * A hand-written nav entry reached `<a href>` through `DocsSidebar` with
+     * nothing looking at its scheme, while a `javascript:` link in the markdown
+     * beside it was dropped. Both end at the same anchor.
+     *
+     * Refused at parse time rather than dropped at render: this file is
+     * authored, and a nav entry that silently vanishes is the quietest possible
+     * failure — the sidebar looks fine and the link is simply gone.
+     */
+    for (const href of [
+      'javascript:alert(1)',
+      // The obfuscated forms a browser still executes: a newline and a tab
+      // inside the scheme are ignored by the parser and not by a naive regex.
+      'java\nscript:alert(1)',
+      'data:text/html;base64,PHNjcmlwdD4=',
+      'vbscript:msgbox(1)',
+    ]) {
+      expect(() =>
+        parseDocsMeta({ pages: [{ title: 'Bad', href }] }, META_PATH),
+      ).toThrow(/scheme/);
+    }
+  });
+
+  it('keeps the schemes documentation actually uses', () => {
+    // The allowlist is GitHub's, and an allowlist of three silently deletes
+    // links a technical document legitimately carries.
+    for (const href of [
+      'https://example.com',
+      'mailto:hi@example.com',
+      'tel:+15550100',
+      'sms:+15550100',
+      'ftp://files.example.com',
+      'irc://irc.example.com/chan',
+      'matrix:r/room:example.com',
+      '/changelog',
+      '../pricing',
+      '#anchor',
+    ]) {
+      expect(() =>
+        parseDocsMeta({ pages: [{ title: 'Fine', href }] }, META_PATH),
+      ).not.toThrow();
+    }
   });
 
   it('drops unnamed entries when there is no wildcard', () => {
@@ -386,5 +449,72 @@ describe('readDocsMeta', () => {
     await expect(
       readDocsMeta(path.join(FIXTURES, 'guides')),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('meta.json is read the way markdown is', () => {
+  const temp: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(
+      temp.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+
+  /** A directory holding one `meta.json` with exactly these bytes. */
+  async function withMeta(body: string): Promise<string> {
+    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-meta-'));
+    temp.push(dir);
+    await writeFile(path.join(dir, 'meta.json'), body, 'utf8');
+    return dir;
+  }
+
+  it('strips a UTF-8 BOM, as `readPage` does for markdown', async () => {
+    /*
+     * ⚠️ `readFile(…, 'utf8')` LEAVES IT IN AND `JSON.parse` REFUSES IT. A
+     * `meta.json` saved by an editor that emits a BOM — which is most of them on
+     * Windows — failed the build with `Unexpected token ''`, on a character
+     * nobody can see, in the file the author is looking straight at. The
+     * markdown path learned this when `gray-matter` was swapped out; this is the
+     * same line for the same reason.
+     */
+    const dir = await withMeta('\uFEFF{"title":"API"}');
+
+    await expect(readDocsMeta(dir)).resolves.toEqual({ title: 'API' });
+  });
+
+  it('matches a name in NFC, because the filenames it is matched against are', async () => {
+    /*
+     * ⚠️ macOS HANDS BACK DECOMPOSED FILENAMES, AND `source.ts` NORMALISES THEM
+     * AT THE `readdir` BOUNDARY — so `entries[].name` is NFC while a `meta.json`
+     * written on a Mac is whatever the editor saved. Two spellings of `café`,
+     * one in the listing and one in the ordering file, and the lookup missed:
+     * the build failed with `lists "café", which does not exist`, beside a list
+     * of available names containing a visually identical `café`.
+     */
+    const decomposed = 'cafe\u0301'; // e + combining acute
+    const composed = 'caf\u00e9'; // é
+    expect(decomposed).not.toBe(composed);
+
+    const entries: MetaDirEntry[] = [
+      {
+        // As `source.ts` produces it: normalised.
+        name: composed,
+        title: 'Café',
+        node: { type: 'page', title: 'Café', href: '/docs/cafe', slug: 'cafe' },
+      },
+    ];
+
+    // As an editor on a Mac may have written it: not.
+    const nodes = orderNavEntries(
+      entries,
+      { pages: [decomposed] },
+      META_PATH,
+      NESTED,
+    );
+
+    expect(nodes).toEqual([
+      { type: 'page', title: 'Café', href: '/docs/cafe', slug: 'cafe' },
+    ]);
   });
 });

@@ -2,6 +2,7 @@ import type { ComponentProps, ComponentType, JSX, ReactNode } from 'react';
 
 import type { CalloutProps } from './callout.js';
 import { Callout } from './callout.js';
+import { isSafeHref, opensInNewTab } from '../safe-href.js';
 import type { DocsLabels } from './shell-labels.js';
 import type { CalloutType } from './callout.js';
 import type { YouTubeProps } from './youtube.js';
@@ -109,24 +110,8 @@ const DEFAULT_EXTERNAL_LINK = '(opens in a new tab)';
 /** Default name for a wide table's scroll region. */
 const DEFAULT_TABLE = 'Table';
 
-/** Schemes we send to a new tab. `mailto:`/`tel:` are left to the OS. */
-const HTTP_SCHEME = /^https?:\/\//i;
-/** Any URL with a scheme, or protocol-relative. */
+/** Any URL with a scheme, or protocol-relative. Decides router vs plain `<a>`. */
 const ABSOLUTE_URL = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
-/**
- * The schemes a markdown link may carry.
- *
- * GitHub's own allowlist, which is the bar to match: documentation links to
- * `sms:`, `ftp:` and `irc:` are ordinary, and an allowlist of three silently
- * deleted them. The point of the check is to stop `javascript:`, `data:` and
- * `vbscript:` reaching an `href`, not to have an opinion about protocols.
- *
- * A scheme not listed here — `vscode:`, `obsidian:`, `slack:` — is dropped
- * rather than rendered. That is deliberate: an allowlist that grows on request
- * is safe, one that guesses is not. {@link warnDroppedHref} makes it visible.
- */
-const SAFE_SCHEME =
-  /^(https?|mailto|tel|sms|ftp|ftps|irc|ircs|xmpp|news|nntp|feed|git|matrix):/i;
 
 /** Hrefs already reported, so a re-render does not repeat the warning. */
 const warnedHrefs = new Set<string>();
@@ -145,44 +130,9 @@ function warnDroppedHref(href: string): void {
   }
   warnedHrefs.add(href);
   console.warn(
-    `@waveso/docs: dropped a link to '${href}' — its URL scheme is not in ` +
-      'the allowlist, so the text was kept and the destination removed. Use ' +
-      'http, https, mailto, tel, sms, ftp, irc, xmpp or matrix, or render ' +
-      'the link yourself with a custom `a` component.',
+    `@waveso/docs: dropped a link to '${href}' — its scheme is not in the ` +
+      'allowlist. Use http(s), mailto, tel or another documented scheme.',
   );
-}
-/**
- * A copy of `href` as a browser will parse it.
- *
- * ASCII control characters and spaces are stripped before parsing, so
- * ` javascript:` and `java<TAB>script:` both navigate where the raw string
- * matches no scheme at all — which is how a scheme check gets walked around.
- */
-function normaliseUrl(href: string): string {
-  return [...href].filter((char) => (char.codePointAt(0) ?? 0) > 0x20).join('');
-}
-
-/**
- * Would this href navigate somewhere we are willing to send a reader?
- *
- * Nothing upstream filters it: `remarkDocLinks` skips every href with a scheme
- * (`isRelativeLink` is false for it), so `assertLinks` never sees one either,
- * and `remarkRehype` runs with `allowDangerousHtml` off but passes a link's own
- * url through untouched. Verified against React 19: it neutralises
- * `javascript:` in every obfuscated form, silently — but it lets `vbscript:`
- * and `data:text/html;base64,…` reach the DOM verbatim. So the allowlist is
- * ours to keep.
- *
- * Tested against {@link normaliseUrl}, not the raw string.
- */
-function isSafeHref(href: string): boolean {
-  const normalised = normaliseUrl(href);
-  // No scheme at all — a route, a relative path, `#anchor`, `?query`.
-  if (!ABSOLUTE_URL.test(normalised)) {
-    return true;
-  }
-  // Protocol-relative inherits the page's own scheme, which is http(s).
-  return normalised.startsWith('//') || SAFE_SCHEME.test(normalised);
 }
 
 /*
@@ -243,7 +193,7 @@ function createAnchor(
      * `MarkdownComponents.youtube`, unreachable while the substitution happened
      * here, is now the thing that renders.
      */
-    if (HTTP_SCHEME.test(href) || href.startsWith('//')) {
+    if (opensInNewTab(href)) {
       return (
         <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
           {children}
