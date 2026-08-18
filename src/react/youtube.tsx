@@ -4,6 +4,17 @@ export interface YouTubeProps {
   /** The 11-character video id, e.g. `dQw4w9WgXcQ`. */
   id?: string | undefined;
   /**
+   * Seconds to start at, from the link's `t` or `start`.
+   *
+   * ⚠️ IT USED TO BE DROPPED, AND THE FACADE AUTOPLAYS. `https://youtu.be/x?t=754`
+   * is a link to one moment in a two-hour talk — most of why anyone deep-links a
+   * video at all — and it opened at zero and started playing there, leaving the
+   * reader to work out that the author had meant somewhere else.
+   */
+  start?: number | undefined;
+  /** Playlist the video was linked inside, from the link's `list`. */
+  list?: string | undefined;
+  /**
    * Accessible name for the player. Markdown carries no video title, so the
    * fallback is generic — pass a real one where you have it.
    */
@@ -19,6 +30,28 @@ export interface YouTubeProps {
   /** The open facade's control. Default `'Hide video: {title}'`. */
   hideLabel?: string | undefined;
   className?: string | undefined;
+}
+
+/**
+ * The embed URL, with whatever the author's link carried.
+ *
+ * `URLSearchParams` rather than string concatenation: `list` comes out of a
+ * document and goes into a URL, and building this by hand is how a crafted
+ * "playlist id" adds parameters of its own. `start` is already a number.
+ */
+function embedUrl(
+  id: string,
+  start: number | undefined,
+  list: string | undefined,
+): string {
+  const params = new URLSearchParams({ rel: '0', autoplay: '1' });
+  if (start !== undefined && Number.isFinite(start) && start > 0) {
+    params.set('start', String(Math.floor(start)));
+  }
+  if (list !== undefined && list !== '') {
+    params.set('list', list);
+  }
+  return `https://www.youtube-nocookie.com/embed/${id}?${params.toString()}`;
 }
 
 const DEFAULT_TITLE = 'YouTube video player';
@@ -65,6 +98,8 @@ const DEFAULT_HIDE_LABEL = 'Hide video: {title}';
  */
 export function YouTube({
   id,
+  start,
+  list,
   title,
   playLabel,
   hideLabel,
@@ -165,7 +200,7 @@ export function YouTube({
          * *is* that gesture — which is exactly why this is allowed here and
          * would not be on a page-load embed.
          */
-        src={`https://www.youtube-nocookie.com/embed/${safeId}?rel=0&autoplay=1`}
+        src={embedUrl(safeId, start, list)}
         title={label}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen

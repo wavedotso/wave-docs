@@ -175,3 +175,45 @@ describe('YouTube', () => {
     expect(html.startsWith('<details')).toBe(true);
   });
 });
+
+it('puts the timestamp and the playlist in the embed URL', () => {
+  const { container } = render(
+    <YouTube id="dQw4w9WgXcQ" start={754} list="PLabcdef123" />,
+  );
+  const src = container.querySelector('iframe')?.getAttribute('src') ?? '';
+  const url = new URL(src);
+
+  expect(url.searchParams.get('start')).toBe('754');
+  expect(url.searchParams.get('list')).toBe('PLabcdef123');
+  // The two that were already there, and still have to be.
+  expect(url.searchParams.get('autoplay')).toBe('1');
+  expect(url.searchParams.get('rel')).toBe('0');
+});
+
+it('adds neither parameter when the link carried neither', () => {
+  const { container } = render(<YouTube id="dQw4w9WgXcQ" />);
+  const url = new URL(
+    container.querySelector('iframe')?.getAttribute('src') ?? '',
+  );
+
+  expect(url.searchParams.has('start')).toBe(false);
+  expect(url.searchParams.has('list')).toBe(false);
+});
+
+it('builds the URL with URLSearchParams, so a crafted playlist cannot inject', () => {
+  /*
+   * `list` comes out of a document and goes into a URL. The plugin refuses a
+   * shape like this before it gets here, and this is the second layer: built by
+   * hand, `list=x%26autoplay%3D0` would have decoded into a real `&autoplay=0`
+   * and silently turned the facade's one interaction off.
+   */
+  const { container } = render(
+    <YouTube id="dQw4w9WgXcQ" list="x&autoplay=0" />,
+  );
+  const url = new URL(
+    container.querySelector('iframe')?.getAttribute('src') ?? '',
+  );
+
+  expect(url.searchParams.get('autoplay')).toBe('1');
+  expect(url.searchParams.get('list')).toBe('x&autoplay=0');
+});

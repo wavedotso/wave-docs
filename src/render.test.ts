@@ -395,6 +395,61 @@ describe('createDocsRenderer', () => {
     expect(video?.properties).toMatchObject({ id: 'dQw4w9WgXcQ' });
   });
 
+  it('carries the timestamp and the playlist through', async () => {
+    /*
+     * ⚠️ ONLY THE ID SURVIVED, AND THE FACADE AUTOPLAYS. `?t=754` is a link to
+     * one moment in a two-hour talk — most of why anyone deep-links a video —
+     * and it opened at zero and started *playing* there, so the reader had to
+     * work out that the author had meant somewhere else.
+     */
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+    });
+
+    for (const [href, expected] of [
+      ['https://youtu.be/dQw4w9WgXcQ?t=754', { start: 754 }],
+      // Every spelling YouTube's own share dialog produces.
+      ['https://youtu.be/dQw4w9WgXcQ?t=90s', { start: 90 }],
+      ['https://youtu.be/dQw4w9WgXcQ?t=1m30s', { start: 90 }],
+      ['https://youtu.be/dQw4w9WgXcQ?t=1h2m3s', { start: 3723 }],
+      ['https://youtu.be/dQw4w9WgXcQ#t=45', { start: 45 }],
+      // `start` is the embed form's name for the same thing.
+      ['https://www.youtube.com/embed/dQw4w9WgXcQ?start=12', { start: 12 }],
+      [
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLabcdef123&t=30',
+        { start: 30, list: 'PLabcdef123' },
+      ],
+    ] as Array<[string, Record<string, unknown>]>) {
+      const doc = await renderer.render(makeDoc(`${href}\n`));
+      const [video] = findAll(doc.hast, 'youtube');
+
+      expect(video?.properties, href).toMatchObject({
+        id: 'dQw4w9WgXcQ',
+        ...expected,
+      });
+    }
+  });
+
+  it('ignores a timestamp that is not one, and a playlist that is not one', async () => {
+    // Both go into a URL. `URLSearchParams` keeps a crafted value from adding
+    // parameters, and refusing the shape keeps garbage out of the embed at all.
+    const renderer = createDocsRenderer({
+      config: { basePath: '/docs', assertLinks: false },
+    });
+
+    for (const href of [
+      'https://youtu.be/dQw4w9WgXcQ?t=soon',
+      'https://youtu.be/dQw4w9WgXcQ?t=0',
+      'https://youtu.be/dQw4w9WgXcQ?list=../../evil',
+      'https://youtu.be/dQw4w9WgXcQ?list=a%26autoplay%3D0',
+    ]) {
+      const doc = await renderer.render(makeDoc(`${href}\n`));
+      const [video] = findAll(doc.hast, 'youtube');
+
+      expect(video?.properties, href).toEqual({ id: 'dQw4w9WgXcQ' });
+    }
+  });
+
   it('leaves a labelled YouTube link as a link', async () => {
     const renderer = createDocsRenderer({
       config: { basePath: '/docs', assertLinks: false },

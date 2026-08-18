@@ -21,7 +21,7 @@
  * a `youtube` element for the map to match. Emitting one here is what connects
  * the option to the output.
  *
- * And it takes the detection off the render path: `parseYouTubeId` and the
+ * And it takes the detection off the render path: `parseYouTubeRef` and the
  * bare-URL check ran per anchor, in a module that ships to the browser. They
  * now run once per document, in Node, at build time.
  */
@@ -36,13 +36,58 @@ const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 /** `https://` or `http://`, for comparing a label against its own href. */
 const HTTP_SCHEME = /^https?:\/\//i;
 
+/** A playlist id, conservatively: what YouTube uses and nothing else. */
+const PLAYLIST_ID = /^[A-Za-z0-9_-]{2,64}$/;
+
 /**
- * Extract a video id from a YouTube watch/short/embed URL.
+ * `1h2m3s`, `90s`, `90` — every spelling YouTube's own `t` parameter takes.
+ */
+const TIMESTAMP = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/;
+
+/** What a YouTube URL says, beyond which video it is. */
+export interface YouTubeRef {
+  id: string;
+  /** Seconds to start at, from `t` or `start`. */
+  start?: number | undefined;
+  /** Playlist the video was linked inside, from `list`. */
+  list?: string | undefined;
+}
+
+/**
+ * Seconds from a `t`/`start` value, or `undefined` if it is not one.
+ *
+ * YouTube accepts `t=90`, `t=90s` and `t=1m30s`, and an author linking to a
+ * moment in a talk pastes whichever the share dialog gave them.
+ */
+function parseTimestamp(value: string | null): number | undefined {
+  if (value === null || value === '') return undefined;
+
+  const match = TIMESTAMP.exec(value);
+  if (match === null) return undefined;
+
+  const [, hours, minutes, seconds] = match;
+  const total =
+    Number(hours ?? 0) * 3600 +
+    Number(minutes ?? 0) * 60 +
+    Number(seconds ?? 0);
+
+  return Number.isFinite(total) && total > 0 ? total : undefined;
+}
+
+/**
+ * Extract a video reference from a YouTube watch/short/embed URL.
  *
  * Returns `undefined` for anything else, including YouTube URLs that are not a
  * single video (channels, playlists) — those stay ordinary links.
+ *
+ * ⚠️ THE TIMESTAMP AND THE PLAYLIST ARE PART OF THE LINK, AND WERE DROPPED. Only
+ * the id survived, so `https://youtu.be/x?t=754` — a link to one specific moment
+ * in a two-hour talk, which is most of why anyone deep-links a video — opened at
+ * zero. And because the facade passes `autoplay=1`, it did not merely start in
+ * the wrong place: it started *playing* in the wrong place, so the reader had to
+ * work out that the author had meant somewhere else.
  */
-export function parseYouTubeId(href: string): string | undefined {
+export function parseYouTubeRef(href: string): YouTubeRef | undefined {
   let url: URL;
   try {
     url = new URL(href, 'https://example.invalid');
@@ -53,9 +98,29 @@ export function parseYouTubeId(href: string): string | undefined {
   const host = url.hostname.replace(/^(www|m)\./, '');
   const segments = url.pathname.split('/').filter(Boolean);
 
+  /*
+   * `t` on a watch or short link, `start` on an embed — YouTube's own two names
+   * for the same thing. The fragment carries it too on older share links
+   * (`#t=1m30s`), and `URL` hands that over as `url.hash`.
+   */
+  const extras = (): Omit<YouTubeRef, 'id'> => {
+    const start =
+      parseTimestamp(url.searchParams.get('t')) ??
+      parseTimestamp(url.searchParams.get('start')) ??
+      parseTimestamp(url.hash.replace(/^#t=/, '') || null);
+    const list = url.searchParams.get('list');
+
+    return {
+      ...(start === undefined ? {} : { start }),
+      ...(list !== null && PLAYLIST_ID.test(list) ? { list } : {}),
+    };
+  };
+
   if (host === 'youtu.be') {
     const [id] = segments;
-    return id !== undefined && VIDEO_ID.test(id) ? id : undefined;
+    return id !== undefined && VIDEO_ID.test(id)
+      ? { id, ...extras() }
+      : undefined;
   }
 
   if (host !== 'youtube.com' && host !== 'youtube-nocookie.com') {
@@ -64,12 +129,12 @@ export function parseYouTubeId(href: string): string | undefined {
 
   if (url.pathname === '/watch') {
     const id = url.searchParams.get('v');
-    return id !== null && VIDEO_ID.test(id) ? id : undefined;
+    return id !== null && VIDEO_ID.test(id) ? { id, ...extras() } : undefined;
   }
 
   const [prefix, id] = segments;
   if ((prefix === 'embed' || prefix === 'shorts') && id !== undefined) {
-    return VIDEO_ID.test(id) ? id : undefined;
+    return VIDEO_ID.test(id) ? { id, ...extras() } : undefined;
   }
 
   return undefined;
@@ -128,16 +193,25 @@ export const remarkYouTube: Plugin<[], Root> = () => {
       }
 
       // Narrowed by `isBareUrl`, which returns false for anything but a link.
-      const id = only.type === 'link' ? parseYouTubeId(only.url) : undefined;
+      const ref = only.type === 'link' ? parseYouTubeRef(only.url) : undefined;
 
-      if (id === undefined) {
+      if (ref === undefined) {
         return;
       }
 
       (parent.children as RootContent[])[index] = {
         type: 'paragraph',
         children: [],
-        data: { hName: 'youtube', hProperties: { id } },
+        data: {
+          hName: 'youtube',
+          hProperties: {
+            id: ref.id,
+            // Omitted rather than emitted empty: an attribute is markup, and
+            // `start="undefined"` would reach the embed URL as a literal.
+            ...(ref.start === undefined ? {} : { start: ref.start }),
+            ...(ref.list === undefined ? {} : { list: ref.list }),
+          },
+        },
       };
 
       // The replacement sits at the same index; re-visiting walks an empty node.
