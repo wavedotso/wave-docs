@@ -264,3 +264,57 @@ describe('markdown links', () => {
     expect(screen.getByText('click')).toBeInTheDocument();
   });
 });
+
+describe('the optimising branch gets what the plain one does', () => {
+  /*
+   * ⚠️ `createImage`'s COMMENT PROMISED THIS AND `wrapNextImage` BROKE IT. The
+   * comment said `rest` goes first so an attribute the plain `<img>` honours —
+   * it named `decoding` and `fetchPriority` — is not silently dropped by the
+   * optimising one. `wrapNextImage` destructures a fixed list of props, so both
+   * were dropped, on exactly the images most likely to want them: the hero
+   * image a resolver gave dimensions to.
+   *
+   * They are declared props now. A closed interface at a component seam is the
+   * right shape; a comment promising an open one was not.
+   */
+  function Spy(props: DocsImageProps): ReactNode {
+    seen = props;
+    // A `<span>`, not an `<img>`: the subject is the props this component was
+    // handed, and rendering a real image only invites the lint rule that exists
+    // to push consumers towards `next/image` — which is the thing being stood
+    // in for here.
+    return <span data-src={props.src} />;
+  }
+  let seen: DocsImageProps | undefined;
+
+  it('forwards decoding and fetchPriority to a custom Image', () => {
+    const components = createMarkdownComponents({ Image: Spy });
+    const MarkdownImage = components.img;
+    if (MarkdownImage === undefined) throw new Error('no img component');
+
+    render(
+      <MarkdownImage
+        src="/hero.png"
+        alt="Hero"
+        width={1200}
+        height={630}
+        decoding="sync"
+        fetchPriority="high"
+      />,
+    );
+
+    expect(seen).toMatchObject({ decoding: 'sync', fetchPriority: 'high' });
+  });
+
+  it('defaults decoding to async without overriding the author', () => {
+    const components = createMarkdownComponents({ Image: Spy });
+    const MarkdownImage = components.img;
+    if (MarkdownImage === undefined) throw new Error('no img component');
+
+    render(
+      <MarkdownImage src="/hero.png" alt="Hero" width={1200} height={630} />,
+    );
+
+    expect(seen?.decoding).toBe('async');
+  });
+});

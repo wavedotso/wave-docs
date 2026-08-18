@@ -245,7 +245,18 @@ export function createDocsHighlighter(
     loaders.add(LANG_LOADERS[lang]);
   }
 
-  const key = JSON.stringify({ langs, themes });
+  /*
+   * ⚠️ THE THEME KEYS ARE NAMED, NOT SPREAD. `JSON.stringify` preserves
+   * insertion order, so `{ light, dark }` and `{ dark, light }` — the same pair,
+   * written two ways — produced two keys and two whole Shiki instances, each
+   * with every grammar loaded. `langs` was already sorted for exactly this
+   * reason; the object beside it was not.
+   */
+  const key = JSON.stringify({
+    langs,
+    light: themes.light,
+    dark: themes.dark,
+  });
   const cached = highlighters.get(key);
   if (cached) {
     return cached;

@@ -144,8 +144,21 @@ export function DocsLayoutShell({
           {search === false ? null : (
             <DocsSearch
               indexUrl={searchIndexUrl}
-              className="wave-docs-layout__search"
               {...(search === true ? {} : search)}
+              /*
+               * ⚠️ AFTER THE SPREAD, AND JOINED. `className` was before it, so a
+               * host passing `search={{ className: 'my-search' }}` — the
+               * ordinary reason to pass one — replaced
+               * `wave-docs-layout__search` instead of adding to it, and the
+               * trigger lost the grid placement the header depends on. Adding a
+               * class should not remove one.
+               */
+              className={[
+                'wave-docs-layout__search',
+                search === true ? undefined : search?.className,
+              ]
+                .filter(Boolean)
+                .join(' ')}
             />
           )}
 

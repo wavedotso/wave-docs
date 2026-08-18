@@ -234,6 +234,11 @@ async function loadNotFound(): Promise<() => never> {
  * as `number | \`${number}\``, and spreading a `ComponentProps<'img'>`-shaped
  * object into it fails with TS2322 because the DOM types allow a bare `string`.
  * The build-time {@link ImageResolver} has already produced real numbers here.
+ *
+ * ⚠️ SO THE LIST IS THE CONTRACT, AND IT HAS TO MATCH `DocsImageProps`. A prop
+ * added there and forgotten here is dropped silently — which is what happened to
+ * `decoding` and `fetchPriority`, under a comment in `createImage` promising
+ * they survived.
  */
 function wrapNextImage(NextImage: NextImageComponent): DocsImageComponent {
   return function DocsNextImage({
@@ -245,6 +250,8 @@ function wrapNextImage(NextImage: NextImageComponent): DocsImageComponent {
     className,
     sizes,
     loading,
+    decoding,
+    fetchPriority,
   }: DocsImageProps): ReactNode {
     return createElement(NextImage, {
       src,
@@ -255,6 +262,8 @@ function wrapNextImage(NextImage: NextImageComponent): DocsImageComponent {
       ...(className === undefined ? {} : { className }),
       ...(sizes === undefined ? {} : { sizes }),
       ...(loading === undefined ? {} : { loading }),
+      ...(decoding === undefined ? {} : { decoding }),
+      ...(fetchPriority === undefined ? {} : { fetchPriority }),
     });
   };
 }

@@ -745,10 +745,38 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
         }
 
         if (resolved === undefined) {
-          // ⚠️ THE FOLD SURVIVES. Returning `undefined` means "I have no public
-          // URL for this", not "put the author's `../` back".
-          node.properties.src = withSuffix(folded.path, folded.suffix);
-          return;
+          /*
+           * A public src passes through: `/logo.png` and `https://…` reach the
+           * resolver unfolded so a host can rewrite them onto a CDN, and
+           * declining one means "leave it as it is", which is a complete answer.
+           */
+          if (isPublicImageSrc(src)) {
+            return;
+          }
+
+          /*
+           * ⚠️ A RELATIVE SRC IS NOT AN ANSWER, AND THIS USED TO EMIT ONE. It
+           * wrote the folded path — `guide/diagram.png` — which the browser
+           * then resolves against the ROUTE: `/docs/guide` asks for
+           * `/docs/guide/diagram.png` and `/docs/guide/setup` asks for
+           * `/docs/guide/setup/guide/diagram.png`, from identical markdown. That
+           * is the precise failure unconditional folding exists to prevent, left
+           * in the one branch that skipped the check for it.
+           *
+           * Same error as having no resolver at all, because it is the same
+           * situation: nothing can serve this file. Saying so names the image
+           * and the page; the alternative was a 404 the author never sees.
+           */
+          throw docsError(
+            'invalid-image',
+            `@waveso/docs: the imageResolver returned nothing for image ` +
+              `"${src}" in ${file.relativePath}, which is relative to the ` +
+              'markdown file — so nothing can serve it: the browser would ' +
+              'resolve it against the page route, and the same markdown would ' +
+              'request a different file from every page. Return a src for it, ' +
+              'or move the image under `public/` and write an absolute one ' +
+              'such as "/diagram.png".',
+          );
         }
 
         assertResolvedImage(resolved, src, file.relativePath);

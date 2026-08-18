@@ -316,6 +316,21 @@ describe('the shell in another language', () => {
     ).toBeTruthy();
   });
 
+  it("adds a host className to the layout's, rather than replacing it", () => {
+    /*
+     * ⚠️ `className` WAS BEFORE THE SPREAD, SO A HOST PASSING ONE DELETED
+     * `wave-docs-layout__search` — the class that places the trigger in the
+     * header grid. Passing a class is the ordinary reason to pass `search` an
+     * object at all, and the result was a control that lost its position, from
+     * an addition that should not have removed anything.
+     */
+    renderShell({ search: { className: 'my-search' } });
+    const trigger = screen.getByRole('button', { name: 'Search' });
+
+    expect(trigger.className).toContain('wave-docs-layout__search');
+    expect(trigger.className).toContain('my-search');
+  });
+
   it('falls back per string, so a partial map is not a half-English shell', () => {
     renderShell({ labels: { openNav: 'Abrir navegação' } });
 

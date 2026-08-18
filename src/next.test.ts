@@ -14,6 +14,8 @@ import {
   it,
   vi,
 } from 'vitest';
+import type { Root as HastRoot } from 'hast';
+import { visit } from 'unist-util-visit';
 import { z } from 'zod';
 
 import { docFrontmatterSchema } from './frontmatter.js';
@@ -1260,5 +1262,59 @@ describe('every label reaches a reader', () => {
     expect(markup).toContain('aria-label="Table"');
     expect(markup).toContain('Copy code');
     expect(markup).toContain('Play video: YouTube video player');
+  });
+});
+
+describe('the next/image adapter forwards what the component map declares', () => {
+  it('carries `fetchPriority` all the way to the rendered img', async () => {
+    /*
+     * ⚠️ THE HALF `markdown-components.test.tsx` CANNOT SEE. That file supplies
+     * its own `Image` component, so it proves `createImage` passes the props on
+     * — and `wrapNextImage`, the adapter every consumer of `@waveso/docs/next`
+     * actually gets, destructures a fixed list and silently dropped anything
+     * outside it, under a comment in `createImage` promising otherwise.
+     *
+     * ⚠️ AND IT HAS TO BE `fetchPriority`, NOT `decoding`. The first draft used
+     * `decoding` and could not fail: `next/image` sets `decoding="async"` on its
+     * own, so the attribute was in the output whether the adapter forwarded it
+     * or not. `fetchPriority` is next/image's only if we hand it over.
+     *
+     * Set by a plugin because markdown cannot express it — which is also the
+     * real way it arrives, since `rehypePlugins` is the documented seam for
+     * exactly this.
+     */
+    const dir = await makeContentDir({
+      'index.md': '---\ntitle: Home\n---\n\n![A diagram](./diagram.png)\n',
+    });
+    const route = createDocsRoute({
+      contentDir: dir,
+      assertLinks: false,
+      imageResolver: () => ({ src: '/diagram.png', width: 800, height: 600 }),
+      rehypePlugins: [
+        () => (tree: HastRoot) => {
+          visit(tree, 'element', (node) => {
+            if (node.tagName === 'img') {
+              node.properties.fetchPriority = 'high';
+            }
+          });
+        },
+      ],
+    });
+
+    const markup = renderToStaticMarkup(
+      createElement(Fragment, null, await route.IndexPage()),
+    );
+
+    // React 19 lower-cases it on the way to the DOM.
+    expect(markup).toMatch(/fetchpriority="high"/i);
+
+    /*
+     * The guard on the guard: an assertion that found no image at all would
+     * prove nothing. `data-nimg` is `next/image`'s own marker, so this also pins
+     * that the adapter under test is the one that ran — the src itself is
+     * rewritten to `/_next/image?url=%2Fdiagram.png`, which is the point of it.
+     */
+    expect(markup).toContain('data-nimg');
+    expect(markup).toContain('%2Fdiagram.png');
   });
 });

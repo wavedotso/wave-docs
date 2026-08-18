@@ -67,6 +67,20 @@ export interface DocsImageProps {
   className?: string | undefined;
   sizes?: string | undefined;
   loading?: 'eager' | 'lazy' | undefined;
+  /**
+   * Passed through to the image. Defaults to `'async'` on the plain `<img>`.
+   *
+   * ⚠️ DECLARED BECAUSE THE COMMENT BELOW PROMISED IT AND THE CODE DROPPED IT.
+   * `createImage` spreads the tree's own attributes into whichever component it
+   * was given, with a comment saying `decoding` and `fetchPriority` survive into
+   * the optimising branch — and `wrapNextImage` destructures a fixed list, so
+   * they did not. A closed props interface is the right shape for this seam, so
+   * the two the comment named are members of it now rather than a promise it
+   * could not keep.
+   */
+  decoding?: 'async' | 'auto' | 'sync' | undefined;
+  /** Passed through to the image. `'high'` on a hero image is the usual reason. */
+  fetchPriority?: 'high' | 'low' | 'auto' | undefined;
 }
 
 /** A `next/image`-compatible component. */
@@ -233,6 +247,8 @@ function createImage(Image: DocsImageComponent | undefined) {
     className,
     sizes,
     loading,
+    decoding,
+    fetchPriority,
     ...rest
   }: ComponentProps<'img'>): ReactNode {
     const resolvedWidth = toDimension(width);
@@ -259,9 +275,16 @@ function createImage(Image: DocsImageComponent | undefined) {
       resolvedHeight !== undefined
     ) {
       return (
-        // `rest` first, so nothing below can be overwritten by the tree, and
-        // so an attribute the plain branch honours — `decoding`,
-        // `fetchPriority` — is not silently dropped by the optimising one.
+        /*
+         * `rest` first, so nothing below can be overwritten by the tree.
+         *
+         * ⚠️ ONLY WHAT `DocsImageProps` DECLARES REACHES A CUSTOM `Image`. This
+         * comment used to say that an attribute the plain branch honours —
+         * `decoding`, `fetchPriority` — was not dropped by the optimising one,
+         * and `wrapNextImage` destructures a fixed list, so both were. They are
+         * declared props now; anything else in `rest` still stops here, which is
+         * what a closed interface at a component seam means.
+         */
         <Image
           {...rest}
           src={src}
@@ -272,6 +295,8 @@ function createImage(Image: DocsImageComponent | undefined) {
           className={resolvedClassName}
           sizes={sizes}
           loading={resolvedLoading}
+          decoding={decoding ?? 'async'}
+          fetchPriority={fetchPriority}
         />
       );
     }
@@ -279,10 +304,6 @@ function createImage(Image: DocsImageComponent | undefined) {
     return (
       // biome-ignore lint/performance/noImgElement: cannot import `next/image` — this layer stays host-agnostic, and the caller injects an optimising component when it has one.
       <img
-        // Before the spread, so a tree that sets `decoding` itself keeps it.
-        // The optimising branch needs no equivalent: `next/image` applies
-        // `decoding="async"` on its own.
-        decoding="async"
         {...rest}
         src={src}
         alt={alt ?? ''}
@@ -292,6 +313,11 @@ function createImage(Image: DocsImageComponent | undefined) {
         className={resolvedClassName}
         sizes={sizes}
         loading={resolvedLoading}
+        // `?? 'async'` rather than a default before the spread: a tree that sets
+        // `decoding` itself keeps it, and this is now one resolution rather than
+        // one on each branch.
+        decoding={decoding ?? 'async'}
+        fetchPriority={fetchPriority}
       />
     );
   };

@@ -596,10 +596,33 @@ describe('createDocsRenderer', () => {
       expect(src).toBe('/img/diagram.a1b2c3.png?w=800');
     });
 
-    it('keeps the suffix when the resolver declines', async () => {
-      const { src } = await resolveImage('![a](./sprite.svg#icon)\n', DECLINE);
+    it('refuses a relative src the resolver declined', async () => {
+      /*
+       * ⚠️ THIS USED TO ASSERT `guide/sprite.svg#icon`, WHICH IS NOT A USABLE
+       * SRC. A relative one is resolved by the browser against the ROUTE, so
+       * `/docs/guide` asks for `/docs/guide/sprite.svg` and `/docs/guide/setup`
+       * asks for `/docs/guide/setup/guide/sprite.svg` — from identical markdown,
+       * with a green build. That is the exact failure unconditional folding
+       * exists to prevent, left in the one branch that skipped the check.
+       *
+       * Declining a relative src is the same situation as having no resolver at
+       * all, so it is the same error.
+       */
+      await expect(
+        resolveImage('![a](./sprite.svg#icon)\n', DECLINE),
+      ).rejects.toMatchObject({ code: 'invalid-image' });
+      await expect(
+        resolveImage('![a](./sprite.svg#icon)\n', DECLINE),
+      ).rejects.toThrow(/nothing can serve it/);
+    });
 
-      expect(src).toBe('guide/sprite.svg#icon');
+    it('leaves a public src alone when the resolver declines it', async () => {
+      // The other half, and why this is not simply "declining throws": a public
+      // src reaches the resolver unfolded so a host can rewrite it onto a CDN,
+      // and declining one means "leave it as it is" — a complete answer.
+      const { src } = await resolveImage('![a](/logo.png?v=2)\n', DECLINE);
+
+      expect(src).toBe('/logo.png?v=2');
     });
 
     it('refuses a `../` that was spelled as %2E%2E%2F', async () => {
@@ -717,21 +740,24 @@ describe('createDocsRenderer', () => {
       .toEqual(['/logo.png', 'https://example.com/x.png']);
   });
 
-  it('keeps the fold when the resolver declines the image', async () => {
+  it('refuses the image when the resolver declines a relative src', async () => {
+    /*
+     * ⚠️ THIS USED TO ASSERT `assets/architecture.png`, ON THE REASONING THAT
+     * "I have no public URL for this" is not "put the author's `../` back".
+     * That much is right, and the conclusion did not follow: a folded relative
+     * src is not a public URL either. The browser resolves it against the route,
+     * so identical markdown requests a different file from every page — the
+     * failure the fold exists to prevent, reintroduced by the branch that
+     * skipped the check for it.
+     */
     const renderer = createDocsRenderer({
       config: { basePath: '/docs', assertLinks: false },
       imageResolver: () => undefined,
     });
 
-    const rendered = await renderer.render(
-      makeDoc('![a](../assets/architecture.png)\n'),
-    );
-
-    // Not `../assets/architecture.png`: "I have no public URL for this" is not
-    // "put the author's `../` back".
-    expect(findAll(rendered.hast, 'img')[0]?.properties.src).toBe(
-      'assets/architecture.png',
-    );
+    await expect(
+      renderer.render(makeDoc('![a](../assets/architecture.png)\n')),
+    ).rejects.toThrow(/nothing can serve it/);
   });
 
   it('rejects a resolver result that is not a resolved image', async () => {

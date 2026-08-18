@@ -227,7 +227,7 @@ Every component takes data as props and imports nothing from `next/*` — the ad
 
 `DocsToc`'s `rootMargin` is the `IntersectionObserver` margin that decides how far above the viewport a heading counts as current; the default keeps the highlight on the section you are reading rather than the one about to arrive. `topLabel` is the back-to-top link at the end.
 
-The two components the adapter injects take a little more than an `<a>` and an `<img>`. `DocsLinkProps` adds `prefetch` — passed straight to `next/link`, where `false` disables the hover and viewport paths both, so it is a stronger switch in the App Router than the name suggests. `DocsImageProps` adds `sizes` and `loading`, forwarded to `next/image`; markdown carries neither, so they come from your `imageResolver` or from a `components` override.
+The two components the adapter injects take a little more than an `<a>` and an `<img>`. `DocsLinkProps` adds `prefetch` — passed straight to `next/link`, where `false` disables the hover and viewport paths both, so it is a stronger switch in the App Router than the name suggests. `DocsImageProps` adds `sizes`, `loading`, `decoding` and `fetchPriority`, forwarded to `next/image`; markdown carries none of them, so they come from your `imageResolver` or from a `components` override. `decoding` defaults to `async`, and `loading` to `lazy` — except on an image the author marked `eager`, which is usually the page's largest element.
 
 ### Layout
 
