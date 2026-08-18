@@ -331,6 +331,18 @@ export type LinkResolver = (
  * blindly prefixes what it is handed produces `/cdn//logo.png` and
  * `/cdn/https://example.com/a.png`. Branch on them, or return `undefined` to
  * leave the src as authored.
+ *
+ * ⚠️ IT IS A FILE PATH, NOT AN HREF. `src` is percent-decoded, so
+ * `./getting%20started.png` — what GitHub's editor writes when you drag in a
+ * file whose name has a space — arrives as `getting started.png`, the name that
+ * is actually on disk. Any `?query` and `#fragment` are split off before the
+ * call and re-attached to whatever you return, so `./diagram.png?v=2` arrives
+ * as `diagram.png` and the reader still gets the `?v=2`. Return a src carrying
+ * a query or a fragment of your own and yours is kept instead, because two `?`
+ * in one URL is not a URL.
+ *
+ * All three used to be handed over raw, and `readFile(join(dir, src))` — the
+ * implementation the README gives — threw `ENOENT` on every one of them.
  */
 export type ImageResolver = (
   src: string,

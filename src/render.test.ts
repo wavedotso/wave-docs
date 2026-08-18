@@ -466,6 +466,142 @@ describe('createDocsRenderer', () => {
     expect(seen).toEqual(['assets/architecture.png']);
   });
 
+  /**
+   * ⚠️ THE IMAGE PATH DID NOT DECODE, AND THE LINK PATH ALWAYS HAS.
+   * `foldImageSrc` handed `src` to `foldSegments` verbatim while every link on
+   * the same page went through split-decode-fold. Three authored spellings broke
+   * on it, and the first is the one GitHub's own editor writes for you.
+   */
+  describe('an image src is split and decoded, exactly as a link is', () => {
+    /** Passed instead of a resolver result to make the resolver decline. */
+    const DECLINE = Symbol('decline');
+
+    /** The resolver's argument, plus the src that ends up in the tree. */
+    async function resolveImage(
+      markdown: string,
+      resolved: { src: string } | typeof DECLINE = { src: '/ok.png' },
+    ): Promise<{ seen: string[]; src: unknown }> {
+      const seen: string[] = [];
+      const renderer = createDocsRenderer({
+        config: { basePath: '/docs', assertLinks: false },
+        imageResolver: (src) => {
+          seen.push(src);
+          // A sentinel, not `undefined`: a default parameter cannot tell an
+          // omitted argument from an explicit `undefined`, so the declining
+          // case silently ran with the default and asserted nothing.
+          return resolved === DECLINE ? undefined : resolved;
+        },
+      });
+      const rendered = await renderer.render(makeDoc(markdown));
+      return { seen, src: findAll(rendered.hast, 'img')[0]?.properties.src };
+    }
+
+    it('decodes %20, which is what GitHub writes when you drag a file in', async () => {
+      /*
+       * The exact spelling GitHub's editor produces for a filename with a
+       * space. Undecoded it reached the resolver as `guide/getting%20started.png`,
+       * so the README's own `readFile(path.join('content/docs', src))` threw
+       * ENOENT and the build died with `invalid-image` — on a file that is
+       * plainly on disk and that GitHub renders correctly.
+       */
+      const { seen } = await resolveImage('![a](./getting%20started.png)\n');
+
+      expect(seen).toEqual(['guide/getting started.png']);
+    });
+
+    it('keeps a query out of the filename and puts it back afterwards', async () => {
+      // A resolver is asked to find a *file*. `diagram.png?v=2` is not one.
+      const { seen, src } = await resolveImage('![a](./diagram.png?v=2)\n');
+
+      expect(seen).toEqual(['guide/diagram.png']);
+      // And the cache-buster the author meant survives to the browser.
+      expect(src).toBe('/ok.png?v=2');
+    });
+
+    it('keeps a fragment out of the filename, because SVG uses them', async () => {
+      // `#icon` selects a symbol inside the sprite; dropping it changes what is
+      // drawn, and baking it into the filename means nothing is.
+      const { seen, src } = await resolveImage('![a](./sprite.svg#icon)\n');
+
+      expect(seen).toEqual(['guide/sprite.svg']);
+      expect(src).toBe('/ok.png#icon');
+    });
+
+    it("does not append to a resolver's own query", async () => {
+      /*
+       * A content-hashing resolver returning `?w=800` has said something more
+       * specific than the author's `?v=2`, and concatenating the two produces
+       * two `?` in one URL — which is not a URL. More specific wins, as
+       * everywhere else here.
+       */
+      const { src } = await resolveImage('![a](./diagram.png?v=2)\n', {
+        src: '/img/diagram.a1b2c3.png?w=800',
+      });
+
+      expect(src).toBe('/img/diagram.a1b2c3.png?w=800');
+    });
+
+    it('keeps the suffix when the resolver declines', async () => {
+      const { src } = await resolveImage('![a](./sprite.svg#icon)\n', DECLINE);
+
+      expect(src).toBe('guide/sprite.svg#icon');
+    });
+
+    it('refuses a `../` that was spelled as %2E%2E%2F', async () => {
+      /*
+       * ⚠️ THE CONTAINMENT THE `ImageResolver` CONTRACT PROMISES. Folded without
+       * decoding, `%2E%2E%2Fsecret.png` is one segment with no slash in it, so
+       * the climb check never fired — and any resolver that decodes (anything
+       * building a `URL`, for one) was handed a path out of the content root.
+       * `foldSegments` can only refuse a `../` that is spelled as one.
+       */
+      await expect(
+        resolveImage('![a](./%2E%2E%2F%2E%2E%2Fsecret.png)\n'),
+      ).rejects.toThrow(/climbs above the content root/);
+    });
+
+    it('reports malformed percent-encoding as `invalid-image`', async () => {
+      /*
+       * Decoding means this can throw `URIError`, and an unwrapped one reaches
+       * the build with no code, no file and no line — past the very check that
+       * exists to make image failures locatable. The link path learned this
+       * already; this is the same wrapper.
+       *
+       * ⚠️ AUTHORED MARKDOWN CANNOT REACH IT, WHICH IS WHY THIS GOES THROUGH A
+       * PLUGIN. `![a](./100%-faster.png)` never arrives malformed: the link path
+       * reads mdast, where the url is raw, but images are resolved on hast — and
+       * `mdast-util-to-hast` runs `normalizeUri` on the way, turning a `%` that
+       * is not an escape into `%25`. Written the obvious way this passed against
+       * a wrapper that had not run, because nothing had thrown.
+       *
+       * `rehypePlugins` is documented API and runs before images are resolved,
+       * so a plugin writing a src is the real way in — and the only one.
+       */
+      const renderer = createDocsRenderer({
+        config: { basePath: '/docs', assertLinks: false },
+        imageResolver: (src) => ({ src }),
+        rehypePlugins: [
+          () => (tree: Root) => {
+            visit(tree, 'element', (node) => {
+              if (node.tagName === 'img') {
+                node.properties.src = './100%-faster.png';
+              }
+            });
+          },
+        ],
+      });
+
+      await expect(
+        renderer.render(makeDoc('![a](./ok.png)\n')),
+      ).rejects.toMatchObject({ code: 'invalid-image' });
+      await expect(
+        renderer.render(makeDoc('![a](./ok.png)\n')),
+      ).rejects.toThrow(
+        /guide\/getting-started\.md is not valid percent-encoding/,
+      );
+    });
+  });
+
   it('refuses an image src that climbs above the content root', async () => {
     const renderer = createDocsRenderer({
       config: { basePath: '/docs', assertLinks: false },

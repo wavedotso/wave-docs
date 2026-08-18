@@ -219,6 +219,57 @@ function decodePath(path: string, href: string): string {
 }
 
 /**
+ * An href, split at `?` and `#`, with the path decoded and the rest left alone.
+ *
+ * ⚠️ ONE IMPLEMENTATION, BECAUSE THE THIRD COPY WAS WRONG. Four call sites need
+ * this exact sequence — split, decode the path, fold, re-attach — and three of
+ * them had it inline while `foldImageSrc` in `render.ts` had none of it. An
+ * author dragging a file into GitHub's editor gets `![a](./getting%20started.png)`
+ * written for them, and that reached the resolver undecoded: `readFile` on a
+ * filename with a literal `%20` in it, `ENOENT`, and a build failed on an image
+ * that is plainly on disk and that GitHub renders. `./diagram.png?v=2` and
+ * `./sprite.svg#icon` baked the query and the fragment into the filename the
+ * same way.
+ *
+ * A query and a fragment are never decoded: `?q=a%26b` carries a literal
+ * ampersand that decoding would turn into a separator, and neither is part of
+ * any filename.
+ */
+export interface HrefParts {
+  /** Path, percent-decoded and NFC-normalised — what {@link foldSegments} needs. */
+  path: string;
+  /**
+   * The same span exactly as authored.
+   *
+   * One caller needs it: {@link normalizeInternalRoute} strips `basePath` off
+   * the front by length, and doing that to a decoded path would cut at the
+   * wrong offset for any href that percent-encoded part of the prefix.
+   */
+  rawPath: string;
+  /** `?query` as authored, or `''`. */
+  query: string;
+  /** `#hash` as authored, or `''`. */
+  hash: string;
+}
+
+/**
+ * Split an href into its path, query and fragment; decode only the path.
+ *
+ * Throws a {@link URIError} if the path is not valid percent-encoding, with the
+ * whole href in the message — see {@link decodeSegment}.
+ */
+export function splitHref(href: string): HrefParts {
+  const parts = HREF_PARTS.exec(href);
+  const rawPath = parts?.[1] ?? '';
+  return {
+    path: decodePath(rawPath, href),
+    rawPath,
+    query: parts?.[2] ?? '',
+    hash: parts?.[3] ?? '',
+  };
+}
+
+/**
  * The built-in {@link LinkResolver}: markdown file path in, route out.
  *
  * Exported for reuse by hosts that want to wrap rather than replace it. Throws
@@ -230,16 +281,13 @@ export function resolveMarkdownLink(
   fromDir: readonly string[],
   basePath: string,
 ): string | undefined {
-  const parts = HREF_PARTS.exec(href);
-  const path = parts?.[1] ?? '';
-  const query = parts?.[2] ?? '';
-  const hash = parts?.[3] ?? '';
+  const { path, query, hash } = splitHref(href);
 
   if (path === '') {
     return undefined;
   }
 
-  const segments = foldSegments(fromDir, decodePath(path, href));
+  const segments = foldSegments(fromDir, path);
   if (segments === undefined) {
     return undefined;
   }
@@ -276,13 +324,10 @@ function normalizeInternalRoute(
   href: string,
   basePath: string,
 ): string | undefined {
-  const parts = HREF_PARTS.exec(href);
-  const path = parts?.[1] ?? '';
-  const query = parts?.[2] ?? '';
-  const hash = parts?.[3] ?? '';
+  const { rawPath, query, hash } = splitHref(href);
 
   const base = basePath.replace(/\/+$/, '');
-  const rest = path.slice(base.length);
+  const rest = rawPath.slice(base.length);
 
   const segments = foldSegments([], decodePath(rest, href));
   if (segments === undefined) {
@@ -323,12 +368,9 @@ function resolveAssetLink(
   fromDir: readonly string[],
   basePath: string,
 ): string | undefined {
-  const parts = HREF_PARTS.exec(href);
-  const path = parts?.[1] ?? '';
-  const query = parts?.[2] ?? '';
-  const hash = parts?.[3] ?? '';
+  const { path, query, hash } = splitHref(href);
 
-  const segments = foldSegments(fromDir, decodePath(path, href));
+  const segments = foldSegments(fromDir, path);
   if (segments === undefined) {
     return undefined;
   }

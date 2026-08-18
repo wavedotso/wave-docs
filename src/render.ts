@@ -32,7 +32,11 @@ import {
 import { rehypeFallbackHeadingIds } from './plugins/rehype-fallback-heading-ids.js';
 import { rehypeFlattenRoots } from './plugins/rehype-flatten-roots.js';
 import type { DocLinkRef } from './plugins/remark-doc-links.js';
-import { foldSegments, remarkDocLinks } from './plugins/remark-doc-links.js';
+import {
+  foldSegments,
+  remarkDocLinks,
+  splitHref,
+} from './plugins/remark-doc-links.js';
 import { remarkUnwrapImages } from './plugins/remark-unwrap-images.js';
 import { remarkYouTube } from './plugins/remark-youtube.js';
 import type {
@@ -313,14 +317,72 @@ function assertResolvedImage(
 function foldImageSrc(
   src: string,
   dirSegments: readonly string[],
-): string | undefined {
+): FoldedImage | undefined {
   if (isPublicImageSrc(src)) {
-    return src;
+    return { path: src, suffix: '' };
   }
 
-  const segments = foldSegments(dirSegments, src);
+  /*
+   * ⚠️ SPLIT AND DECODE, EXACTLY AS THE LINK PATH DOES. This used to hand `src`
+   * to `foldSegments` verbatim, and three authored spellings broke on it:
+   *
+   * - `./getting%20started.png` — what GitHub's editor writes when you drag in
+   *   a file whose name has a space — reached the resolver still encoded, so
+   *   the README's own `readFile(path.join('content/docs', src))` threw ENOENT
+   *   and the build died with `invalid-image` on a file that is plainly there
+   *   and that GitHub renders correctly;
+   * - `./diagram.png?v=2` and `./sprite.svg#icon` baked the query and the
+   *   fragment into the filename, so the resolver looked for a file called
+   *   `diagram.png?v=2`;
+   * - `%2E%2E%2Fsecret.png` folded to a single segment rather than the `../`
+   *   it spells, so it never tripped the climb check — and a resolver that
+   *   decodes (anything building a `URL`, for one) escaped the content root
+   *   that {@link ImageResolver}'s contract promises it cannot.
+   *
+   * Decoding before folding is what closes the third: `foldSegments` is the
+   * only thing that refuses a chain climbing out, and it can only see a `../`
+   * that is spelled as one.
+   */
+  const { path, query, hash } = splitHref(src);
+  if (path === '') {
+    return undefined;
+  }
 
-  return segments === undefined ? undefined : segments.join('/');
+  const segments = foldSegments(dirSegments, path);
+
+  return segments === undefined
+    ? undefined
+    : { path: segments.join('/'), suffix: `${query}${hash}` };
+}
+
+/**
+ * A folded image src, kept in two pieces until the resolver has had the path.
+ *
+ * A resolver is asked to find a *file*, so it must not be handed
+ * `diagram.png?v=2`. The suffix goes back on afterwards, because `?v=2` is a
+ * cache-buster the author meant and `#icon` selects a symbol inside an SVG —
+ * dropping either changes what the browser fetches or draws.
+ */
+interface FoldedImage {
+  /** Path from the content root, decoded and folded. What the resolver sees. */
+  path: string;
+  /** `?query#hash` as authored, or `''`. */
+  suffix: string;
+}
+
+/**
+ * Put the authored `?query#hash` back, unless the resolver wrote its own.
+ *
+ * A resolver returning `/img/diagram.a1b2c3.png?w=800` has said something more
+ * specific than the author's `?v=2` — and concatenating the two would produce
+ * two `?` in one URL, which is not a URL. Same rule the rest of this package
+ * uses when a host and a default disagree: the more specific one wins.
+ */
+function withSuffix(src: string, suffix: string): string {
+  if (suffix === '' || /[?#]/.test(src)) {
+    return src;
+  }
+  return `${src}${suffix}`;
 }
 
 /** Route without its `?query` / `#anchor`, for existence checks. */
@@ -611,7 +673,28 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
           return;
         }
 
-        const folded = foldImageSrc(src, context.dirSegments);
+        /*
+         * ⚠️ `foldImageSrc` DECODES NOW, SO IT CAN THROW. `![a](./100%-faster.png)`
+         * is not valid percent-encoding, and an unwrapped `URIError` would reach
+         * the build with no code, no file and no line — past the very check that
+         * exists to make image failures locatable. The link path learned this
+         * lesson already; this is the same wrapper.
+         */
+        let folded: FoldedImage | undefined;
+        try {
+          folded = foldImageSrc(src, context.dirSegments);
+        } catch (error) {
+          if (!(error instanceof URIError)) {
+            throw error;
+          }
+          throw docsError(
+            'invalid-image',
+            `@waveso/docs: image "${src}" in ${file.relativePath} is not ` +
+              'valid percent-encoding. Write %25 for a literal percent sign, ' +
+              'or name the file as it is on disk.',
+            { cause: error },
+          );
+        }
 
         if (folded === undefined) {
           throw docsError(
@@ -637,7 +720,7 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
 
         let resolved: Awaited<ReturnType<ImageResolver>>;
         try {
-          resolved = await resolve(folded, context);
+          resolved = await resolve(folded.path, context);
         } catch (error) {
           // A resolver typically reads the file to measure it, and `ENOENT:
           // no such file 'architecture.png'` names neither the document nor
@@ -653,12 +736,12 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
         if (resolved === undefined) {
           // ⚠️ THE FOLD SURVIVES. Returning `undefined` means "I have no public
           // URL for this", not "put the author's `../` back".
-          node.properties.src = folded;
+          node.properties.src = withSuffix(folded.path, folded.suffix);
           return;
         }
 
         assertResolvedImage(resolved, src, file.relativePath);
-        node.properties.src = resolved.src;
+        node.properties.src = withSuffix(resolved.src, folded.suffix);
         if (resolved.width !== undefined) {
           node.properties.width = resolved.width;
         }
