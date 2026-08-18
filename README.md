@@ -692,6 +692,60 @@ export function Search() {
 
 `fuzzy`, `prefix`, `combineWith` and `boost` are MiniSearch *query* defaults, so they nest under `searchOptions`; `fields`, `storeFields`, `tokenize` and `processTerm` sit at the top level. The nesting is easy to get wrong and wrong is silent — a stray `fuzzy` at the top level is simply never read — so both examples above are type-checked in CI.
 
+### Functions need a client boundary
+
+`tokenize` and `processTerm` are functions, and `docs.Layout` cannot hand a function to the dialog. The layout is a Server Component and the dialog is a Client Component, so props crossing between them are serialised — React refuses a function outright and `next build` fails while prerendering, with *"Functions cannot be passed directly to Client Components"*.
+
+So `docs.Layout` forwards the serialisable half of `miniSearchOptions` — `fields`, `storeFields`, `boost`, and everything under `searchOptions` that is not a callback — and refuses the rest by name. It does not quietly drop them: an index built with a `processTerm` the query does not share matches nothing at all and says nothing, which is the exact failure the forwarding exists to prevent.
+
+Function tuning means taking the boundary yourself, so the function is a module import on both sides rather than a prop between them:
+
+```ts
+// lib/search-terms.ts — one function, imported by both halves
+export function stripDashes(term: string): string {
+  return term.replace(/-/g, '');
+}
+```
+
+```tsx
+// components/docs-search.tsx
+'use client';
+
+import { DocsSearch } from '@waveso/docs/react/next-search';
+import { stripDashes } from '@/lib/search-terms';
+
+export function DocsSearchTrigger({ indexUrl }: { indexUrl: string }) {
+  return (
+    <DocsSearch
+      indexUrl={indexUrl}
+      miniSearchOptions={{ processTerm: stripDashes }}
+    />
+  );
+}
+```
+
+Add the same function to your `createDocsRoute` call — `miniSearchOptions: { processTerm: stripDashes }` — so the index is built with it. Then turn the built-in trigger off and render yours in `actions`, in `app/docs/layout.tsx`:
+
+```tsx
+import '@waveso/docs/styles.css';
+import type { ReactNode } from 'react';
+import { DocsSearchTrigger } from '@/components/docs-search';
+import { docs } from '@/lib/docs';
+
+export default function DocsLayout({ children }: { children: ReactNode }) {
+  return (
+    <docs.Layout
+      search={false}
+      actions={<DocsSearchTrigger indexUrl={docs.searchIndexUrl} />}
+    >
+      {children}
+    </docs.Layout>
+  );
+}
+```
+
+`search={false}` omits the built-in trigger so yours is the only one, and it is also why the refusal is scoped to the forward: the route keeps the function for the index it builds on the server, and nothing crosses to the client but a string.
+
 ### Building the index yourself
 
 Only if the route cannot express what you need — a second index per locale, say, or an artifact consumed by something other than the dialog:

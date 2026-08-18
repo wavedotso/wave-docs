@@ -390,11 +390,15 @@ describe('docs.Layout', () => {
      * two things the README says to do (configure the route, render
      * `docs.Layout`) produced exactly that, under a docstring warning about
      * it in capitals.
+     *
+     * The override is data rather than a function on purpose. Functions cannot
+     * cross this seam at all — the `describe` below is what says so — and a
+     * `processTerm` here is what the first version of this test used, which is
+     * how it managed to pass against a build that could not run.
      */
-    const processTerm = (term: string): string => term.replace(/-/g, '');
     const tuned = createDocsRoute({
       contentDir: BASIC,
-      miniSearchOptions: { processTerm },
+      miniSearchOptions: { searchOptions: { fuzzy: 0.4 } },
     });
 
     const element = await tuned.Layout({ children: null });
@@ -403,23 +407,21 @@ describe('docs.Layout', () => {
     }
 
     expect(element.props.search).toEqual({
-      miniSearchOptions: { processTerm },
+      miniSearchOptions: { searchOptions: { fuzzy: 0.4 } },
     });
   });
 
   it('lets a host override those options, and still omit the trigger', async () => {
-    const routeTerm = (term: string): string => term;
-    const hostTerm = (term: string): string => term.toUpperCase();
     const tuned = createDocsRoute({
       contentDir: BASIC,
-      miniSearchOptions: { processTerm: routeTerm },
+      miniSearchOptions: { searchOptions: { fuzzy: 0.4 } },
     });
 
     // More specific wins: a host that passes an object has said something the
     // route's default did not.
     const overridden = await tuned.Layout({
       children: null,
-      search: { miniSearchOptions: { processTerm: hostTerm } },
+      search: { miniSearchOptions: { searchOptions: { fuzzy: 0 } } },
     });
     if (
       !isValidElement<{ search?: { miniSearchOptions?: unknown } }>(overridden)
@@ -427,7 +429,7 @@ describe('docs.Layout', () => {
       throw new Error('expected `Layout` to return an element');
     }
     expect(overridden.props.search?.miniSearchOptions).toEqual({
-      processTerm: hostTerm,
+      searchOptions: { fuzzy: 0 },
     });
 
     // And `false` still means no trigger, rather than a trigger configured
@@ -437,6 +439,109 @@ describe('docs.Layout', () => {
       throw new Error('expected `Layout` to return an element');
     }
     expect(off.props.search).toBe(false);
+  });
+
+  describe('MiniSearch functions, and the client boundary', () => {
+    /*
+     * ⚠️ THE TEST THE FIRST VERSION OF THIS FEATURE SHOULD HAVE HAD. It
+     * asserted on `element.props.search` and therefore never crossed the
+     * boundary it was testing, so `docs.Layout` shipped in 0.3.0 and 0.4.0
+     * handing `processTerm` to a Client Component — which fails `next build`
+     * outright with "Functions cannot be passed directly to Client
+     * Components", in exactly the case the option's capitalised warning tells
+     * you to use it for. A props assertion is not an RSC test.
+     *
+     * These assert on the throw instead, which is a claim a unit test can
+     * actually make: `Layout` refuses the forward and says what to do, rather
+     * than letting React refuse it later and less helpfully.
+     */
+    const processTerm = (term: string): string => term.replace(/-/g, '');
+
+    it('refuses to forward one, and names it', async () => {
+      const tuned = createDocsRoute({
+        contentDir: BASIC,
+        miniSearchOptions: { processTerm },
+      });
+
+      await expect(tuned.Layout({ children: null })).rejects.toMatchObject({
+        code: 'invalid-config',
+      });
+      await expect(tuned.Layout({ children: null })).rejects.toThrow(
+        /`miniSearchOptions\.processTerm`/,
+      );
+    });
+
+    it('names the remedy, not just the problem', async () => {
+      const tuned = createDocsRoute({
+        contentDir: BASIC,
+        miniSearchOptions: { processTerm },
+      });
+
+      // A build-time error a human reads once. Both halves of the escape hatch
+      // have to be in it or the reader is left to guess the second.
+      await expect(tuned.Layout({ children: null })).rejects.toThrow(
+        /search=\{false\}/,
+      );
+      await expect(tuned.Layout({ children: null })).rejects.toThrow(
+        /'use client'/,
+      );
+    });
+
+    it('finds a function nested inside searchOptions', async () => {
+      // `searchOptions.filter` is a second level down, and a key-list check
+      // written against MiniSearch's top-level options would miss it.
+      const tuned = createDocsRoute({
+        contentDir: BASIC,
+        miniSearchOptions: {
+          processTerm,
+          searchOptions: { filter: () => true },
+        },
+      });
+
+      await expect(tuned.Layout({ children: null })).rejects.toThrow(
+        /`miniSearchOptions\.searchOptions\.filter`/,
+      );
+    });
+
+    it('still builds the index with them, and `search={false}` is the way through', async () => {
+      /*
+       * The supported path, and why the refusal is scoped to the forward rather
+       * than to the option: the route keeps the function for the index it
+       * builds on the server, and the host renders its own `'use client'`
+       * dialog importing the same function. If `search={false}` threw as well,
+       * the remedy the error names would not work.
+       */
+      const tuned = createDocsRoute({
+        contentDir: BASIC,
+        miniSearchOptions: { processTerm: () => 'zzz' },
+      });
+
+      const off = await tuned.Layout({ children: null, search: false });
+      if (!isValidElement<{ search?: unknown }>(off)) {
+        throw new Error('expected `Layout` to return an element');
+      }
+      expect(off.props.search).toBe(false);
+
+      // And the function reached the index, which is the half that still works.
+      const built = JSON.parse(await (await tuned.searchIndex()).text()) as {
+        index: [string, unknown][];
+      };
+      expect(built.index.map(([term]) => term)).toEqual(['zzz']);
+    });
+
+    it('does not compile at the layout seam either', () => {
+      /*
+       * The type is the earlier, friendlier half of the same guard — a host
+       * writing TypeScript is told at the seam rather than at `next build`.
+       * Checked by `pnpm run typecheck`, not by running this.
+       */
+      const rejected: DocsLayoutProps = {
+        children: null,
+        // @ts-expect-error — a function cannot cross a Server → Client prop.
+        search: { miniSearchOptions: { processTerm } },
+      };
+      expect(rejected).toBeDefined();
+    });
   });
 
   it('takes five props, and a sixth is a deliberate act', () => {

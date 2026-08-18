@@ -14,7 +14,9 @@
  *   entire premise of `docs.searchIndex`;
  * - headers set on that handler's `Response` survive into the prerender
  *   manifest as `initialHeaders`, and are served verbatim;
- * - `output: 'export'` writes the same body out as a plain static file.
+ * - `output: 'export'` writes the same body out as a plain static file;
+ * - props `docs.Layout` forwards to the search dialog survive serialisation
+ *   into the flight payload, which is the half a props assertion cannot see.
  *
  * `smoke/lib/docs.ts` imports `@waveso/docs/next` **by name**, which Node
  * self-references through the real `exports` map into `dist/`, exactly as a
@@ -251,6 +253,28 @@ async function checkShell(): Promise<void> {
     'the drawer is not a second copy of the sidebar',
     (html.match(/class="wave-docs-sidebar"/g) ?? []).length === 1,
     'the nav is in the payload twice',
+  );
+
+  /*
+   * ⚠️ THE ASSERTION THAT WOULD HAVE CAUGHT THE 0.3.0 BUG, AND IT NEEDS A BUILD.
+   * `docs.Layout` is a Server Component handing `miniSearchOptions` to a Client
+   * one, so React serialises it into the flight payload — which is why it is
+   * findable in the HTML at all, and why a function there killed `next build`
+   * with "Functions cannot be passed directly to Client Components". The unit
+   * test read `element.props.search` and therefore never crossed the boundary
+   * it was testing, so two releases shipped with the option's own documented
+   * use case failing outright.
+   *
+   * `smoke/lib/docs.ts` sets `fuzzy: 0.3` for this and nothing else. The
+   * backslashes come off first: the payload lives inside a JavaScript string
+   * literal, so how deeply it is escaped is Next's business and not a thing to
+   * pin.
+   */
+  const flight = html.replaceAll('\\"', '"');
+  check(
+    "the route's MiniSearch options reached the client payload",
+    flight.includes('"miniSearchOptions":{"searchOptions":{"fuzzy":0.3}}'),
+    'the layout either dropped the forward or never crossed the boundary',
   );
 }
 

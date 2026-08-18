@@ -21,6 +21,7 @@
 
 import type { ReactNode } from 'react';
 
+import type { SerializableSearchOptions } from '../search-options.js';
 import type { DocNavNode } from '../types.js';
 import type { DocsSearchProps } from './next-search.js';
 import { DocsSearch } from './next-search.js';
@@ -36,8 +37,22 @@ import { SkipLink } from './skip-link.js';
  * `indexUrl` is derived from `basePath` and is not negotiable here: the whole
  * reason `docs.Layout` exists is that nobody should have to know the index's
  * address, and a hand-passed one is wrong under every non-root `basePath`.
+ *
+ * `miniSearchOptions` is narrower than the one `DocsSearch` itself takes, and
+ * has to be. `docs.Layout` is a Server Component and `DocsSearch` is a Client
+ * Component, so everything here is serialised on its way across — a `tokenize`
+ * or a `processTerm` passed at this seam fails `next build` with *"Functions
+ * cannot be passed directly to Client Components"*. {@link
+ * SerializableSearchOptions} documents the escape hatch: a `'use client'`
+ * wrapper of your own, where the function is a module import on both sides
+ * rather than a prop between them.
  */
-export type DocsLayoutSearchProps = Omit<DocsSearchProps, 'indexUrl'>;
+export type DocsLayoutSearchProps = Omit<
+  DocsSearchProps,
+  'indexUrl' | 'miniSearchOptions'
+> & {
+  miniSearchOptions?: SerializableSearchOptions | undefined;
+};
 
 export interface DocsLayoutShellProps {
   children: ReactNode;
@@ -48,14 +63,19 @@ export interface DocsLayoutShellProps {
   /**
    * `false` to omit the trigger; an object to configure it.
    *
-   * ⚠️ AN OBJECT IS WHAT MAKES `miniSearchOptions` REACHABLE. MiniSearch reads
-   * `tokenize` and `processTerm` both when indexing and when querying, so the
-   * object `createDocsRoute` built the index with has to be the object the
-   * dialog queries it with — and while this was a bare boolean there was no
-   * channel for it at all. Configuring the route and rendering `docs.Layout`
-   * produced an index whose terms no query could spell: zero results, no error,
-   * nothing in the console, and the option's own docstring warning about
-   * exactly that.
+   * ⚠️ AN OBJECT IS WHAT MAKES `miniSearchOptions` REACHABLE, AND ONLY THE
+   * SERIALISABLE PART OF IT. MiniSearch reads `tokenize` and `processTerm` both
+   * when indexing and when querying, so the object `createDocsRoute` built the
+   * index with has to be the object the dialog queries it with — and while this
+   * was a bare boolean there was no channel for it at all. Configuring the
+   * route and rendering `docs.Layout` produced an index whose terms no query
+   * could spell: zero results, no error, nothing in the console.
+   *
+   * Widening it to a boolean-or-object fixed that for data overrides and broke
+   * the function ones, which is the harder half: this prop is serialised on its
+   * way from a Server Component to a Client one, so a function in it is a build
+   * failure rather than a silent miss. `createDocsRoute` refuses to forward one
+   * and says so; {@link DocsLayoutSearchProps} carries the remedy.
    */
   search?: boolean | DocsLayoutSearchProps | undefined;
   /**

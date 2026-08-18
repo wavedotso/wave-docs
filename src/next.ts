@@ -52,6 +52,8 @@ import type { ComponentType, ReactNode } from 'react';
 import { Fragment, cache, createElement } from 'react';
 
 import { mapPooled } from './map-pooled.js';
+import type { SerializableSearchOptions } from './search-options.js';
+import { findFunctionValuedOptions } from './search-options.js';
 import type {
   DocsHighlighter,
   DocsLang,
@@ -96,6 +98,12 @@ import { docsError } from './docs-error.js';
  * without importing the Node-only highlighter entry point.
  */
 export type { DocsLang, DocsTheme, DocsThemes };
+/*
+ * Named, not merely reachable. Both appear in `DocsLayoutProps.search`, and
+ * until this line a consumer writing a helper that returns one had no way to
+ * spell its type — the modules they live in are private, deliberately.
+ */
+export type { DocsLayoutSearchProps, SerializableSearchOptions };
 
 /**
  * Pages rendered at once by {@link DocsRoute.renderAll}.
@@ -348,11 +356,20 @@ export interface DocsRouteOptions<
   /**
    * MiniSearch overrides for the index {@link DocsRoute.searchIndex} builds.
    *
-   * ⚠️ THE IDENTICAL OBJECT MUST REACH THE DIALOG — pass it to `DocsSearch`'s
-   * (or `SearchDialog`'s) `miniSearchOptions`. MiniSearch reads `tokenize` and
-   * `processTerm` both when indexing and when querying, so applying one here
-   * and not there produces an index whose terms no query can spell: zero
+   * ⚠️ THE IDENTICAL OBJECT MUST REACH THE DIALOG. MiniSearch reads `tokenize`
+   * and `processTerm` both when indexing and when querying, so applying one
+   * here and not there produces an index whose terms no query can spell: zero
    * results, no error, nothing in the console.
+   *
+   * {@link DocsRoute.Layout} forwards this for you, which covers every
+   * serialisable override — `storeFields`, `boost`, `searchOptions.fuzzy`. It
+   * cannot forward a **function**: the dialog is a Client Component and props
+   * crossing that boundary are serialised, so `tokenize`, `processTerm` and
+   * their kind make `next build` fail. Rather than drop them silently — which
+   * is the zero-results failure above, with the warning turned off — `Layout`
+   * throws `invalid-config` and names the remedy: pass `search={false}`, render
+   * `DocsSearch` from a `'use client'` module of your own, and import the same
+   * function there. See {@link SerializableSearchOptions}.
    */
   miniSearchOptions?: Partial<MiniSearchOptions<SearchRecord>> | undefined;
 }
@@ -392,6 +409,12 @@ export interface DocsLayoutProps {
    * `createDocsRoute` was given: the route's own value is forwarded, so the
    * object that built the index is the object that queries it. Pass one only
    * to override that.
+   *
+   * Serialisable overrides only, in both directions. This is a Server
+   * Component handing props to a Client one, so a `tokenize` or a
+   * `processTerm` here does not compile and one on the route throws rather
+   * than being quietly dropped — {@link SerializableSearchOptions} has the
+   * `'use client'` recipe for those.
    */
   search?: boolean | DocsLayoutSearchProps | undefined;
   /**
@@ -604,6 +627,48 @@ export interface DocsRoute<
    * it yourself.
    */
   searchIndexUrl: string;
+}
+
+/**
+ * `candidate`, once it is known to hold no functions.
+ *
+ * The cast at the end is the whole point of the function, and
+ * {@link findFunctionValuedOptions} is what earns it: a structural walk over
+ * the values, so it answers for options MiniSearch has not shipped yet as well
+ * as the five it has. `SerializableSearchOptions` narrows the same thing at
+ * compile time, which is friendlier and strictly weaker — a JavaScript caller
+ * has no types at all, and an `Omit` list goes stale the minor MiniSearch adds
+ * a callback.
+ *
+ * Throwing beats dropping. Silently forwarding the serialisable half would
+ * rebuild the original defect this channel exists to close — an index built
+ * with a `processTerm` the query does not share returns nothing, reports
+ * nothing, and looks like an empty corpus.
+ */
+function serializableSearchOptions(
+  candidate: Partial<MiniSearchOptions<SearchRecord>>,
+): SerializableSearchOptions {
+  const functions = findFunctionValuedOptions(candidate);
+  if (functions.length > 0) {
+    throw docsError(
+      'invalid-config',
+      'the search dialog cannot be given MiniSearch functions from a server ' +
+        `component: ${functions
+          .map((name) => `\`miniSearchOptions.${name}\``)
+          .join(', ')}. \`docs.Layout\` renders the dialog as a client ` +
+        'component, so its props are serialised on the way across and React ' +
+        'rejects a function with "Functions cannot be passed directly to ' +
+        'Client Components" while prerendering. Keep the function on ' +
+        '`createDocsRoute` so the index is still built with it, pass ' +
+        '`search={false}` to `docs.Layout`, and render the dialog yourself ' +
+        "from a `'use client'` module that imports the same function — " +
+        '`<DocsSearch indexUrl={docs.searchIndexUrl} miniSearchOptions={{ ' +
+        'processTerm }} />` — putting that component in `actions`. ' +
+        'Serialisable overrides (`storeFields`, `boost`, ' +
+        '`searchOptions.fuzzy`) need none of this and are forwarded as before.',
+    );
+  }
+  return candidate as SerializableSearchOptions;
 }
 
 /**
@@ -1000,15 +1065,45 @@ export function createDocsRoute<
        *
        * A host object wins over the route's, because a host that passes one
        * has said something more specific than the route's default.
+       *
+       * ⚠️ AND IT IS A SERVER→CLIENT PROP, WHICH THE FIRST VERSION OF THIS
+       * FORGOT. React serialises what a Client Component is given, so the
+       * moment the forwarded object held the very functions the warning above
+       * is about, `next build` died with "Functions cannot be passed directly
+       * to Client Components" — a silent wrong answer traded for a hard crash
+       * in exactly the case the option exists for. It shipped in 0.3.0 and
+       * 0.4.0 under a test that asserted on `element.props.search` and
+       * therefore never crossed the boundary it was testing.
+       *
+       * `search === false` short-circuits before the check on purpose: that is
+       * the supported route for function tuning — the route keeps building the
+       * index with them and the host renders its own client dialog — so it must
+       * not be the path that throws.
        */
-      const searchProps =
+      const host =
+        search === true || search === undefined || search === false
+          ? undefined
+          : search;
+
+      /*
+       * `??`, so an explicit `miniSearchOptions: undefined` falls back to the
+       * route's rather than blanking it — the same reading of `undefined` as
+       * every other optional the shell forwards below.
+       */
+      const requestedOptions =
+        host?.miniSearchOptions ?? options.miniSearchOptions;
+
+      const searchProps: boolean | DocsLayoutSearchProps =
         search === false
           ? false
           : {
-              ...(options.miniSearchOptions === undefined
+              ...host,
+              ...(requestedOptions === undefined
                 ? {}
-                : { miniSearchOptions: options.miniSearchOptions }),
-              ...(search === true || search === undefined ? {} : search),
+                : {
+                    miniSearchOptions:
+                      serializableSearchOptions(requestedOptions),
+                  }),
             };
 
       /*

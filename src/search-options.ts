@@ -6,11 +6,11 @@
  * (`@waveso/docs/react/search-dialog`) has to hand `loadJSON` the same shape it
  * was built with. This module exists so that is one constant rather than two
  * copies drifting apart — it imports nothing from Node, and nothing from
- * MiniSearch but a type, so it is safe on both sides of the bundle boundary and
+ * MiniSearch but types, so it is safe on both sides of the bundle boundary and
  * cannot drag the search engine into the client's initial bundle.
  */
 
-import type { Options as MiniSearchOptions } from 'minisearch';
+import type { Options as MiniSearchOptions, SearchOptions } from 'minisearch';
 import type { SearchRecord } from './types.js';
 
 /* -------------------------------------------------------------------------
@@ -134,4 +134,117 @@ export function mergeSearchOptions(
       ...overrides.searchOptions,
     },
   };
+}
+
+/* -------------------------------------------------------------------------
+ * Crossing the server → client boundary
+ * ---------------------------------------------------------------------- */
+
+/**
+ * {@link SearchOptions} with every function-valued member removed.
+ *
+ * `prefix` and `fuzzy` survive as the boolean and the number they usually are;
+ * their function overloads do not, because a predicate cannot be serialised.
+ */
+export type SerializableSearchQueryOptions = Omit<
+  SearchOptions,
+  | 'filter'
+  | 'boostTerm'
+  | 'boostDocument'
+  | 'tokenize'
+  | 'processTerm'
+  | 'prefix'
+  | 'fuzzy'
+> & {
+  /*
+   * Spelled without `| undefined` on purpose, unlike every interface this
+   * package declares itself. These two mirror MiniSearch's own optionals, and
+   * under `exactOptionalPropertyTypes` a source that permits an explicit
+   * `undefined` is not assignable to a target that does not — so adding it here
+   * would make this type unusable where `SearchOptions` is expected, which is
+   * every call site it exists for.
+   */
+  prefix?: boolean;
+  fuzzy?: boolean | number;
+};
+
+/**
+ * MiniSearch overrides that can be handed from a Server Component to a Client
+ * Component — which is to say, the ones with no functions in them.
+ *
+ * React serialises a Client Component's props, and a function is not
+ * serialisable: `docs.Layout` forwarding `{ processTerm }` into `DocsSearch`
+ * fails `next build` outright with *"Functions cannot be passed directly to
+ * Client Components"*. This type is what stops that being expressible.
+ *
+ * ⚠️ THE OMIT LIST IS NOT THE GUARANTEE — {@link findFunctionValuedOptions} IS.
+ * MiniSearch is free to add a function-valued option in a minor, and the day it
+ * does this list is quietly incomplete while still compiling. The runtime walk
+ * has no such failure mode: it finds a function wherever it is, including in
+ * options this package has never heard of. The type is here to fail earlier and
+ * more legibly, not to be the last line of defence.
+ *
+ * The escape hatch for real function tuning is a client boundary of the host's
+ * own, which is the only place the two halves can share a module reference:
+ *
+ * ```tsx
+ * // app/docs/search.tsx
+ * 'use client';
+ * import { DocsSearch } from '@waveso/docs/react/next-search';
+ * import { processTerm } from '@/lib/search-terms';
+ *
+ * export function Search({ indexUrl }: { indexUrl: string }) {
+ *   return <DocsSearch indexUrl={indexUrl} miniSearchOptions={{ processTerm }} />;
+ * }
+ * ```
+ *
+ * That component takes the boundary with it, so the function is a module import
+ * on both sides rather than a prop crossing between them — exactly how
+ * {@link tokenizeSearchText} reaches the client today.
+ */
+export type SerializableSearchOptions = Omit<
+  Partial<MiniSearchOptions<SearchRecord>>,
+  | 'extractField'
+  | 'stringifyField'
+  | 'tokenize'
+  | 'processTerm'
+  | 'logger'
+  | 'searchOptions'
+  | 'autoSuggestOptions'
+> & {
+  searchOptions?: SerializableSearchQueryOptions;
+  autoSuggestOptions?: SerializableSearchQueryOptions;
+};
+
+/**
+ * Dotted paths of every function reachable from `options`, in encounter order.
+ *
+ * The load-bearing half of the boundary check, and deliberately structural
+ * rather than a key list: it answers for `processTerm`, for
+ * `searchOptions.filter`, and for whatever MiniSearch adds next, because it
+ * asks what the values *are* rather than what they are called.
+ *
+ * `seen` makes a cyclic options object an empty answer rather than a stack
+ * overflow. Nothing in MiniSearch's surface is cyclic, but a hang during
+ * `next build` is a far worse failure than a wrong one, and the guard is a
+ * line.
+ */
+export function findFunctionValuedOptions(
+  options: object,
+  prefix = '',
+  seen: WeakSet<object> = new WeakSet(),
+): string[] {
+  if (seen.has(options)) return [];
+  seen.add(options);
+
+  const found: string[] = [];
+  for (const [key, value] of Object.entries(options)) {
+    const path = prefix === '' ? key : `${prefix}.${key}`;
+    if (typeof value === 'function') {
+      found.push(path);
+    } else if (typeof value === 'object' && value !== null) {
+      found.push(...findFunctionValuedOptions(value, path, seen));
+    }
+  }
+  return found;
 }
