@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import type { DocNavGroup, DocNavNode } from '../types.js';
@@ -135,43 +135,47 @@ export function DocsSidebar({
    */
   // biome-ignore lint/correctness/useExhaustiveDependencies: a trigger, not an input — see above.
   useLayoutEffect(() => {
-    const active = navRef.current?.querySelector('[aria-current="page"]');
-    if (!(active instanceof HTMLElement)) return;
-
-    const port = scrollableAncestor(active);
-    // No scrollport means the nav is shorter than its column, or this is not a
-    // browser. Either way there is nothing to do — and nothing to do wrongly.
-    if (port === null) return;
-
-    /*
-     * ⚠️ RECTANGLES, NOT `offsetTop`. `active.offsetTop - port.offsetTop` reads
-     * as the obvious way to get an item's position inside its scrollport and is
-     * wrong here, because `offsetTop` is measured from the nearest *positioned*
-     * ancestor — and the scrollport is `position: sticky`, so it IS that
-     * ancestor. `active.offsetTop` is therefore already the number wanted, and
-     * subtracting the port's own offset takes off the header height a second
-     * time. Measured in Chromium at 1280×800: the active item scrolled to 206
-     * where 265 was correct, which put a 1024–1055 item inside a 206–1014
-     * viewport — entirely below the fold, the exact failure this effect exists
-     * to prevent.
-     *
-     * The rect difference is right whether or not the port is the offsetParent,
-     * and `+ port.scrollTop` converts it from viewport-relative back to
-     * content-relative, which is what `nearestScrollTop` documents itself to
-     * take.
-     */
-    const next = nearestScrollTop({
-      itemTop:
-        active.getBoundingClientRect().top -
-        port.getBoundingClientRect().top +
-        port.scrollTop,
-      itemHeight: active.offsetHeight,
-      viewHeight: port.clientHeight,
-      scrollTop: port.scrollTop,
-      scrollHeight: port.scrollHeight,
-    });
-    if (next !== undefined) port.scrollTop = next;
+    revealActive(navRef.current);
   }, [pathname]);
+
+  /*
+   * ⚠️ AND AGAIN WHEN A DIALOG AROUND THIS OPENS, BECAUSE ON A PHONE THE EFFECT
+   * ABOVE CANNOT WORK. Below 64rem the sidebar lives inside
+   * `<dialog class="wave-docs-layout__drawer">`, which the UA stylesheet keeps
+   * at `display: none` until `showModal()`, wrapped in a
+   * `.wave-docs-layout__sidebar` that is `display: contents`. An element in a
+   * `display: none` subtree generates no boxes, so both report
+   * `scrollHeight === clientHeight === 0` and `scrollableAncestor` walks past
+   * the drawer, past the grid, and returns `null`.
+   *
+   * The timing made it unreachable rather than merely unreliable: the effect is
+   * keyed on `pathname`, and `DocsNav` closes the drawer on every `pathname`
+   * change — so at the only moment it could fire, the drawer is always shut, and
+   * nothing re-ran when the reader opened it. On every phone render, on every
+   * navigation, the reader opened a 60-item list scrolled to the top with their
+   * page somewhere below the fold.
+   *
+   * `closest('dialog')` rather than a prop threaded down from `DocsNav`: this
+   * component is public API, the condition is "I am inside something that can be
+   * hidden and revealed" rather than "I am inside the drawer", and a consumer
+   * who puts `DocsSidebar` in a dialog of their own gets it working for the same
+   * reason. Nothing here knows what the drawer is.
+   */
+  useEffect(() => {
+    const dialog = navRef.current?.closest('dialog');
+    if (!(dialog instanceof HTMLDialogElement)) return;
+
+    const onToggle = (): void => {
+      // Only on the way open. `toggle` fires in both directions, and a closing
+      // dialog measures zero anyway — but declining is cheaper than proving it.
+      if (dialog.open) revealActive(navRef.current);
+    };
+
+    dialog.addEventListener('toggle', onToggle);
+    return () => {
+      dialog.removeEventListener('toggle', onToggle);
+    };
+  }, []);
 
   return (
     <nav
@@ -202,6 +206,51 @@ export function DocsSidebar({
  * one navigation where they know precisely what they asked for.
  * `sidebar.test.tsx` spies on it and asserts it is never called.
  */
+/**
+ * Scroll the item marked `aria-current="page"` into view, if it is not already.
+ *
+ * A no-op wherever there is nothing to measure — no nav, no active item, no
+ * scrollport — which is every server render, every jsdom render, and every
+ * layout where the column is shorter than its content. Nothing to do, and
+ * nothing to do wrongly.
+ */
+function revealActive(nav: HTMLElement | null): void {
+  const active = nav?.querySelector('[aria-current="page"]');
+  if (!(active instanceof HTMLElement)) return;
+
+  const port = scrollableAncestor(active);
+  if (port === null) return;
+
+  /*
+   * ⚠️ RECTANGLES, NOT `offsetTop`. `active.offsetTop - port.offsetTop` reads
+   * as the obvious way to get an item's position inside its scrollport and is
+   * wrong here, because `offsetTop` is measured from the nearest *positioned*
+   * ancestor — and the scrollport is `position: sticky`, so it IS that
+   * ancestor. `active.offsetTop` is therefore already the number wanted, and
+   * subtracting the port's own offset takes off the header height a second
+   * time. Measured in Chromium at 1280×800: the active item scrolled to 206
+   * where 265 was correct, which put a 1024–1055 item inside a 206–1014
+   * viewport — entirely below the fold, the exact failure this exists to
+   * prevent.
+   *
+   * The rect difference is right whether or not the port is the offsetParent,
+   * and `+ port.scrollTop` converts it from viewport-relative back to
+   * content-relative, which is what `nearestScrollTop` documents itself to
+   * take.
+   */
+  const next = nearestScrollTop({
+    itemTop:
+      active.getBoundingClientRect().top -
+      port.getBoundingClientRect().top +
+      port.scrollTop,
+    itemHeight: active.offsetHeight,
+    viewHeight: port.clientHeight,
+    scrollTop: port.scrollTop,
+    scrollHeight: port.scrollHeight,
+  });
+  if (next !== undefined) port.scrollTop = next;
+}
+
 function scrollableAncestor(element: HTMLElement): HTMLElement | null {
   let current = element.parentElement;
   while (current !== null) {

@@ -26,11 +26,12 @@
  */
 
 import { render } from '@testing-library/react';
-import { page } from 'vitest/browser';
-import { afterEach, expect, it } from 'vitest';
+import { page, userEvent } from 'vitest/browser';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import styles from '../styles.css?inline';
 import type { DocNavNode } from '../types.js';
+import { DOCS_NAV_ID, DocsNav } from './nav.js';
 import { DocsSidebar } from './sidebar.js';
 
 /** Long enough that the column must scroll at any plausible viewport height. */
@@ -108,4 +109,112 @@ it('does not move a column whose current page is already in view', async () => {
   await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
   expect(port.scrollTop).toBe(0);
+});
+
+describe('the mobile drawer, below 64rem', () => {
+  /*
+   * ⚠️ THE SCROLL-INTO-VIEW HAD NEVER RUN ON A PHONE, NOT ONCE. Below 64rem the
+   * sidebar is inside `<dialog class="wave-docs-layout__drawer">`, which the UA
+   * stylesheet keeps at `display: none` until `showModal()`, wrapped in a
+   * `.wave-docs-layout__sidebar` that is `display: contents`. An element in a
+   * `display: none` subtree generates no boxes at all, so both report
+   * `scrollHeight === clientHeight === 0` and `scrollableAncestor` walks past
+   * the drawer, past the grid, and returns `null`.
+   *
+   * And the timing made it unreachable rather than flaky: the effect was keyed
+   * on `pathname` alone, and `DocsNav` closes the drawer on every `pathname`
+   * change — so at the one moment it could fire, the drawer was always shut, and
+   * nothing re-ran when the reader opened it. Every phone reader, every
+   * navigation, opened a long list scrolled to the top with their own page below
+   * the fold.
+   *
+   * Invisible to every other tier: jsdom has no layout and no `showModal`, and
+   * the stylesheet read as text says nothing about what `display: contents`
+   * does to a scrollport.
+   */
+  afterEach(() => {
+    for (const dialog of document.querySelectorAll('dialog')) {
+      if (dialog.open) dialog.close();
+    }
+  });
+
+  function mountDrawer(pathname: string): HTMLDialogElement {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    render(
+      <>
+        <header className="wave-docs-layout__header">
+          <div className="wave-docs-layout__header-inner">
+            <button
+              type="button"
+              className="wave-docs-layout__nav-trigger"
+              aria-label="Open navigation"
+              {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
+            >
+              ☰
+            </button>
+          </div>
+        </header>
+        <div className="wave-docs-layout">
+          <div className="wave-docs-layout__sidebar">
+            <DocsNav nav={NAV} pathname={pathname} />
+          </div>
+          <main className="wave-docs-layout__main">
+            <p>Prose</p>
+          </main>
+        </div>
+      </>,
+    );
+
+    const dialog = document.querySelector('dialog');
+    if (dialog === null) throw new Error('the drawer did not mount');
+    return dialog;
+  }
+
+  it('has no scrollport at all while it is closed', async () => {
+    // The premise, asserted rather than assumed. If this ever stops being true
+    // the test below stops testing anything, and would keep passing.
+    await page.viewport(390, 800);
+    mountDrawer('/docs/p45');
+
+    const active = document.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active === null)
+      throw new Error('no item is marked as the current page');
+
+    expect(active.getBoundingClientRect().height).toBe(0);
+  });
+
+  it('shows the current page as soon as the drawer opens', async () => {
+    await page.viewport(390, 800);
+    mountDrawer('/docs/p45');
+
+    const trigger = document.querySelector<HTMLButtonElement>(
+      '.wave-docs-layout__nav-trigger',
+    );
+    if (trigger === null) throw new Error('no trigger');
+
+    await userEvent.click(trigger);
+    // One frame, so the open transition and the scroll assignment have landed.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    const active = document.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active === null)
+      throw new Error('no item is marked as the current page');
+
+    const port =
+      active.closest<HTMLElement>('.wave-docs-sidebar')?.parentElement;
+    if (port == null) throw new Error('the drawer has no scrollport');
+
+    // The invariant, not a number: the reader can see the page they are on.
+    const portBox = port.getBoundingClientRect();
+    const itemBox = active.getBoundingClientRect();
+
+    expect(portBox.height).toBeGreaterThan(0);
+    expect(itemBox.top).toBeGreaterThanOrEqual(portBox.top);
+    expect(itemBox.bottom).toBeLessThanOrEqual(portBox.bottom);
+  });
 });
