@@ -21,8 +21,11 @@ jobs:
     steps:
       # Third-party actions are pinned to a full commit SHA, not a tag: tags are
       # mutable, and publish.yml hands OIDC-signed npm credentials to a job that
-      # shares this action set. Dependabot bumps the SHA and rewrites the
-      # trailing version comment, so the pin does not rot.
+      # shares this action set.
+      #
+      # Nothing updates these automatically, by choice. Bump them by hand when
+      # there is a reason to, moving the trailing version comment with the SHA
+      # so the two never disagree.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
