@@ -743,9 +743,32 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
     ): Promise<RenderedDoc<TFrontmatter>> {
       const processor = await processorPromise;
 
+      /*
+       * ⚠️ PADDED BACK TO THE FILE'S OWN LINE NUMBERS. `content` has the
+       * frontmatter block removed, so an unpadded parse reports every position
+       * relative to the body — and `describeLink` prints `relativePath:line`,
+       * the `file:line` form a terminal and an editor linkify. Six lines of
+       * frontmatter meant every broken-link, draft-link and alias-link error
+       * pointed into the block that had been deleted.
+       *
+       * Newlines rather than an offset threaded through the plugin and the three
+       * throw sites: a blank line produces no markdown node, so this costs
+       * nothing in the output and every position downstream is simply correct —
+       * including any a future plugin reports, which an offset applied at four
+       * known call sites would not be.
+       *
+       * `content` itself is left alone. It is public, `frontmatter-parsing.test`
+       * pins its exact value, and a consumer measuring it should not have to
+       * know about this.
+       */
+      const lead = '\n'.repeat(file.frontmatterLines ?? 0);
+
       // The document's identity travels on the vfile, not in plugin options,
       // so one frozen processor serves every page.
-      const vfile = new VFile({ value: file.content, path: file.filePath });
+      const vfile = new VFile({
+        value: lead + file.content,
+        path: file.filePath,
+      });
       vfile.data.docLinkContext = {
         segments: file.segments,
         dirSegments: toDirSegments(file.relativePath),

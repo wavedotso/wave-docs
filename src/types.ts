@@ -86,6 +86,24 @@ export interface DocFile<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
   frontmatter: TFrontmatter;
   /** Markdown body with the frontmatter block removed. */
   content: string;
+  /**
+   * How many lines the frontmatter block took up, so an error can name the line
+   * in the file rather than in the body.
+   *
+   * ⚠️ WITHOUT IT, EVERY LINK ERROR POINTED INTO THE FRONTMATTER. `content` has
+   * the block removed, so remark counts `node.position.start.line` from the
+   * first line of the *body* — and `broken-link`, `draft-link` and `alias-link`
+   * all report `relativePath:line`, the exact `file:line` form a terminal and an
+   * editor turn into a jump. A page with four frontmatter fields is six lines
+   * out: a link on line 10 was reported at line 4, which is the middle of the
+   * block that was deleted.
+   *
+   * Set by `@waveso/docs/source`. Optional and treated as `0` when absent,
+   * because a host loading content itself — the documented reason `./render` is
+   * an entry point — hands over a body with no block in front of it and has
+   * nothing to offset.
+   */
+  frontmatterLines?: number | undefined;
 }
 
 /* -------------------------------------------------------------------------

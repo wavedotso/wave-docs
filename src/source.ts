@@ -598,6 +598,7 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
 
   let data: unknown;
   let content: string;
+  let frontmatterLines = 0;
   try {
     /*
      * `vfile-matter` mutates the file: it strips the block from `file.value`
@@ -620,12 +621,33 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
      * on Windows. Caught by the byte-level cases written green against the old
      * parser before the swap, which is the only reason it is not shipped.
      */
-    const file = new VFile({
-      value: raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw,
-    });
+    const source = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
+    const file = new VFile({ value: source });
     matter(file, { strip: true });
     data = file.data.matter;
     content = String(file);
+
+    /*
+     * ⚠️ THE STRIPPED LINES HAVE TO BE COUNTED HERE OR THEY CANNOT BE RECOVERED.
+     * `strip: true` deletes the block from the value, so every position remark
+     * reports afterwards counts from the first line of the body — and the three
+     * link errors print `relativePath:line`, which a terminal and an editor turn
+     * into a jump. A page with `title`, `description`, `label` and `order` is
+     * six lines out, so a link on line 10 was reported at line 4, inside the
+     * block that is no longer there.
+     *
+     * Measured off the value rather than off the parsed object: `vfile-matter`
+     * leaves the body as an exact tail of what it was given, so the prefix it
+     * removed is the difference in length and its newline count is the offset.
+     * The `endsWith` guard is there because that is an implementation detail of
+     * a dependency — if it ever stops holding, the offset goes to zero and the
+     * errors are merely as wrong as they used to be, rather than wrong in a new
+     * direction that nobody would think to check.
+     */
+    if (source.endsWith(content)) {
+      const stripped = source.slice(0, source.length - content.length);
+      frontmatterLines = stripped.split('\n').length - 1;
+    }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw docsError(
@@ -667,6 +689,7 @@ async function readPage<TFrontmatter extends DocFrontmatter>(
       relativePath,
       frontmatter,
       content,
+      frontmatterLines,
     },
   };
 }

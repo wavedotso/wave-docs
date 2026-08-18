@@ -1,11 +1,13 @@
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Element, Root } from 'hast';
 import { toString as toText } from 'hast-util-to-string';
 import { visit } from 'unist-util-visit';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createDocsRenderer } from './render.js';
+import { createDocsSource } from './source.js';
 import type { DocFile, RenderedDoc, TocEntry } from './types.js';
 
 const FIXTURES = path.join(
@@ -776,5 +778,109 @@ describe('createDocsRenderer', () => {
     // data keys.
     expect(first.toc.map((entry) => entry.text)).toEqual(['One']);
     expect(second.toc.map((entry) => entry.text)).toEqual(['Two']);
+  });
+});
+
+describe('link errors name the line in the file, not in the body', () => {
+  /*
+   * ⚠️ EVERY ONE OF THEM POINTED INTO THE FRONTMATTER. `content` has the block
+   * stripped, so remark counts `node.position.start.line` from the first line of
+   * the *body*, while `describeLink` prints `relativePath:line` — the `file:line`
+   * form a terminal and an editor turn into a jump. A page with four frontmatter
+   * fields is six lines out, so a link on line 10 was reported at line 4, which
+   * is the middle of a block that is no longer there. Locatability is that
+   * error's entire job.
+   *
+   * ⚠️ AND THIS HAS TO GO THROUGH THE SCAN. That is why nothing caught it:
+   * `makeDoc` above hands the renderer a body it wrote itself, with no
+   * frontmatter and therefore no offset, and `source.test.ts` never renders. The
+   * defect lives in the seam between the two and is invisible from either side.
+   */
+  const temp: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(
+      temp.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+
+  async function scanned(body: string): Promise<DocFile> {
+    const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-lines-'));
+    temp.push(dir);
+    await writeFile(path.join(dir, 'setup.md'), body, 'utf8');
+    const [file] = await createDocsSource({ contentDir: dir }).all();
+    if (file === undefined) throw new Error('the fixture did not scan');
+    return file;
+  }
+
+  const renderer = createDocsRenderer({
+    config: { basePath: '/docs', assertLinks: true },
+    knownRoutes: new Set(['/docs/setup']),
+  });
+
+  it('counts the frontmatter block', async () => {
+    // Six lines of block: four fields and two delimiters. The link is on 10.
+    const file = await scanned(
+      [
+        '---',
+        'title: Setup',
+        'description: How to set it up',
+        'label: Setup',
+        'order: 3',
+        '---',
+        '',
+        '# Setup',
+        '',
+        'Read the [guide](./nowhere.md) first.',
+        '',
+      ].join('\n'),
+    );
+
+    expect(file.frontmatterLines).toBe(6);
+    // The number, not "greater than 4": the failure was a *wrong* line, so the
+    // assertion has to be able to tell a wrong one from a right one.
+    await expect(renderer.render(file)).rejects.toThrow('setup.md:10 links to');
+  });
+
+  it('counts a one-field block just as exactly', async () => {
+    const file = await scanned(
+      ['---', 'title: Setup', '---', '', '[x](./nowhere.md)', ''].join('\n'),
+    );
+
+    expect(file.frontmatterLines).toBe(3);
+    await expect(renderer.render(file)).rejects.toThrow('setup.md:5 links to');
+  });
+
+  it('offsets nothing for a body that was never in a file', async () => {
+    /*
+     * The other direction, and the reason the field is optional. A host loading
+     * content itself — the documented reason `@waveso/docs/render` is an entry
+     * point at all — hands over a body with no block in front of it, so there is
+     * nothing to offset and a padding applied unconditionally would push every
+     * line down instead.
+     *
+     * A scanned page cannot reach this: `title` is required, so a page with no
+     * frontmatter fails `invalid-frontmatter` long before it is rendered.
+     */
+    const file = makeDoc('# Setup\n\n[x](./nowhere.md)\n', 'setup.md');
+
+    expect(file.frontmatterLines).toBeUndefined();
+    await expect(
+      createDocsRenderer({
+        config: { basePath: '/docs', assertLinks: true },
+        knownRoutes: new Set(['/docs/setup']),
+      }).render(file),
+    ).rejects.toThrow('setup.md:3 links to');
+  });
+
+  it('leaves `content` unpadded, because it is public', async () => {
+    // The offset is carried as a field and applied only to what the parser
+    // sees. Padding `content` itself would be simpler and would change a
+    // documented value that `frontmatter-parsing.test.ts` pins exactly.
+    const file = await scanned(
+      ['---', 'title: Setup', '---', '', 'Body.', ''].join('\n'),
+    );
+
+    expect(file.content).toBe('\nBody.\n');
   });
 });
