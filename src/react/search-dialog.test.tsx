@@ -42,6 +42,7 @@ import type {
   DocsLinkComponent,
   DocsLinkProps,
 } from './markdown-components.js';
+import type { SearchDialogProps } from './search-dialog.js';
 import { SearchDialog } from './search-dialog.js';
 
 const INDEX_URL = '/search-index.json';
@@ -1164,5 +1165,135 @@ describe('SearchDialog', () => {
         'wave-docs-search-trigger',
       );
     });
+  });
+});
+
+describe('the dialog says everything in the language it is given', () => {
+  /*
+   * ⚠️ SIX STRINGS WERE HARDCODED ENGLISH BEHIND A PROP LIST THAT LOOKED
+   * COMPLETE. `triggerLabel`, `placeholder` and `dialogLabel` were props from
+   * the start, so `search={{ … }}` read as the channel for the dialog's words —
+   * while every state message and the live region's count were literals. A site
+   * in another language got "Start typing to search the documentation." and
+   * "3 results", in English, at the two moments a reader is most reliant on
+   * being told what happened.
+   */
+  function renderWith(props: Partial<SearchDialogProps>): {
+    user: ReturnType<typeof userEvent.setup>;
+    trigger: HTMLElement;
+  } {
+    const user = userEvent.setup();
+    render(
+      <SearchDialog
+        indexUrl={INDEX_URL}
+        navigate={vi.fn()}
+        triggerLabel="Procurar"
+        {...props}
+      />,
+    );
+    return { user, trigger: screen.getByRole('button', { name: 'Procurar' }) };
+  }
+
+  const status = (): string =>
+    document.querySelector('.wave-docs-search-status')?.textContent ?? '';
+
+  it('shows the hint it was given before anything is typed', async () => {
+    const { user, trigger } = renderWith({ hintLabel: 'Comece a escrever.' });
+    await user.click(trigger);
+
+    expect(status()).toBe('Comece a escrever.');
+    expect(status()).not.toBe(HINT_TEXT);
+  });
+
+  it('fills {min} into the short-query message', async () => {
+    const { user, trigger } = renderWith({
+      minQueryLength: 3,
+      shortQueryLabel: 'Escreva pelo menos {min} letras.',
+    });
+    await user.click(trigger);
+    await user.type(screen.getByRole('combobox'), 'ab');
+
+    // The number, not the placeholder: a `{min}` reaching a reader looks like a
+    // bug in the site rather than a missing translation.
+    expect(status()).toBe('Escreva pelo menos 3 letras.');
+  });
+
+  it('fills {query} into the empty message', async () => {
+    const { user, trigger } = renderWith({
+      emptyLabel: 'Nada para “{query}”.',
+    });
+    await user.click(trigger);
+    await user.type(screen.getByRole('combobox'), 'zzzzqqq');
+
+    await waitFor(() => {
+      expect(status()).toBe('Nada para “zzzzqqq”.');
+    });
+  });
+
+  it('announces the count by plural category, not by === 1', async () => {
+    /*
+     * ⚠️ THE REASON THIS IS A RECORD AND NOT TWO STRINGS. Polish takes four
+     * plural forms; `Intl.PluralRules` picks and an unlisted category falls back
+     * to `other`. A singular/plural pair would announce a wrong number of
+     * results — correctly and confidently — in most of the world.
+     */
+    const forms: Record<string, string> = {
+      one: 'ONE',
+      few: 'FEW',
+      many: 'MANY',
+      other: 'OTHER',
+    };
+    const { user, trigger } = renderWith({
+      locale: 'pl',
+      resultCountLabels: {
+        one: '{count} ONE',
+        few: '{count} FEW',
+        many: '{count} MANY',
+        other: '{count} OTHER',
+      },
+    });
+    // `install` matches two records; `search` matches one, and Polish agrees
+    // with English on one.
+    await search(user, trigger, 'install');
+
+    const announced =
+      document.querySelector('.wave-docs-search-announcer')?.textContent ?? '';
+    const count = Number(/^\d+/.exec(announced)?.[0]);
+
+    /*
+     * ⚠️ THE GUARD THAT MAKES THIS ABLE TO FAIL. Polish and English agree on a
+     * count of one, so a corpus that happened to return a single hit would let
+     * a plain `count === 1 ? one : other` pass this — which it did, on the first
+     * draft. Above one they diverge: Polish says `few` for 2–4 and `many` for 5
+     * and up, and neither is `other`.
+     */
+    expect(count).toBeGreaterThan(1);
+    expect(announced).toBe(
+      `${String(count)} ${forms[new Intl.PluralRules('pl').select(count)] ?? ''}`,
+    );
+    expect(announced).not.toContain('OTHER');
+  });
+
+  it('falls back to `other` for a category that was not given', async () => {
+    const { user, trigger } = renderWith({
+      locale: 'pl',
+      resultCountLabels: { other: '{count} znaleziono' },
+    });
+    await search(user, trigger, 'search');
+
+    expect(
+      document.querySelector('.wave-docs-search-announcer')?.textContent,
+    ).toMatch(/^\d+ znaleziono$/);
+  });
+
+  it("survives an invalid `lang`, because that is the site's typo", async () => {
+    // `Intl.PluralRules` throws a RangeError on a malformed tag, and a thrown
+    // announcement is a dialog that renders nothing at all.
+    const { user, trigger } = renderWith({ locale: 'not a language' });
+    await search(user, trigger, 'search');
+
+    expect(
+      document.querySelector('.wave-docs-search-announcer')?.textContent,
+    ).toMatch(/^\d+ results?$/);
   });
 });

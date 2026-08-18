@@ -430,8 +430,12 @@ export interface DocsLayoutProps {
    * The search trigger. Defaults to on, and the URL is always derived.
    *
    * `false` omits it. An object configures the dialog — `placeholder`,
-   * `hotkey`, `miniSearchOptions` and the rest of `DocsSearch`'s surface,
-   * minus `indexUrl`.
+   * `pageSize`, `minQueryLength`, the state messages and the rest of
+   * `DocsSearch`'s surface, minus `indexUrl`.
+   *
+   * (It used to say `hotkey`. There is no such prop and there never was: the
+   * shortcut is ⌘K / Ctrl-K and is not configurable. A docstring naming an
+   * option that does not exist is worse than one naming none.)
    *
    * You do not need to pass `miniSearchOptions` here to match what
    * `createDocsRoute` was given: the route's own value is forwarded, so the

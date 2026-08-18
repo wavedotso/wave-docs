@@ -409,7 +409,115 @@ describe('the documented surface', () => {
       expect(undocumented).toEqual([]);
     },
   );
+
+  /**
+   * Every prop of every `…Props` interface, in the README too.
+   *
+   * ⚠️ THE EXPORT CHECK ABOVE CANNOT SEE PROPS, AND THAT IS WHERE THE GAP WAS.
+   * `DocsSearch` was exported and named in the README, so the check passed —
+   * while `pageSize` and `minQueryLength`, the two props 0.4.0's changelog told
+   * consumers to migrate *to*, appeared nowhere in 57 KB of it. A reader whose
+   * `maxResults={20}` stopped compiling went looking for the replacement and
+   * found nothing.
+   *
+   * Read out of the emitted `.d.ts` rather than the source: a prop that fails to
+   * survive the build is not a prop, and the declaration file is what a consumer
+   * actually resolves.
+   */
+  it.skipIf(!existsSync(path.join(ROOT, 'dist')))(
+    'names every prop of every exported props interface',
+    () => {
+      const undocumented: string[] = [];
+      let checked = 0;
+
+      for (const key of subpaths) {
+        const target = section(manifest, 'exports')[key];
+        const types = isRecord(target) ? target.types : undefined;
+        if (typeof types !== 'string') continue;
+
+        const declaration = readFileSync(path.join(ROOT, types), 'utf8');
+        for (const [name, body] of propsInterfaces(declaration)) {
+          for (const prop of memberNames(body)) {
+            checked += 1;
+            if (INTERNAL_PROPS.has(prop)) continue;
+            if (!new RegExp(`\\b${prop}\\b`).test(readme)) {
+              undocumented.push(`${key} → ${name}.${prop}`);
+            }
+          }
+        }
+      }
+
+      // The guard on the guard: a parse that matched nothing would make this
+      // pass by checking nothing, which is the failure it exists to prevent.
+      expect(checked).toBeGreaterThan(30);
+      expect(undocumented).toEqual([]);
+    },
+  );
 });
+
+/**
+ * Props that are plumbing rather than API, and so are documented by prose
+ * rather than by name.
+ *
+ * Every entry needs a reason. "It is awkward to document" is not one — that is
+ * how `pageSize` came to be undocumented in the first place.
+ */
+const INTERNAL_PROPS = new Set([
+  // React's own, and named by every tutorial ever written.
+  'children',
+  'className',
+  // Seams the Next adapter fills in, so a consumer of `@waveso/docs/next` never
+  // types them. The README documents `docs.Layout` and `DocsSearch`, not the
+  // host-agnostic components underneath.
+  'navigate',
+  'Link',
+  'Image',
+  // Data a component is handed by the layer above it, never written by hand.
+  'hast',
+  'entries',
+  'nodes',
+  'nav',
+  'pathname',
+  'components',
+  'searchIndexUrl',
+  // Documented as a group under "Translating the chrome" rather than one row
+  // per string; `DocsLabels`' own members are checked by `next.test.ts`.
+  'labels',
+]);
+
+/** `[name, body]` for every `export interface …Props` in a declaration file. */
+function propsInterfaces(source: string): Array<[string, string]> {
+  const found: Array<[string, string]> = [];
+  const pattern = /(?:export )?interface (\w+Props)(?:<[^>]*>)?[^{]*\{/g;
+
+  for (const match of source.matchAll(pattern)) {
+    const open = source.indexOf('{', match.index);
+    let depth = 0;
+    let end = open;
+    for (; end < source.length; end += 1) {
+      if (source[end] === '{') depth += 1;
+      else if (source[end] === '}') {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    found.push([match[1] as string, source.slice(open + 1, end)]);
+  }
+  return found;
+}
+
+/**
+ * Top-level member names of an interface body.
+ *
+ * Two spaces of indentation exactly, so a member of a nested object type — or a
+ * key inside a `Record<…>` written across lines — is not mistaken for a prop of
+ * the interface itself.
+ */
+function memberNames(body: string): string[] {
+  return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map(
+    (match) => match[1] as string,
+  );
+}
 
 /**
  * The clauses of the stability policy a test can hold.

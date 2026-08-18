@@ -57,8 +57,15 @@ const FOCUSABLE_SELECTOR = [
 
 export interface SearchDialogProps {
   /**
-   * URL of the serialised index, e.g. `/search-index.json`. Whatever
-   * `writeSearchIndex` wrote, served as a static asset.
+   * URL of the serialised index, e.g. `/docs/search-index.json`.
+   *
+   * `docs.searchIndexUrl` is the value to pass: it is derived from the route's
+   * `basePath`, so it is right when the docs are mounted anywhere but the root.
+   * `docs.Layout` passes it for you.
+   *
+   * (This used to say "whatever `writeSearchIndex` wrote". That function was
+   * deleted in 0.3.0, along with the build script it needed — the index is a
+   * `force-static` route handler now.)
    */
   indexUrl: string;
   /**
@@ -113,6 +120,55 @@ export interface SearchDialogProps {
   minQueryLength?: number | undefined;
   /** Input debounce in milliseconds. Defaults to 120. */
   debounceMs?: number | undefined;
+  /**
+   * Shown before anything is typed. Defaults to
+   * `'Start typing to search the documentation.'`
+   */
+  hintLabel?: string | undefined;
+  /**
+   * Shown while a query is below {@link SearchDialogProps.minQueryLength}.
+   * Defaults to `'Keep typing — {min} characters or more.'`
+   *
+   * `{min}` is replaced with that number. Said rather than silently done: a
+   * dialog that answers nothing and explains nothing reads as broken, and this
+   * is the state every reader passes through on the way to their real query.
+   */
+  shortQueryLabel?: string | undefined;
+  /** Shown while the index is being fetched. Defaults to `'Loading the search index…'`. */
+  loadingLabel?: string | undefined;
+  /**
+   * Shown when the index cannot be loaded. Defaults to
+   * `'Search is unavailable right now. Try reloading the page.'`
+   */
+  errorLabel?: string | undefined;
+  /**
+   * Shown when a query matches nothing. Defaults to `'No results for “{query}”.'`
+   *
+   * `{query}` is replaced with what the reader typed.
+   */
+  emptyLabel?: string | undefined;
+  /**
+   * The live region's announcement, by plural category. `{count}` is the total.
+   *
+   * Defaults to `{ one: '{count} result', other: '{count} results' }`.
+   *
+   * ⚠️ KEYED BY CATEGORY RATHER THAN BEING TWO STRINGS, BECAUSE MOST LANGUAGES
+   * ARE NOT ENGLISH. Polish takes four forms and Arabic six;
+   * `Intl.PluralRules(locale).select(count)` picks, and an unlisted category
+   * falls back to `other`. Two props called "singular" and "plural" would have
+   * made this package announce a wrong number of results, correctly, in most of
+   * the world.
+   */
+  resultCountLabels?: Partial<Record<Intl.LDMLPluralRule, string>> | undefined;
+  /**
+   * Language tag for the plural rules above. Defaults to the document's own
+   * `<html lang>`, then to `'en'`.
+   *
+   * Read at announcement time rather than at render, so it costs nothing on a
+   * site that never changes it and needs no prop on a site that sets `lang`
+   * correctly — which is every site that should be setting these labels at all.
+   */
+  locale?: string | undefined;
   /** Extra class names for the trigger button, e.g. a navbar's own layout. */
   className?: string | undefined;
   /**
@@ -171,6 +227,13 @@ export function SearchDialog({
   debounceMs = 120,
   className,
   miniSearchOptions,
+  hintLabel,
+  shortQueryLabel,
+  loadingLabel,
+  errorLabel,
+  emptyLabel,
+  resultCountLabels,
+  locale,
 }: SearchDialogProps): ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -658,6 +721,19 @@ export function SearchDialog({
                   query={query.trim()}
                   hitCount={hits.length}
                   minQueryLength={minQueryLength}
+                  labels={{
+                    ...(hintLabel === undefined ? {} : { hint: hintLabel }),
+                    ...(shortQueryLabel === undefined
+                      ? {}
+                      : { shortQuery: shortQueryLabel }),
+                    ...(loadingLabel === undefined
+                      ? {}
+                      : { loading: loadingLabel }),
+                    ...(errorLabel === undefined ? {} : { error: errorLabel }),
+                    ...(emptyLabel === undefined ? {} : { empty: emptyLabel }),
+                  }}
+                  resultCountLabels={resultCountLabels}
+                  locale={locale}
                 />
               </div>
             </div>,
@@ -784,13 +860,76 @@ function SearchResultOption({
   );
 }
 
+/** The five overridable state messages. */
+interface StatusLabels {
+  hint?: string | undefined;
+  shortQuery?: string | undefined;
+  loading?: string | undefined;
+  error?: string | undefined;
+  empty?: string | undefined;
+}
+
+/**
+ * The wording, so a caller that overrides none of it costs nothing.
+ *
+ * `Record<keyof …, string>` rather than `as const`: literal types here make
+ * every override a type error, and `Required<StatusLabels>` keeps the
+ * `| undefined` that `exactOptionalPropertyTypes` needs on the props.
+ */
+const DEFAULT_STATUS_LABELS: Record<keyof StatusLabels, string> = {
+  hint: 'Start typing to search the documentation.',
+  shortQuery: 'Keep typing — {min} characters or more.',
+  loading: 'Loading the search index…',
+  error: 'Search is unavailable right now. Try reloading the page.',
+  empty: 'No results for “{query}”.',
+};
+
+const DEFAULT_RESULT_COUNT_LABELS: Partial<
+  Record<Intl.LDMLPluralRule, string>
+> = { one: '{count} result', other: '{count} results' };
+
+/**
+ * The announcement for `count` hits, in the document's own language.
+ *
+ * `Intl.PluralRules` rather than an `=== 1` check: Polish takes four plural
+ * forms and Arabic six, and a package that ships an English singular/plural pair
+ * announces a wrong number of results — correctly, and confidently — in most of
+ * the world. An unlisted category falls back to `other`, which is the one every
+ * language has.
+ */
+function announceCount(
+  count: number,
+  labels: Partial<Record<Intl.LDMLPluralRule, string>>,
+  locale: string | undefined,
+): string {
+  const tag =
+    locale ??
+    (typeof document === 'undefined' ? '' : document.documentElement.lang) ??
+    '';
+  let category: Intl.LDMLPluralRule = 'other';
+  try {
+    category = new Intl.PluralRules(tag === '' ? 'en' : tag).select(count);
+  } catch {
+    // An invalid `lang` attribute is the site's typo, not a reason to announce
+    // nothing — `Intl.PluralRules` throws a RangeError on one.
+  }
+  const template = labels[category] ?? labels.other ?? '{count}';
+  return template.replace('{count}', String(count));
+}
+
 /** Loading, failure and empty states, plus a live region for hit counts. */
 function SearchStatus({
   status,
   query,
   hitCount,
   minQueryLength,
+  labels,
+  resultCountLabels,
+  locale,
 }: {
+  labels: StatusLabels;
+  resultCountLabels: Partial<Record<Intl.LDMLPluralRule, string>> | undefined;
+  locale: string | undefined;
   status: IndexStatus;
   query: string;
   /** Everything the index matched. Nothing is withheld, so this is the total. */
@@ -801,10 +940,10 @@ function SearchStatus({
   let modifier = '';
 
   if (status === 'error') {
-    message = 'Search is unavailable right now. Try reloading the page.';
+    message = labels.error ?? DEFAULT_STATUS_LABELS.error;
     modifier = ' wave-docs-search-status-error';
   } else if (query === '') {
-    message = 'Start typing to search the documentation.';
+    message = labels.hint ?? DEFAULT_STATUS_LABELS.hint;
     modifier = ' wave-docs-search-status-hint';
   } else if (query.length < minQueryLength) {
     /*
@@ -813,14 +952,20 @@ function SearchStatus({
      * through on the way to their real query, so it is the one place the
      * wording has to be encouragement rather than an error.
      */
-    message = `Keep typing — ${minQueryLength} characters or more.`;
+    message = (labels.shortQuery ?? DEFAULT_STATUS_LABELS.shortQuery).replace(
+      '{min}',
+      String(minQueryLength),
+    );
     modifier = ' wave-docs-search-status-hint';
   } else if (status !== 'ready') {
     // 'idle' too: a query typed before the index resolved is still waiting.
-    message = 'Loading the search index…';
+    message = labels.loading ?? DEFAULT_STATUS_LABELS.loading;
     modifier = ' wave-docs-search-status-loading';
   } else if (hitCount === 0) {
-    message = `No results for “${query}”.`;
+    message = (labels.empty ?? DEFAULT_STATUS_LABELS.empty).replace(
+      '{query}',
+      query,
+    );
     modifier = ' wave-docs-search-status-empty';
   }
 
@@ -836,7 +981,11 @@ function SearchStatus({
       >
         {query === '' || status !== 'ready'
           ? ''
-          : `${hitCount} ${hitCount === 1 ? 'result' : 'results'}`}
+          : announceCount(
+              hitCount,
+              resultCountLabels ?? DEFAULT_RESULT_COUNT_LABELS,
+              locale,
+            )}
       </p>
     </>
   );

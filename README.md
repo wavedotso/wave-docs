@@ -91,7 +91,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | | At most |
 | --- | --- |
 | Everything the quick start ships, gzipped | 13.5 KB |
-| Search dialog and router wiring | 9.0 KB |
+| Search dialog and router wiring | 9.3 KB |
 | Navigation: sidebar and mobile drawer | 2.4 KB |
 | Table of contents | 0.9 KB |
 | Copy-button runtime | 1.1 KB |
@@ -217,13 +217,17 @@ Every component takes data as props and imports nothing from `next/*` — the ad
 | --- | --- | --- |
 | `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation` |
-| `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver` |
+| `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
 | `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap. Host-agnostic |
 | `Callout` | `react/callout` | Note · tip · important · warning · caution. `CALLOUT_TYPES` is the list |
-| `YouTube` | `react/youtube` | Click-to-load facade |
+| `YouTube` | `react/youtube` | Click-to-load facade. `title`, `playLabel`, `hideLabel` — `{title}` interpolates the first |
 | `SkipLink` | `react/skip-link` | Targets `docs.Page`'s `<main>`; `DOCS_CONTENT_ID` is that id. `docs.Layout` renders one |
 | `createMarkdownComponents` | `react/markdown-components` | The element → component map. `defaultMarkdownComponents` is the unwired one |
+
+`DocsToc`'s `rootMargin` is the `IntersectionObserver` margin that decides how far above the viewport a heading counts as current; the default keeps the highlight on the section you are reading rather than the one about to arrive. `topLabel` is the back-to-top link at the end.
+
+The two components the adapter injects take a little more than an `<a>` and an `<img>`. `DocsLinkProps` adds `prefetch` — passed straight to `next/link`, where `false` disables the hover and viewport paths both, so it is a stronger switch in the App Router than the name suggests. `DocsImageProps` adds `sizes` and `loading`, forwarded to `next/image`; markdown carries neither, so they come from your `imageResolver` or from a `components` override.
 
 ### Layout
 
@@ -630,6 +634,35 @@ Under `output: 'export'` the same route is written out as a plain `docs/search-i
 The response carries `cache-control: public, max-age=0, must-revalidate` and a strong `ETag`, replacing Next's default of a year of `s-maxage` with no validator — which, on a URL that never changes, is a CDN serving a stale index until someone purges it by hand. `next start` does not honour `If-None-Match` itself (it answers 200 with the full body); a CDN or reverse proxy in front of it does.
 
 If your site sets Next's own `basePath` config, prefix `indexUrl` yourself: Next applies it to `<Link>` and to navigation, but never to a client `fetch()`.
+
+### The dialog's props
+
+`DocsSearch` takes everything `SearchDialog` does except `navigate` and `Link`, which the Next adapter wires. `docs.Layout`'s `search={{ … }}` takes all of it except `indexUrl`, which it derives.
+
+| Prop | Type | Default | |
+| --- | --- | --- | --- |
+| `indexUrl` | `string` | — | Where the index is served. Pass `docs.searchIndexUrl` |
+| `pageSize` | `number` | `20` | Results rendered at a time. **Not a cap** — another page loads as the reader nears the end |
+| `minQueryLength` | `number` | `2` | Shortest query that runs |
+| `debounceMs` | `number` | `120` | Input debounce |
+| `className` | `string` | — | Extra classes for the trigger button |
+| `triggerLabel` | `string` | `'Search'` | The trigger's text |
+| `placeholder` | `string` | `'Search documentation'` | The input's placeholder |
+| `dialogLabel` | `string` | `'Search documentation'` | The dialog's accessible name |
+| `hintLabel` | `string` | `'Start typing to search the documentation.'` | Before anything is typed |
+| `shortQueryLabel` | `string` | `'Keep typing — {min} characters or more.'` | Below `minQueryLength`. `{min}` is that number |
+| `loadingLabel` | `string` | `'Loading the search index…'` | While the index is fetched |
+| `errorLabel` | `string` | `'Search is unavailable right now. Try reloading the page.'` | When it cannot be |
+| `emptyLabel` | `string` | `'No results for “{query}”.'` | No matches. `{query}` is what was typed |
+| `resultCountLabels` | `Partial<Record<Intl.LDMLPluralRule, string>>` | `{ one: '{count} result', other: '{count} results' }` | The live region, by plural category |
+| `locale` | `string` | `<html lang>`, then `'en'` | Language tag for those plural rules |
+| `miniSearchOptions` | `Partial<Options<SearchRecord>>` | — | See [Tuning](#tuning) |
+
+**`pageSize` replaced `maxResults` in 0.4.0**, and the meaning changed with the name: `maxResults` was a hard ceiling of 8 that made results unreachable on a six-page site, and the live region announced the slice as though it were the total. `pageSize` is a window — every match is reachable by scrolling, and the count announced is the real one.
+
+`resultCountLabels` is keyed by plural category rather than being a singular and a plural, because most languages are not English: Polish takes four forms and Arabic six. `Intl.PluralRules` picks, and a category you do not list falls back to `other`.
+
+There is no `hotkey` prop. The shortcut is ⌘K on Apple platforms and Ctrl-K elsewhere, and it is not configurable.
 
 ### What gets indexed
 

@@ -32,8 +32,13 @@
  * configuration.
  *
  * Not here: the search dialog's strings, which are reachable through
- * `search={{ … }}`, and `DocsSidebar`'s own `label`, which is public API for
- * anyone composing a shell by hand.
+ * `search={{ … }}` on `docs.Layout` — its trigger, its placeholder, its
+ * accessible name and its five state messages, plus the plural forms of its
+ * live region. They travel with the dialog's own props rather than with these
+ * because that channel already existed and already carries `pageSize` and
+ * `minQueryLength`; a second route to the same component would be two places to
+ * look. `DocsSidebar`'s own `label` is likewise public API, for anyone composing
+ * a shell by hand.
  */
 
 export interface DocsLabels {
