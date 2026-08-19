@@ -408,26 +408,48 @@ export interface DocsConfig<
    */
   onBrokenLinks?: DocsLinkSeverity | undefined;
   /**
-   * What to do about an absolute link this package cannot verify.
-   * Defaults to `'ignore'`.
+   * What to do about a `#fragment` that no heading on the target page owns.
+   * Defaults to `'throw'`.
    *
-   * ⚠️ ONLY EVER NON-EMPTY AT A ROOT MOUNT, AND THAT IS THE WHOLE REASON IT
-   * EXISTS. To check `[x](/setup)` the package must first know it is a
-   * documentation link, and under `basePath: '/docs'` it plainly is — the
-   * prefix says so. Under `basePath: '/'` there is no prefix: `/setup` may be a
-   * page of yours, and `/login` almost certainly is. The package cannot tell,
-   * so by default it says nothing.
+   * ⚠️ THE MORE COMMON OF THE TWO LINK FAILURES, AND IT WENT UNCHECKED. A route
+   * was verified and its fragment discarded, so `[setup](./install.md#setup)`
+   * built green with no `#setup` anywhere on the page. Headings get renamed
+   * constantly and nothing renames the links into them, which is exactly why it
+   * is worth checking and exactly why it breaks.
    *
-   * You can tell it. On a domain that serves nothing but documentation —
-   * `docs.example.com` with the docs at its root — every absolute link IS a
-   * documentation link, so an unknown one is always a bug and `'throw'` is
-   * correct. On a root mount inside a larger application, leave it alone.
+   * Checked against every `id` in the rendered page rather than against the
+   * table of contents, which captures `h2`–`h3` only — so a link to an `h4` is
+   * fine, and so is one to an id a `rehypePlugins` entry put on something that
+   * is not a heading.
    *
-   * Relative links (`./other.md`) are unaffected: they are resolved against the
-   * content tree, so they are always verifiable and always governed by
-   * {@link DocsConfig.onBrokenLinks}.
+   * Lower it to `'warn'` if a plugin of yours adds ids this package cannot see
+   * at render time.
    */
-  onUnverifiableLinks?: DocsLinkSeverity | undefined;
+  onBrokenAnchors?: DocsLinkSeverity | undefined;
+  /**
+   * Route prefixes that belong to your application, not to the documentation.
+   *
+   * ⚠️ ONLY MEANINGFUL AT A ROOT MOUNT, WHICH IS ALSO THE ONLY PLACE IT IS
+   * NEEDED. Under `basePath: '/docs'` an absolute link either carries the
+   * prefix — so it is documentation and is checked — or it does not, and this
+   * package leaves it alone. Under `basePath: '/'` there is no prefix to test
+   * against: `/setup` and `/login` look identical, and both are checked against
+   * the published pages.
+   *
+   * That is the right default, because a root mount is what you choose when the
+   * origin serves documentation and nothing else — `docs.example.com` — and
+   * there an unknown absolute link is always a typo. If the origin *does* serve
+   * something else, name what is yours:
+   *
+   * ```ts
+   * externalRoutes: ['/login', '/dashboard', '/api/']
+   * ```
+   *
+   * A link is skipped when it equals one of these or begins with one followed
+   * by `/`. It is a statement about your application, so nothing here can infer
+   * it and nothing tries.
+   */
+  externalRoutes?: readonly string[] | undefined;
   /**
    * Validates every page's frontmatter. Defaults to `docFrontmatterSchema`
    * from `@waveso/docs/frontmatter`.
@@ -482,7 +504,8 @@ export interface ResolvedDocsConfig<
   basePath: string;
   includeDrafts: boolean;
   onBrokenLinks: DocsLinkSeverity;
-  onUnverifiableLinks: DocsLinkSeverity;
+  onBrokenAnchors: DocsLinkSeverity;
+  externalRoutes: readonly string[];
   /**
    * As supplied. `resolveDocsConfig` omits the key rather than setting it to
    * `undefined` when the built-in `docFrontmatterSchema` applies, so the

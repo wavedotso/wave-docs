@@ -47,7 +47,8 @@ async function render(
     config: {
       basePath: '/docs',
       onBrokenLinks: 'ignore',
-      onUnverifiableLinks: 'ignore',
+      onBrokenAnchors: 'throw',
+      externalRoutes: [],
     },
     excludeLangs: ['mermaid'],
     titleHeading: false,

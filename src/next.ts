@@ -52,6 +52,8 @@ import type { ComponentType, ReactNode } from 'react';
 import { Fragment, cache, createElement } from 'react';
 
 import { mapPooled } from './map-pooled.js';
+import { assertAnchors } from './anchors.js';
+import { describeSuggestion } from './link-suggestion.js';
 import type { SerializableSearchOptions } from './search-options.js';
 import { findFunctionValuedOptions } from './search-options.js';
 import type {
@@ -1004,9 +1006,49 @@ export function createDocsRoute<
     const files = await source.all();
     await loadRoutes();
     const renderer = loadRenderer();
-    return mapPooled(files, RENDER_CONCURRENCY, (file) =>
+    const rendered = await mapPooled(files, RENDER_CONCURRENCY, (file) =>
       renderer.render(file),
     );
+
+    /*
+     * ⚠️ CROSS-PAGE ANCHORS CAN ONLY BE CHECKED HERE, AND THIS IS THE FIRST
+     * MOMENT THEY CAN. `render` sees one page, so it can prove `#setup` exists
+     * on the page being rendered and nothing about `./other.md#setup` — the ids
+     * of `other` do not exist until `other` has been rendered. Once every page
+     * is in hand they all do.
+     *
+     * `renderAll` runs in every build that serves search: the index route is
+     * `force-static`, so Next prerenders it, so this pass happens. A consumer
+     * who renders pages by hand and never calls it gets the same-page half,
+     * which is the half with line numbers anyway.
+     */
+    assertAnchors(rendered, (from, link, known) => {
+      reportAnchor(
+        `@waveso/docs: ${from} links to '${link.href}', and '${link.route}' ` +
+          `has no '#${link.fragment}'.${describeSuggestion(
+            link.fragment,
+            known,
+          )} Heading ids come from the heading text, so renaming a heading ` +
+          'renames its anchor.',
+      );
+    });
+
+    return rendered;
+  };
+
+  /**
+   * A cross-page anchor failure, at the configured severity.
+   *
+   * No line number, unlike the same-page check: positions are stripped from a
+   * returned tree, so the page and the link are what there is to name. Both
+   * halves share `onBrokenAnchors`, because to an author they are one mistake.
+   */
+  const reportAnchor = (message: string): void => {
+    if (config.onBrokenAnchors === 'ignore') return;
+    if (config.onBrokenAnchors === 'throw') {
+      throw docsError('broken-anchor', message);
+    }
+    console.warn(message);
   };
 
   const searchIndexUrl = `${config.basePath}/search-index.json`;

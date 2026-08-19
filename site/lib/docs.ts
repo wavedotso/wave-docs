@@ -25,19 +25,19 @@ import { createDocsRoute } from '@waveso/docs/next';
  * empty base path is a distinct code path in `toHref`, `toRoute` and
  * `isInternalAbsoluteLink`, and until now two unit assertions were all of it.
  *
- * ⚠️ `onUnverifiableLinks: 'throw'` IS WHAT MAKES THE ROOT MOUNT SAFE HERE, AND
- * IT IS A CLAIM ONLY THIS FILE CAN MAKE. At an empty base path an absolute link
- * like `/installation` cannot be told apart from any other route in the
- * application, so the package refuses to guess and says nothing by default.
+ * ⚠️ NO `externalRoutes`, AND THAT IS THE POINT OF THE ROOT MOUNT HERE. At an
+ * empty base path an absolute link like `/installation` cannot be told apart
+ * from any other route in the application — so every one of them is checked
+ * against the published pages, which is right for an origin that serves
+ * documentation and nothing else. This one does. A site with a `/login` of its
+ * own would name it here; there is nothing to name.
  *
- * This domain has no other routes: it serves documentation and nothing else. So
- * every absolute link here IS a documentation link, an unknown one is always a
- * bug, and the site says so. That is the whole design of the option — the tool
- * does not guess, the site declares.
+ * Absolute links are also forbidden outright in this site's markdown by
+ * `site-budget.test.ts`, so both halves hold: the rule keeps them relative, and
+ * the config would catch one that slipped through.
  */
 export const docs = createDocsRoute({
   contentDir: 'site/content',
   basePath: '/',
   siteUrl: 'https://docs.wave.so',
-  onUnverifiableLinks: 'throw',
 });

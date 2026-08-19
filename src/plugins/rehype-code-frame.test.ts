@@ -58,7 +58,8 @@ async function render(content: string): Promise<RenderedDoc> {
     config: {
       basePath: '/docs',
       onBrokenLinks: 'ignore',
-      onUnverifiableLinks: 'ignore',
+      onBrokenAnchors: 'throw',
+      externalRoutes: [],
     },
     excludeLangs: ['mermaid'],
   });

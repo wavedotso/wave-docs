@@ -127,9 +127,10 @@ describe('resolveDocsConfig', () => {
       basePath: '/docs',
       includeDrafts: false,
       onBrokenLinks: 'throw',
-      // `'ignore'`, because only the site knows whether an absolute link at a
-      // root mount is a documentation route or one of its own.
-      onUnverifiableLinks: 'ignore',
+      onBrokenAnchors: 'throw',
+      // Empty: nothing on the origin belongs to the host application until the
+      // host says so, and nothing here can infer it.
+      externalRoutes: [],
     });
   });
 

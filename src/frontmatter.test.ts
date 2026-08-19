@@ -225,7 +225,7 @@ describe('optional properties accept an explicit undefined', () => {
       basePath: maybeString,
       includeDrafts: undefined,
       onBrokenLinks: undefined,
-      onUnverifiableLinks: undefined,
+      externalRoutes: undefined,
       frontmatterSchema: undefined,
     };
     expect(config.contentDir).toBe('content/docs');

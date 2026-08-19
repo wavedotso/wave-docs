@@ -99,13 +99,33 @@ describe('remarkDocLinks', () => {
     ]);
   });
 
-  it('leaves external and in-page links alone', () => {
+  it('records a bare `#fragment` so its anchor can be checked', () => {
+    /*
+     * ⚠️ IT USED TO BE DROPPED WITH THE EXTERNAL LINKS, AND THAT WAS RIGHT FOR
+     * THE ROUTE AND WRONG FOR THE ANCHOR. `#section` has no route to resolve —
+     * `isRelativeLink` excludes it, correctly — but it does have a fragment,
+     * and nothing downstream could see `#missing` at all. A same-page anchor is
+     * the one a writer produces most: every "see below".
+     *
+     * `anchorOnly` is what keeps `assertLinks` off it: there is no route here to
+     * compare against the published set, and reporting one would fail the build
+     * with advice the author cannot follow.
+     */
+    const { urls, refs } = run('[f](#section)', FROM_PAGE);
+
+    // Untouched in the tree: an in-page anchor is already correct.
+    expect(urls).toEqual(['#section']);
+    expect(refs).toEqual([
+      { raw: '#section', href: '#section', line: 1, anchorOnly: true },
+    ]);
+  });
+
+  it('leaves external and path-less links alone', () => {
     const source = [
       '[a](https://example.com/x.md)',
       '[b](//cdn.example.com/x)',
       '[c](mailto:hi@example.com)',
       '[d](tel:+15551234)',
-      '[f](#section)',
       // Path-less: addresses this page, and has nothing to resolve. Recording
       // it as unresolvable would fail the build with advice — "use a path
       // relative to this file" — that cannot be followed.
@@ -120,7 +140,6 @@ describe('remarkDocLinks', () => {
       '//cdn.example.com/x',
       'mailto:hi@example.com',
       'tel:+15551234',
-      '#section',
       '?tab=json',
       '/login',
     ]);
@@ -191,9 +210,10 @@ describe('remarkDocLinks', () => {
      * nor proved not to be — so the plugin recorded nothing and `assertLinks`
      * never saw it. A typo in an absolute link shipped.
      *
-     * It is recorded and marked now. The plugin still refuses to guess; the
-     * decision moves to `onUnverifiableLinks`, which the *site* answers,
-     * because only the site knows whether it serves anything but documentation.
+     * It is recorded and marked now, and checked like any other link: a root
+     * mount is what you choose when the origin serves documentation and nothing
+     * else, so an unknown absolute link there is a typo. An origin that serves
+     * something else names what is its own through `externalRoutes`.
      */
     const { refs, urls } = run('[a](/login)', FROM_PAGE, { basePath: '' });
 

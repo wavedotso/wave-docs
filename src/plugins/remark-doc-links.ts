@@ -55,11 +55,26 @@ export interface DocLinkRef {
    * `/setup` may be a page here and `/login` almost certainly is not, and
    * nothing in the markdown says which.
    *
-   * So it is collected and marked, and `DocsConfig.onUnverifiableLinks` decides
-   * what a site wants done about it — `'ignore'` by default, because only the
-   * site knows whether it is documentation and nothing else.
+   * So it is collected and marked, and checked like any other link — because a
+   * root mount is what you choose when the origin serves documentation and
+   * nothing else, which makes an unknown absolute link a typo. An origin that
+   * serves something else names what is its own through
+   * `DocsConfig.externalRoutes`.
    */
   unverifiable?: true;
+  /**
+   * A bare `#fragment` — a link into the page it is written on.
+   *
+   * ⚠️ RECORDED SO THE ANCHOR CAN BE CHECKED, AND FLAGGED SO THE ROUTE IS NOT.
+   * `isRelativeLink` excludes these and always did, correctly: there is no
+   * route to resolve. But that also meant they were never collected, so nothing
+   * downstream could see `#missing` at all — and a same-page anchor is the one
+   * a writer produces most, every "see below".
+   *
+   * `assertLinks` skips these; `assertOwnAnchors` is what reads them, and the
+   * recorded line is why the message can name one.
+   */
+  anchorOnly?: true;
 }
 
 /**
@@ -118,6 +133,11 @@ function isRelativeLink(href: string): boolean {
   );
 }
 
+/** No prefix at all — the docs own the whole origin. */
+export function isRootMount(basePath: string): boolean {
+  return basePath.replace(/\/+$/, '') === '';
+}
+
 /**
  * Is this already-absolute href one of OUR routes?
  *
@@ -126,15 +146,12 @@ function isRelativeLink(href: string): boolean {
  * A typo in a hand-written absolute link is exactly as likely as one in a
  * relative link; only the rewriting differs.
  *
- * Requires a non-empty base path. Docs mounted at the site root cannot be told
- * apart from the rest of the site, and asserting `/login` against the set of
- * documentation routes would fail builds over links that are perfectly good.
+ * Answers `false` at a root mount, where there is no prefix to test against.
+ * That is not the end of the matter: the caller records those links anyway,
+ * marked, because at a root mount the *common* case is an origin that serves
+ * documentation and nothing else — so they are checked, and a site with other
+ * routes names them through `externalRoutes`.
  */
-/** No prefix at all — the docs own the whole origin. */
-export function isRootMount(basePath: string): boolean {
-  return basePath.replace(/\/+$/, '') === '';
-}
-
 function isInternalAbsoluteLink(href: string, basePath: string): boolean {
   const base = basePath.replace(/\/+$/, '');
   if (base === '' || href.startsWith('//')) {
@@ -458,7 +475,7 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
       const line = node.position?.start.line;
       const record = (
         href: string | undefined,
-        flags: { asset?: true; unverifiable?: true } = {},
+        flags: { asset?: true; unverifiable?: true; anchorOnly?: true } = {},
       ): void => {
         const ref: DocLinkRef = { raw, href };
         if (line !== undefined) {
@@ -469,6 +486,9 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
         }
         if (flags.unverifiable !== undefined) {
           ref.unverifiable = flags.unverifiable;
+        }
+        if (flags.anchorOnly !== undefined) {
+          ref.anchorOnly = flags.anchorOnly;
         }
         refs.push(ref);
         if (href !== undefined) {
@@ -484,6 +504,16 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
        * make failures locatable.
        */
       try {
+        /*
+         * A link into this page. There is no route to resolve — which is why
+         * `isRelativeLink` excludes it — but there is a fragment to check, and
+         * it is recorded here so the anchor check has a line to name.
+         */
+        if (raw.startsWith('#')) {
+          record(raw, { anchorOnly: true });
+          continue;
+        }
+
         if (!isRelativeLink(raw)) {
           // Already a route; recorded so a typo in it is caught, not rewritten
           // — but respelled first, so the comparison is like-for-like.

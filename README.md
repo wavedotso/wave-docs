@@ -791,8 +791,9 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
   contentDir: string;        // relative paths resolve against process.cwd()
   basePath?: string;         // default '/docs'; '/' normalises to ''
   includeDrafts?: boolean;   // default false
-  onBrokenLinks?: DocsLinkSeverity;        // default 'throw'
-  onUnverifiableLinks?: DocsLinkSeverity;  // default 'ignore'
+  onBrokenLinks?: DocsLinkSeverity;    // default 'throw'
+  onBrokenAnchors?: DocsLinkSeverity;  // default 'throw'
+  externalRoutes?: readonly string[];  // routes your app owns, not the docs
   frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
 }
 
@@ -813,41 +814,38 @@ Fix the link, or add an `aliases` entry to the page it used to point at.
 
 A suggestion is offered only for a genuine near-miss. `/docs/instructions` is five edits from `/docs/installation` — a different word, not a typo — and gets none, because a wrong suggestion sends you to rename a link that was correct.
 
-### Links this package cannot check
+### Broken anchors
 
-**`onUnverifiableLinks` only ever applies at a root mount**, and it defaults to `'ignore'`.
+**`onBrokenAnchors` defaults to `'throw'`.** A route used to be verified and its fragment thrown away, so `[setup](./install.md#setup)` built green with no `#setup` anywhere on the page. It is the more common of the two failures: headings get renamed constantly, and nothing renames the links into them.
 
-To check `[x](/setup)` the package must first know it is a documentation link. Under `basePath: '/docs'` it plainly is — the prefix says so, and the link is governed by `onBrokenLinks` like any other. Under `basePath: '/'` there is no prefix: `/setup` may be a page of yours and `/login` almost certainly is, and nothing in the markdown distinguishes them. So by default the package says nothing rather than failing a build over a URL that is perfectly correct.
+```
+@waveso/docs: guide.md:12 links to '#instalation', and this page has no
+'#instalation'. Did you mean 'installation'? Heading ids come from the heading
+text, so renaming a heading renames its anchor.
+```
 
-You can tell it. On a domain serving nothing but documentation — `docs.example.com` with the docs at its root — every absolute link *is* a documentation link, so an unknown one is always a bug:
+Checked against every `id` in the rendered page rather than against the table of contents — which captures `h2`–`h3` only, so a link to an `h4` is fine, and so is a link to an id one of your `rehypePlugins` added. Lower it to `'warn'` if a plugin of yours adds ids this package cannot see at render time.
+
+Same-page anchors are checked as each page renders, so those errors carry the file and the line. Cross-page anchors need the target page's ids, which exist only once everything has been rendered — `docs.renderAll()` does that pass, and it runs in every build that serves search, because the index route is `force-static`.
+
+### Routes your application owns
+
+**`externalRoutes` only matters at a root mount.** Under `basePath: '/docs'` an absolute link either carries the prefix — so it is documentation and is checked — or it does not, and this package leaves it alone. Under `basePath: '/'` there is no prefix: `/setup` and `/login` look identical, and both are checked against the published pages.
+
+That is the right default, because a root mount is what you choose when the origin serves documentation and nothing else. If yours serves something else too, name what is yours:
 
 ```ts
+// lib/docs-root.ts
 import { createDocsRoute } from '@waveso/docs/next';
 
 export const docs = createDocsRoute({
   contentDir: 'content/docs',
   basePath: '/',
-  onUnverifiableLinks: 'throw',
+  externalRoutes: ['/login', '/dashboard', '/api/'],
 });
 ```
 
-Relative links (`./other.md`) are resolved against the content tree, so they are verifiable at every mount and always governed by `onBrokenLinks`. Writing them relative is the way to keep every link checked without touching either setting.
-
-`createDocsRoute` additionally accepts:
-
-| Option | Default | Purpose |
-| --- | --- | --- |
-| `langs` | 18 grammars | Typed `readonly DocsLang[]`, so a typo is a compile error |
-| `themes` | `github-light` / `github-dark` | Shiki theme pair |
-| `highlighter` | built-in | Supply your own for grammars outside the set |
-| `titleHeading` | `true` | Build an `<h1>` from `frontmatter.title` when the markdown has none |
-| `components` | built-in map | Override any element → component mapping |
-| `siteUrl` | — | Makes canonical URLs absolute |
-| `linkResolver` · `imageResolver` | — | Override link rewriting and image dimensions. An `imageResolver` receives a folded, contained src — except an absolute `/logo.png` or a schemed `https://…`, which arrive unfolded, so branch on them |
-
-`titleHeading` defaults on because a document with no `h1` has a broken heading outline and fails every accessibility audit. Turn it off if your layout renders the title itself.
-
-The `<main>` always carries `id="docs-content"`, which is what `SkipLink` targets by default — there is no option to change it, because there was no matching option on `SkipLink` to follow it with, so changing it silently pointed the skip link at nothing. Outside `NODE_ENV=production` the content directory is always re-scanned per request; `docs.source.invalidate()` is the escape hatch if you need to force one.
+A link is skipped when it equals one of these or begins with one followed by `/` — so `/api` covers `/api/keys` and not `/apiary`. It is a statement about your application, so nothing here infers it.
 
 ### Translating the chrome
 
@@ -983,6 +981,7 @@ try {
 | `broken-link` | A markdown link resolves to a route no published page owns. | Fix the link, or add an `aliases` entry to the page that moved. |
 | `draft-link` | A link points at a page that exists but is `draft: true`. | Publish the page, or drop the link until it ships. |
 | `alias-link` | A link points at an alias, which is a redirect and not a page. | Link the page the alias redirects to — the error names it. |
+| `broken-anchor` | A `#fragment` that no heading on the target page owns. | Fix the link, or restore the heading. Heading ids come from the heading text, so renaming one renames its anchor. |
 | `invalid-alias` | An `aliases` entry is empty, escapes the content root, or is not URL-safe. | Write it as a root-relative path, e.g. `/docs/old-name`. |
 | `alias-collision` | Two pages claim one alias, or an alias shadows a real route. | Remove one of them; a redirect cannot have two destinations. |
 | `route-collision` | Two files resolve to the same route. | Usually `about.md` beside `about/index.md`. Keep one. |

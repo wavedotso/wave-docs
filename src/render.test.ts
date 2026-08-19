@@ -114,7 +114,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'throw',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       knownRoutes: KNOWN_ROUTES,
       // A relative image src has no correct output without one of these, so
@@ -275,7 +276,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -309,7 +311,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       excludeLangs: ['mermaid'],
     });
@@ -386,7 +389,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -403,7 +407,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -426,7 +431,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -461,7 +467,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -483,7 +490,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -500,7 +508,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -516,7 +525,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       imageResolver: (src, from) => ({
         src: `/assets/${path.basename(src)}?from=${from.dirSegments.join('/')}`,
@@ -551,7 +561,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       imageResolver: (src) => {
         seen.push(src);
@@ -585,7 +596,8 @@ describe('createDocsRenderer', () => {
         config: {
           basePath: '/docs',
           onBrokenLinks: 'ignore',
-          onUnverifiableLinks: 'ignore',
+          onBrokenAnchors: 'throw',
+          externalRoutes: [],
         },
         imageResolver: (src) => {
           seen.push(src);
@@ -707,7 +719,8 @@ describe('createDocsRenderer', () => {
         config: {
           basePath: '/docs',
           onBrokenLinks: 'ignore',
-          onUnverifiableLinks: 'ignore',
+          onBrokenAnchors: 'throw',
+          externalRoutes: [],
         },
         imageResolver: (src) => ({ src }),
         rehypePlugins: [
@@ -737,7 +750,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       imageResolver: (src) => ({ src }),
     });
@@ -760,7 +774,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'throw',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -780,7 +795,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -796,7 +812,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -822,7 +839,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       imageResolver: () => undefined,
     });
@@ -837,7 +855,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       // @ts-expect-error — a type stops at the JavaScript boundary, and a host
       // reading dimensions out of a manifest is exactly where this arrives.
@@ -856,7 +875,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       imageResolver: () => {
         throw new Error('ENOENT: no such file');
@@ -880,7 +900,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       imageResolver: (src) => {
         seen.push(src);
@@ -900,7 +921,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
     const rendered = await renderer.render(
@@ -916,7 +938,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'throw',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       knownRoutes: KNOWN_ROUTES,
     });
@@ -933,7 +956,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'throw',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -952,7 +976,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'throw',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       knownRoutes: KNOWN_ROUTES,
       draftRoutes: new Set(['/docs/guide/unreleased']),
@@ -970,7 +995,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -998,7 +1024,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -1036,7 +1063,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
 
@@ -1076,7 +1104,8 @@ describe('createDocsRenderer', () => {
         config: {
           basePath: '/docs',
           onBrokenLinks: 'ignore',
-          onUnverifiableLinks: 'ignore',
+          onBrokenAnchors: 'throw',
+          externalRoutes: [],
         },
         // @ts-expect-error — the runtime check is there for JavaScript callers
         // and for names that arrive from JSON config, which is what this is.
@@ -1090,7 +1119,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
       highlighter: Promise.reject(new Error('grammar import failed')),
     });
@@ -1109,7 +1139,8 @@ describe('createDocsRenderer', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'ignore',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
       },
     });
     const first = await renderer.render(makeDoc('## One\n'));
@@ -1158,7 +1189,8 @@ describe('link errors name the line in the file, not in the body', () => {
     config: {
       basePath: '/docs',
       onBrokenLinks: 'throw',
-      onUnverifiableLinks: 'ignore',
+      onBrokenAnchors: 'throw',
+      externalRoutes: [],
     },
     knownRoutes: new Set(['/docs/setup']),
   });
@@ -1215,7 +1247,8 @@ describe('link errors name the line in the file, not in the body', () => {
         config: {
           basePath: '/docs',
           onBrokenLinks: 'throw',
-          onUnverifiableLinks: 'ignore',
+          onBrokenAnchors: 'throw',
+          externalRoutes: [],
         },
         knownRoutes: new Set(['/docs/setup']),
       }).render(file),
@@ -1248,7 +1281,8 @@ describe('link severity, and saying what you meant', () => {
       config: {
         basePath: '/docs',
         onBrokenLinks: 'throw',
-        onUnverifiableLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
         ...config,
       } as never,
       knownRoutes: KNOWN,
@@ -1332,72 +1366,154 @@ describe('link severity, and saying what you meant', () => {
         config: {
           basePath: '',
           onBrokenLinks: 'throw',
-          onUnverifiableLinks: 'ignore',
+          onBrokenAnchors: 'throw',
+          externalRoutes: [],
           ...config,
         } as never,
         knownRoutes: ROOT_KNOWN,
       });
     }
 
-    it('says nothing about an absolute link by default', async () => {
+    it('checks an absolute link like any other, by default', async () => {
       /*
-       * ⚠️ THE DEFAULT HAS TO BE SILENCE, AND THAT IS NOT TIMIDITY. With no
-       * prefix, `/login` may be a page of the host's application and this
-       * package has no way to find out. Throwing by default would fail builds
-       * over URLs that are perfectly correct.
+       * ⚠️ THE DEFAULT FLIPPED, AND THE FIRST VERSION HAD IT BACKWARDS. It used
+       * to stay silent here, reasoning that `/instalation` might be a page of
+       * the host's application. True — and a root mount is what you choose when
+       * the origin serves documentation and nothing else, so the common case is
+       * that it is not, and the useful default is to check.
+       *
+       * A site that does serve something else names what is its own, which is a
+       * fact only that site has.
        */
-      const warn = vi
-        .spyOn(console, 'warn')
-        .mockImplementation(() => undefined);
-      try {
-        await rootRenderer({}).render(makeDoc('[a](/instalation)\n'));
-        expect(warn).not.toHaveBeenCalled();
-      } finally {
-        warn.mockRestore();
-      }
-    });
-
-    it('throws when the site declares itself documentation-only', async () => {
-      // The case the option exists for: a `docs.example.com` serving nothing
-      // else, where every absolute link IS a docs link and an unknown one is
-      // always a bug.
       await expect(
-        rootRenderer({ onUnverifiableLinks: 'throw' }).render(
-          makeDoc('[a](/instalation)\n'),
-        ),
+        rootRenderer({}).render(makeDoc('[a](/instalation)\n')),
       ).rejects.toThrow(/Did you mean '\/installation'\?/);
     });
 
+    it('skips a route the application declared as its own', async () => {
+      const doc = await rootRenderer({
+        externalRoutes: ['/login', '/dashboard'],
+      }).render(makeDoc('[a](/login)\n'));
+
+      expect(doc.hast).toBeDefined();
+    });
+
+    it('matches an external prefix on a segment boundary', async () => {
+      // `/api` covers `/api/keys` and must not cover `/apiary`, which is a
+      // different word a bare `startsWith` would silently skip.
+      const skips = rootRenderer({ externalRoutes: ['/api'] });
+
+      await expect(
+        skips.render(makeDoc('[a](/api/keys)\n')),
+      ).resolves.toBeDefined();
+      await expect(skips.render(makeDoc('[a](/apiary)\n'))).rejects.toThrow(
+        /no such page exists/,
+      );
+    });
+
     it('still accepts an absolute link that is a real page', async () => {
-      // The setting raises unknown links; it must not raise known ones.
-      const doc = await rootRenderer({ onUnverifiableLinks: 'throw' }).render(
+      const doc = await rootRenderer({}).render(
         makeDoc('[a](/installation)\n'),
       );
 
       expect(doc.hast).toBeDefined();
     });
 
-    it('names the escape hatch in the message', async () => {
-      // Someone who turned this on and then added `/login` needs to be told
-      // what to do, not merely that their build is failing.
-      await expect(
-        rootRenderer({ onUnverifiableLinks: 'throw' }).render(
-          makeDoc('[a](/login)\n'),
-        ),
-      ).rejects.toThrow(/onUnverifiableLinks/);
-    });
+    it('leaves another origin alone', async () => {
+      // `//host/x` is protocol-relative: somebody else's site, and the one
+      // absolute-looking form that must never be checked against our routes.
+      const doc = await rootRenderer({}).render(
+        makeDoc('[a](//cdn.example.com/x)\n'),
+      );
 
-    it('leaves relative links governed by onBrokenLinks, not this', async () => {
-      /*
-       * The two settings must not bleed. A relative link is always resolvable
-       * against the content tree, so it is verifiable at every mount — and
-       * silencing the unverifiable category must not silence it.
-       */
-      await expect(
-        rootRenderer({ onUnverifiableLinks: 'ignore' }).render(
-          makeDoc('[a](./nowhere.md)\n', 'index.md'),
-        ),
-      ).rejects.toThrow(/no such page exists/);
+      expect(doc.hast).toBeDefined();
     });
+  });
+});
+
+describe('anchors', () => {
+  /*
+   * ⚠️ THE GAP NOTHING COVERED UNTIL NOW. A route was checked and its fragment
+   * thrown away — `toRouteKey` cuts at the first `#` before the existence test —
+   * so `[setup](./install.md#setup)` built green with no `#setup` on the page.
+   * It is the more common of the two failures this package guards: headings get
+   * renamed constantly, and nothing renames the links into them.
+   */
+  function anchorRenderer(config: Record<string, unknown> = {}) {
+    return createDocsRenderer({
+      config: {
+        basePath: '/docs',
+        onBrokenLinks: 'ignore',
+        onBrokenAnchors: 'throw',
+        externalRoutes: [],
+        ...config,
+      } as never,
+    });
+  }
+
+  const PAGE = '## Real heading\n\nBody.\n';
+
+  it('throws on a same-page anchor no heading owns, with the line', async () => {
+    await expect(
+      anchorRenderer().render(makeDoc(`${PAGE}\n[x](#missing)\n`)),
+    ).rejects.toThrow(/getting-started\.md:\d+ links to '#missing'/);
+  });
+
+  it('accepts an anchor a heading does own', async () => {
+    const doc = await anchorRenderer().render(
+      makeDoc(`${PAGE}\n[x](#real-heading)\n`),
+    );
+
+    expect(doc.hast).toBeDefined();
+  });
+
+  it('checks ids below the table of contents depth', async () => {
+    /*
+     * The TOC captures `h2`–`h3` only, so checking against it would reject a
+     * perfectly good link to an `h4`. The check reads ids off the tree instead.
+     */
+    const doc = await anchorRenderer().render(
+      makeDoc('#### Deep heading\n\n[x](#deep-heading)\n'),
+    );
+
+    expect(doc.hast).toBeDefined();
+  });
+
+  it('suggests the heading you probably meant', async () => {
+    await expect(
+      anchorRenderer().render(makeDoc(`${PAGE}\n[x](#real-headng)\n`)),
+    ).rejects.toThrow(/Did you mean 'real-heading'\?/);
+  });
+
+  it('leaves another origin alone', async () => {
+    // A fragment into somebody else's page is theirs to get wrong, and linking
+    // into a spec by fragment is routine.
+    const doc = await anchorRenderer().render(
+      makeDoc('[x](https://example.com/spec#section-4)\n'),
+    );
+
+    expect(doc.hast).toBeDefined();
+  });
+
+  it('says nothing at `ignore`', async () => {
+    const doc = await anchorRenderer({ onBrokenAnchors: 'ignore' }).render(
+      makeDoc(`${PAGE}\n[x](#missing)\n`),
+    );
+
+    expect(doc.hast).toBeDefined();
+  });
+
+  it("warns instead of throwing at 'warn', and builds", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const doc = await anchorRenderer({ onBrokenAnchors: 'warn' }).render(
+        makeDoc(`${PAGE}\n[x](#missing)\n`),
+      );
+
+      expect(doc.hast).toBeDefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

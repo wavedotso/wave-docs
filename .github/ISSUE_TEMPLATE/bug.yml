@@ -24,6 +24,7 @@ body:
         - broken-link
         - draft-link
         - alias-link
+        - broken-anchor
         - invalid-alias
         - alias-collision
         - route-collision

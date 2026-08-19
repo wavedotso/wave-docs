@@ -53,6 +53,7 @@ import type {
 import type { DocsErrorCode } from './errors.js';
 import { docsError } from './docs-error.js';
 import { describeSuggestion } from './link-suggestion.js';
+import { collectAnchorIds, splitAnchor } from './anchors.js';
 
 /*
  * `@shikijs/rehype` asks for `HighlighterGeneric<any, any>` while
@@ -90,7 +91,7 @@ export { resolveMarkdownLink } from './plugins/remark-doc-links.js';
  */
 export type DocsRendererConfig = Pick<
   ResolvedDocsConfig,
-  'basePath' | 'onBrokenLinks' | 'onUnverifiableLinks'
+  'basePath' | 'onBrokenLinks' | 'onBrokenAnchors' | 'externalRoutes'
 >;
 
 export interface DocsRendererOptions {
@@ -400,6 +401,19 @@ function withSuffix(src: string, suffix: string): string {
 }
 
 /** Route without its `?query` / `#anchor`, for existence checks. */
+/**
+ * Does this route belong to the host application rather than the docs?
+ *
+ * Prefix match on a segment boundary, so `/api` covers `/api/keys` and does not
+ * accidentally cover `/apiary`.
+ */
+function isExternalRoute(route: string, external: readonly string[]): boolean {
+  return external.some((prefix) => {
+    const trimmed = prefix.replace(/\/+$/, '');
+    return route === trimmed || route.startsWith(`${trimmed}/`);
+  });
+}
+
 function toRouteKey(href: string): string {
   const cut = href.search(/[?#]/);
   return cut === -1 ? href : href.slice(0, cut);
@@ -819,9 +833,51 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
     console.warn(docsError(code, message).message);
   }
 
+  /**
+   * Anchors that point into the page being rendered.
+   *
+   * ⚠️ HERE, NOT IN THE CORPUS PASS, BECAUSE THIS IS WHERE THE LINE NUMBER IS.
+   * The recorded refs carry the source line and the tree still has its
+   * positions; both are gone from a returned `RenderedDoc`. A same-page anchor
+   * is also the one a writer produces most — every "see below" — so it is worth
+   * the better message.
+   *
+   * Cross-page anchors need the other page's ids and are checked by
+   * `renderAll`, which is the first point at which they exist.
+   */
+  function assertOwnAnchors(
+    file: DocFile,
+    tree: HastRoot,
+    refs: readonly DocLinkRef[],
+  ): void {
+    if (config.onBrokenAnchors === 'ignore') return;
+
+    let ids: Set<string> | undefined;
+    for (const ref of refs) {
+      const anchor = splitAnchor(ref.href ?? ref.raw);
+      // Same page: either a bare `#id` or a link that resolved to this route.
+      if (anchor === undefined) continue;
+      if (anchor.route !== '' && anchor.route !== file.href) continue;
+
+      ids ??= collectAnchorIds(tree);
+      if (ids.has(anchor.fragment)) continue;
+
+      report(
+        config.onBrokenAnchors,
+        'broken-anchor',
+        `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
+          `and this page has no '#${anchor.fragment}'.` +
+          `${describeSuggestion(anchor.fragment, ids)} Heading ids come from ` +
+          'the heading text, so renaming a heading renames its anchor.',
+      );
+    }
+  }
+
   /** Check every link a page recorded, and act at the configured severity. */
   function assertLinks(file: DocFile, refs: readonly DocLinkRef[]): void {
     for (const ref of refs) {
+      // A bare `#fragment` has no route; `assertOwnAnchors` owns it.
+      if (ref.anchorOnly) continue;
       if (ref.href === undefined) {
         report(
           config.onBrokenLinks,
@@ -835,10 +891,19 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
       // An asset is a download served beside the docs, never a route, so the
       // published-route set has nothing to say about it. It is still recorded,
       // and the `href === undefined` check above still contains it.
-      if (knownRoutes === undefined || ref.asset) {
+      if (knownRoutes === undefined || ref.asset || ref.anchorOnly) {
         continue;
       }
       const route = toRouteKey(ref.href);
+      /*
+       * A route the host's application owns, which only a root mount can
+       * produce: without a `basePath` prefix, `/login` and `/setup` are
+       * indistinguishable, so both are checked and the site says which are not
+       * its own. Nothing can infer this, so nothing tries.
+       */
+      if (isExternalRoute(route, config.externalRoutes)) {
+        continue;
+      }
       if (knownRoutes.has(route)) {
         continue;
       }
@@ -876,25 +941,6 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
             `'${aliasTarget}'. An alias is not a page: it 404s unless ` +
             '`createDocsRedirects` is wired into `next.config.ts`, and it is ' +
             `never prerendered. Link to '${aliasTarget}' directly.`,
-        );
-        continue;
-      }
-
-      /*
-       * An absolute link at a root mount that matches no page. It may be a
-       * typo, or it may be a route of the host's application that this package
-       * has never heard of and has no way to hear of — so the site says which,
-       * and the default says nothing.
-       */
-      if (ref.unverifiable) {
-        report(
-          config.onUnverifiableLinks,
-          'broken-link',
-          `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
-            `which resolves to '${route}' — no documentation page owns it.` +
-            `${describeSuggestion(route, knownRoutes)} The docs are mounted ` +
-            'at the root, so this may equally be a route of your own ' +
-            "application: leave `onUnverifiableLinks` at `'ignore'` if it is.",
         );
         continue;
       }
@@ -955,6 +1001,7 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
       }
       await resolveImages(hast, file, imageResolver);
       assertLinks(file, vfile.data.docLinks ?? []);
+      assertOwnAnchors(file, hast, vfile.data.docLinks ?? []);
 
       return {
         frontmatter: file.frontmatter,

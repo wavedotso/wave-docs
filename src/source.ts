@@ -160,7 +160,8 @@ export function resolveDocsConfig<
     basePath: normalizeBasePath(config.basePath ?? '/docs'),
     includeDrafts: config.includeDrafts ?? false,
     onBrokenLinks: config.onBrokenLinks ?? 'throw',
-    onUnverifiableLinks: config.onUnverifiableLinks ?? 'ignore',
+    onBrokenAnchors: config.onBrokenAnchors ?? 'throw',
+    externalRoutes: config.externalRoutes ?? [],
     // `exactOptionalPropertyTypes`: the key is absent, never `undefined`, so
     // `parseFrontmatter` stays the single place the default is applied.
     ...(config.frontmatterSchema === undefined
@@ -222,7 +223,8 @@ export function createDocsSource<
     resolved.basePath,
     resolved.includeDrafts,
     resolved.onBrokenLinks,
-    resolved.onUnverifiableLinks,
+    resolved.onBrokenAnchors,
+    resolved.externalRoutes.join(','),
     schemaKey(resolved.frontmatterSchema),
   ].join('\0');
 

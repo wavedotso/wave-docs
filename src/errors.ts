@@ -48,6 +48,8 @@ export type DocsErrorCode =
   | 'draft-link'
   /** A link resolves to an alias, which is a redirect and not a page. */
   | 'alias-link'
+  /** A `#fragment` that no heading on the target page owns. */
+  | 'broken-anchor'
   /** An `aliases` entry is empty, escapes the root, or is not URL-safe. */
   | 'invalid-alias'
   /** Two pages claim one alias, or an alias shadows a real route. */
