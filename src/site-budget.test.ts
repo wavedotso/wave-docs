@@ -158,21 +158,45 @@ describe('the site is an acceptance harness', () => {
     expect(LAYOUT_PROPERTIES.length).toBeGreaterThan(15);
   });
 
-  it('keeps the route files as thin as the README says they are', () => {
+  it('puts nothing between the shell and the page', () => {
     /*
-     * The README's headline is `export default docs.Layout`. If the harness
-     * needed a wrapper, a provider or a `<div>` around it, the headline would
-     * be a lie and this is where that shows up.
+     * The claim is that `docs.Layout` needs no help: no wrapper, no provider, no
+     * `<div>` between it and `children`. A wrapper is exactly what would put the
+     * TOC inside the article's grid column, so if the harness needed one, the
+     * README's headline would be a lie and this is where it would show.
+     *
+     * ⚠️ THE SHAPE MOVED WHEN THE SITE MOVED TO THE ROOT MOUNT. It used to be
+     * `site/app/docs/layout.tsx` containing the single line
+     * `export default docs.Layout;` and no JSX at all. With `basePath: '/'`
+     * there is no `/docs` segment to hang a nested layout on, so the root layout
+     * renders both `<html>`/`<body>` and the shell — which is legal precisely
+     * because `docs.Layout` owns neither, and is the same property that lets a
+     * consumer put an announcement banner above it.
+     *
+     * The one-line re-export is still exercised, in `smoke/app/docs/layout.tsx`,
+     * which builds in CI in both output modes. So between the two harnesses this
+     * repository covers both documented shapes and both mount points — the
+     * default `/docs` in smoke and the root mount here — rather than the same
+     * one twice.
      */
-    const layout = readFileSync(
-      path.join(SITE, 'app', 'docs', 'layout.tsx'),
-      'utf8',
-    );
+    const layout = readFileSync(path.join(SITE, 'app', 'layout.tsx'), 'utf8');
 
-    expect(layout).toContain('export default docs.Layout;');
-    // No JSX at all in the docs layout: a wrapper element is exactly the thing
-    // that would put the TOC inside the article's grid column.
-    expect(layout).not.toContain('<');
+    // `children` is the direct and only child of the shell.
+    expect(layout).toMatch(/<docs\.Layout>\s*\{children\}\s*<\/docs\.Layout>/);
+
+    /*
+     * And nothing else is an element. `html` and `body` are the root layout's
+     * own and unavoidable; anything past those three is a wrapper, whatever it
+     * is called.
+     */
+    const elements = [...layout.matchAll(/<([A-Za-z][\w.]*)[\s/>]/g)].map(
+      (match) => match[1],
+    );
+    expect([...new Set(elements)].sort()).toEqual([
+      'body',
+      'docs.Layout',
+      'html',
+    ]);
   });
 
   it('links between pages the way the README tells everyone to', () => {

@@ -13,15 +13,27 @@ import { createDocsRoute } from '@waveso/docs/next';
  * `alternates.canonical`, `og:url` and the sitemap all derive from it, so there
  * is one origin in this repository and it is on this line.
  *
- * ⚠️ AND `basePath` IS STILL `/docs`, WHICH IS WHY THE DOMAIN IS CUSTOM. A
- * project-pages URL would serve this from `wavedotso.github.io/wave-docs`, and
- * every route would need `/wave-docs` prefixed — a `basePath` the quick start
- * never mentions, in the one file whose value is that it is configured with
- * nothing the quick start does not mention. A harness allowed private options
- * stops being evidence, so the domain moved instead of the config.
+ * ⚠️ `basePath: '/'` IS THE ROOT MOUNT, AND IT IS THE LESS-TESTED HALF ON
+ * PURPOSE. The domain is only documentation, so `docs.wave.so/installation`
+ * is the address a reader should get; `/docs/installation` on a host called
+ * `docs` says it twice.
+ *
+ * The obvious objection is that the harness should exercise what a new install
+ * gets, which is the `/docs` default — and `smoke/` already does, in both output
+ * modes, on every CI run. So the default is covered either way, and putting this
+ * site on the root mount covers the configuration that was thin instead: an
+ * empty base path is a distinct code path in `toHref`, `toRoute` and
+ * `isInternalAbsoluteLink`, and until now two unit assertions were all of it.
+ *
+ * ⚠️ AND IT CHANGES ONE BEHAVIOUR A READER OF THIS FILE SHOULD KNOW. With an
+ * empty base, an absolute link like `/installation` cannot be told apart from
+ * any other route in the app, so `isInternalAbsoluteLink` declines it and
+ * `assertLinks` never checks it. Under `/docs` a typo in `/docs/instalation`
+ * fails the build; here it does not. Relative links — which is what this site's
+ * markdown uses — are unaffected.
  */
 export const docs = createDocsRoute({
   contentDir: 'site/content',
-  basePath: '/docs',
+  basePath: '/',
   siteUrl: 'https://docs.wave.so',
 });
