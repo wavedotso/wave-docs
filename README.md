@@ -13,38 +13,11 @@
 
 <br />
 
-<!--
-  ⚠️ ABSOLUTE `raw.githubusercontent.com` URLS, PINNED TO A TAG.
+<p align="center">
+  <strong><a href="https://docs.wave.so">docs.wave.so</a></strong> — the documentation for this package, built with this package.
+</p>
 
-  npm rewrites relative markdown image paths onto its own CDN, but it does NOT
-  rewrite `<source srcset>` inside a `<picture>` — so a relative path here shows
-  a broken image on npmjs.com. And pinning to `main` rather than a tag means an
-  old version's README displays a future product: someone reading 0.3.0 in 2027
-  would see whatever the shell looks like then.
-
-  `pnpm shoot` regenerates these from the real site build. It is a LOCAL
-  command and CI deliberately does not run `pnpm shoot --check`: these PNGs are
-  compared byte for byte, and bytes do not survive a change of operating system
-  — the font stack resolves to SF Pro on the machine that shot them and to
-  DejaVu on a Linux runner, so every pixel of text differs and no tolerance
-  rescues glyphs that are different shapes. The regression that gate was meant
-  to catch — a stylesheet change reflowing the shell — is covered by the browser
-  tier, which asserts geometry rather than pixels in the same Chromium
-  everywhere. `scripts/shoot.ts` says the same at greater length.
--->
-<picture>
-  <source
-    media="(prefers-color-scheme: dark)"
-    srcset="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.4.0/docs/media/hero-dark.png"
-  />
-  <img
-    src="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.4.0/docs/media/hero-light.png"
-    alt="A documentation page rendered by @waveso/docs: a navigation sidebar, prose with syntax-highlighted code frames, and a table of contents."
-    width="100%"
-  />
-</picture>
-
-<p align="center"><em>The default page, with no CSS of your own. <a href="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.4.0/docs/media/search.png">Search dialog →</a></em></p>
+<p align="center"><em>Every page you see there is markdown in <code>site/content/</code>, rendered by <code>docs.Layout</code> with no layout CSS of its own. It is the acceptance harness and the showcase, and it is the same build CI runs on every commit — so it cannot drift from what this README claims.</em></p>
 
 ---
 
@@ -233,7 +206,7 @@ Every component takes data as props, and two modules in `src/react/` import from
 
 `DocsToc`'s `rootMargin` is the `IntersectionObserver` margin that decides how far above the viewport a heading counts as current; the default keeps the highlight on the section you are reading rather than the one about to arrive. `topLabel` is the back-to-top link at the end.
 
-The two components the adapter injects take a little more than an `<a>` and an `<img>`. `DocsLinkProps` adds `prefetch` — passed straight to `next/link`, where `false` disables the hover and viewport paths both, so it is a stronger switch in the App Router than the name suggests. `DocsImageProps` adds `sizes`, `loading`, `decoding` and `fetchPriority`, forwarded to `next/image`; markdown carries none of them, so they come from your `imageResolver` or from a `components` override. `decoding` defaults to `async`, and `loading` to `lazy` — except on an image the author marked `eager`, which is usually the page's largest element.
+The two components the adapter injects take a little more than an `<a>` and an `<img>`. `DocsLinkProps` adds `prefetch` — passed straight to `next/link`, where `false` disables the hover and viewport paths both, so it is a stronger switch in the App Router than the name suggests. `DocsImageProps` carries `src`, `alt`, `width` and `height` — the four `next/image` refuses to render without — and adds `sizes`, `loading`, `decoding` and `fetchPriority`, forwarded to it; markdown carries none of them, so they come from your `imageResolver` or from a `components` override. `decoding` defaults to `async`, and `loading` to `lazy` — except on an image the author marked `eager`, which is usually the page's largest element.
 
 ### Layout
 

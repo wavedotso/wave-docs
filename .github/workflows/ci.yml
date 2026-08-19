@@ -115,23 +115,6 @@ jobs:
       - name: Build the documentation site
         run: pnpm run build:site
 
-      # ⚠️ NO `pnpm shoot --check` STEP HERE, DELIBERATELY. It was added and
-      # removed without ever having run: byte-identical screenshots cannot
-      # survive a change of operating system. `--wave-docs-font-sans` resolves
-      # to SF Pro on the machine the committed PNGs were shot on and to
-      # DejaVu/Liberation on this runner, so every pixel of text differs and no
-      # tolerance rescues it — the glyphs are not the same shapes.
-      #
-      # What that gate was for — a stylesheet change silently reflowing the
-      # shell — is covered by the browser tier above, which asserts the
-      # geometry rather than the pixels: zero gap between a code frame's title
-      # and its body, one background across all four shell containers, the
-      # active nav item inside the visible box. Those run in the same Chromium
-      # everywhere and say what broke instead of "1 of 3 images differ".
-      #
-      # `pnpm shoot` stays a local command, for regenerating the README images
-      # deliberately when the shell changes.
-
       # Must follow the build: the examples import `@waveso/docs/*` by name,
       # which Node self-references through the real `exports` map into dist/.
       # Two README examples shipped not compiling because nothing had ever
