@@ -1,5 +1,102 @@
 # @waveso/docs
 
+## 0.6.0
+
+### Minor Changes
+
+- 633f274: **Anchors are checked now.** A route was verified and its fragment thrown away, so `[setup](./install.md#setup)` built green with no `#setup` anywhere on the page. It is the more common of the two link failures — headings get renamed constantly and nothing renames the links into them — and it went unchecked while the rarer one did not.
+
+  `onBrokenAnchors` defaults to `'throw'`, and the error names the heading you probably meant:
+
+  ```
+  @waveso/docs: guide.md:12 links to '#instalation', and this page has no
+  '#instalation'. Did you mean 'installation'?
+  ```
+
+  Checked against every `id` in the rendered page, not against the table of contents — which captures `h2`–`h3` only, so a link to an `h4` is fine, and so is a link to an id one of your `rehypePlugins` added. Same-page anchors are checked as each page renders, so those errors carry a line number; cross-page anchors need the target's ids and are checked by `docs.renderAll()`, which runs in every build that serves search.
+
+  **`onUnverifiableLinks` is replaced by `externalRoutes`, and the default flipped.** It shipped in no release, so nothing to migrate.
+
+  The old option asked you to reason about _our_ inability to verify a link. The new one asks for a fact about _your_ application, which is the thing you actually know:
+
+  ```ts
+  createDocsRoute({
+    basePath: "/",
+    externalRoutes: ["/login", "/dashboard", "/api/"],
+  });
+  ```
+
+  And absolute links at a root mount are now checked by default rather than ignored. A root mount is what you choose when the origin serves documentation and nothing else — `docs.example.com` — so an unknown absolute link there is a typo, and silence was the wrong default. A site that serves something else names what is its own; `/api` covers `/api/keys` and not `/apiary`.
+
+  That also removes the `'warn'` level that made no sense: warning on every legitimate route in your application is not a diagnostic.
+
+  **New error code `broken-anchor`**, documented in the troubleshooting table and offered in the bug form.
+
+- b6edd50: **New subpath `@waveso/docs/react/next-link`, exporting `DocsLink`** — `next/link` already adapted, so composing a shell by hand no longer needs a cast.
+
+  Passing `next/link` straight into `DocsSidebar` does not type-check under `exactOptionalPropertyTypes`: Next's `LinkProps` re-declares `onClick?`, `onMouseEnter?` and `onTouchStart?` _without_ `| undefined` while React's anchor props include it, so the two declaration files disagree over three props `next/link` accepts perfectly well at run time. It is a disagreement between dependencies, true of every `next/link` call site in a project with that flag on, and nothing the shape of `DocsLinkProps` can fix without breaking the plain-`<a>` fallback that keeps these components host-agnostic.
+
+  `docs.Layout` and `DocsSearch` have always absorbed it internally, so it only bit someone building their own shell — who was told in Troubleshooting to write `Link={Link as DocsLinkComponent}` and wait for a Next-wired component to ship. This is that component; the cast is retired and the note now shows the import.
+
+  ```tsx
+  "use client";
+  import { DocsLink } from "@waveso/docs/react/next-link";
+  import { DocsSidebar } from "@waveso/docs/react/sidebar";
+
+  <DocsSidebar nav={nav} pathname={pathname} Link={DocsLink} />;
+  ```
+
+  It carries `'use client'` — not for a hook, there is none, but because `DocsLink` is a function and a function cannot be handed from a Server Component to a Client one. Without the directive it would be a server reference and `next build` would refuse it, which is the same boundary this release fixed for MiniSearch options.
+
+  The private adapter factory it is built from is renamed `link-adapter.ts`, so the two are not one letter apart in the same directory. 180 bytes gzipped, with a 300-byte budget: it should stay the thinnest thing this package ships to a browser.
+
+- 1fa4317: **Link checking has severity levels, and broken links now say what you probably meant.**
+
+  **BREAKING: `assertLinks: boolean` is replaced by `onBrokenLinks: 'throw' | 'warn' | 'ignore'`**, defaulting to `'throw'`. `assertLinks: false` becomes `onBrokenLinks: 'ignore'`; `assertLinks: true` was the default and can be dropped. The shape follows Docusaurus's `onBrokenLinks` for the same reason it exists there: the tool cannot know how much a given site cares, and guessing produces either a build that fails on somebody's legitimate URL or one that ships a dead link quietly.
+
+  **Broken-link errors now offer the closest published route** when the link looks like a typo of one:
+
+  ```
+  @waveso/docs: guide.md:12 links to './instalation.md', which resolves to
+  '/docs/instalation' — no such page exists. Did you mean '/docs/installation'?
+  ```
+
+  A typo is a near-miss by construction, which is what makes the suggestion safe to offer _and_ safe to withhold — the same trick `git`, `tsc`, `cargo` and Python 3.12 use. It decorates an error that was already being raised; it never decides whether to raise one. `/docs/instructions` is five edits from `/docs/installation` — a different word, not a typo — and gets no suggestion, because sending an author to rename a correct link is worse than saying nothing.
+
+  **New `onUnverifiableLinks`, defaulting to `'ignore'`, closes the root-mount gap.** To check `[x](/setup)` the package must first know it is a documentation link. Under `basePath: '/docs'` the prefix says so. Under `basePath: '/'` there is no prefix — `/setup` may be a page of yours, `/login` almost certainly is — so until now those links were dropped unrecorded and a typo in one shipped silently.
+
+  They are recorded and marked now, and the site decides:
+
+  ```ts
+  createDocsRoute({
+    contentDir: "content/docs",
+    basePath: "/",
+    onUnverifiableLinks: "throw", // this domain is documentation and nothing else
+  });
+  ```
+
+  The default stays `'ignore'` because a root mount inside a larger application genuinely cannot distinguish the two, and failing that build would be wrong. Relative links (`./other.md`) are resolved against the content tree, so they are verifiable at every mount and always governed by `onBrokenLinks`.
+
+  `docs.wave.so` runs with `onUnverifiableLinks: 'throw'`, which is the configuration this option was written for.
+
+### Patch Changes
+
+- 102d6ae: **The README shows the live site instead of screenshots.** Three PNGs, a Playwright script to shoot them, a pinned tag and two tests to keep the pin honest — replaced by a link to [docs.wave.so](https://docs.wave.so), which is this package's documentation built with this package.
+
+  The screenshots were a photograph of the harness. The site _is_ the harness: the same `site/` that CI builds on every commit, whose acceptance test forbids it a single line of layout CSS of its own. A reader who wants to know what the shell looks like can now use it — open the search, resize to a phone, tab through the drawer — instead of looking at a picture of it taken on somebody's Mac.
+
+  It also removes a whole class of staleness. A pinned screenshot is wrong the moment the shell changes and right only if someone remembers to re-shoot and re-pin; the last one was pinned to `v0.3.0` while the images had been regenerated for 0.4.0, so npm showed a search dialog the release had already replaced. A URL cannot go stale.
+
+  `pnpm shoot` is gone. The regression it was meant to catch — a stylesheet change reflowing the shell — is the browser tier's, which asserts geometry rather than pixels and runs in the same Chromium everywhere.
+
+- e2bbaf4: **docs.wave.so serves the documentation at its root**, so a page is `docs.wave.so/installation` rather than `docs.wave.so/docs/installation` — a host called `docs` should not say it twice.
+
+  Nothing in the package changed: `basePath` has always taken any prefix, and `'/'` is one of them. The default is still `/docs`, defined in one place, and every consumer gets it unless they say otherwise.
+
+  What did change is which configuration the harnesses cover. `smoke/` builds on the default `/docs` in both output modes on every CI run, so moving the site to the root mount loses nothing and covers the half that was thin: an empty base path is a distinct code path in `toHref`, `toRoute` and `isInternalAbsoluteLink`, and two unit assertions used to be all of it. The two harnesses now cover both mount points and both documented layout shapes — smoke keeps the README's one-line `export default docs.Layout`, the site composes `<docs.Layout>` inside a root layout.
+
+  **One behaviour differs at the root mount, and it is worth knowing.** With an empty base, an absolute link like `/installation` cannot be told apart from any other route in the application, so it is not checked against the published routes — under `/docs`, a typo in `/docs/instalation` fails the build; at the root it does not. Relative markdown links, which is what documentation should be written with, are unaffected.
+
 ## 0.5.0
 
 ### Minor Changes
