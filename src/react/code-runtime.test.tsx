@@ -42,7 +42,11 @@ async function renderDoc(
   content: string,
 ): Promise<{ hast: DocFile extends never ? never : import('hast').Root }> {
   const renderer = createDocsRenderer({
-    config: { basePath: '/docs', assertLinks: false },
+    config: {
+      basePath: '/docs',
+      onBrokenLinks: 'ignore',
+      onUnverifiableLinks: 'ignore',
+    },
     excludeLangs: ['mermaid'],
     titleHeading: false,
   });

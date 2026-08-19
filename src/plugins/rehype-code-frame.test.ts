@@ -55,7 +55,11 @@ async function runToFrame(content: string): Promise<Root> {
 
 async function render(content: string): Promise<RenderedDoc> {
   const renderer = createDocsRenderer({
-    config: { basePath: '/docs', assertLinks: false },
+    config: {
+      basePath: '/docs',
+      onBrokenLinks: 'ignore',
+      onUnverifiableLinks: 'ignore',
+    },
     excludeLangs: ['mermaid'],
   });
   return renderer.render(makeDoc(content));

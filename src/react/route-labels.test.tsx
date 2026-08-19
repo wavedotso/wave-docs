@@ -44,7 +44,7 @@ afterEach(() => {
 it('announces a copy in the language the route was configured in', async () => {
   const route = createDocsRoute({
     contentDir: FIXTURE,
-    assertLinks: false,
+    onBrokenLinks: 'ignore',
     labels: { copied: 'Copiado para a área de transferência.' },
   });
 

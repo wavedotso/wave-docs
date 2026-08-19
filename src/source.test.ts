@@ -126,7 +126,10 @@ describe('resolveDocsConfig', () => {
       contentDir: path.resolve(process.cwd(), 'content'),
       basePath: '/docs',
       includeDrafts: false,
-      assertLinks: true,
+      onBrokenLinks: 'throw',
+      // `'ignore'`, because only the site knows whether an absolute link at a
+      // root mount is a documentation route or one of its own.
+      onUnverifiableLinks: 'ignore',
     });
   });
 

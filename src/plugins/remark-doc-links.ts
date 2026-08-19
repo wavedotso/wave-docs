@@ -45,6 +45,21 @@ export interface DocLinkRef {
    * never be a member of.
    */
   asset?: true;
+  /**
+   * An absolute link at a root mount, which cannot be proved to be ours.
+   *
+   * ⚠️ RECORDED RATHER THAN SKIPPED, WHICH IS THE CHANGE. Under
+   * `basePath: '/docs'` an absolute link either starts with `/docs` — so it is
+   * a documentation route and is checked — or it does not, and belongs to the
+   * host's application. Under `basePath: '/'` that test cannot be made:
+   * `/setup` may be a page here and `/login` almost certainly is not, and
+   * nothing in the markdown says which.
+   *
+   * So it is collected and marked, and `DocsConfig.onUnverifiableLinks` decides
+   * what a site wants done about it — `'ignore'` by default, because only the
+   * site knows whether it is documentation and nothing else.
+   */
+  unverifiable?: true;
 }
 
 /**
@@ -115,6 +130,11 @@ function isRelativeLink(href: string): boolean {
  * apart from the rest of the site, and asserting `/login` against the set of
  * documentation routes would fail builds over links that are perfectly good.
  */
+/** No prefix at all — the docs own the whole origin. */
+export function isRootMount(basePath: string): boolean {
+  return basePath.replace(/\/+$/, '') === '';
+}
+
 function isInternalAbsoluteLink(href: string, basePath: string): boolean {
   const base = basePath.replace(/\/+$/, '');
   if (base === '' || href.startsWith('//')) {
@@ -436,13 +456,19 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
       }
 
       const line = node.position?.start.line;
-      const record = (href: string | undefined, asset?: true): void => {
+      const record = (
+        href: string | undefined,
+        flags: { asset?: true; unverifiable?: true } = {},
+      ): void => {
         const ref: DocLinkRef = { raw, href };
         if (line !== undefined) {
           ref.line = line;
         }
-        if (asset !== undefined) {
-          ref.asset = asset;
+        if (flags.asset !== undefined) {
+          ref.asset = flags.asset;
+        }
+        if (flags.unverifiable !== undefined) {
+          ref.unverifiable = flags.unverifiable;
         }
         refs.push(ref);
         if (href !== undefined) {
@@ -463,6 +489,24 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
           // — but respelled first, so the comparison is like-for-like.
           if (isInternalAbsoluteLink(raw, basePath) && !isAssetLink(raw)) {
             record(normalizeInternalRoute(raw, basePath));
+            continue;
+          }
+          /*
+           * At a root mount there is no prefix to test against, so an absolute
+           * link cannot be proved to be a documentation route — nor proved not
+           * to be. Recorded and marked rather than dropped, so
+           * `onUnverifiableLinks` has something to act on for a site that knows
+           * the answer. `//host` is another origin and never ours.
+           */
+          if (
+            isRootMount(basePath) &&
+            raw.startsWith('/') &&
+            !raw.startsWith('//') &&
+            !isAssetLink(raw)
+          ) {
+            record(normalizeInternalRoute(raw, basePath), {
+              unverifiable: true,
+            });
           }
           continue;
         }
@@ -470,7 +514,9 @@ export const remarkDocLinks: Plugin<[RemarkDocLinksOptions], Root> = (
         // A custom resolver owns every relative link, assets included; the
         // built-in one only claims pages.
         if (resolve === undefined && isAssetLink(raw)) {
-          record(resolveAssetLink(raw, context.dirSegments, basePath), true);
+          record(resolveAssetLink(raw, context.dirSegments, basePath), {
+            asset: true,
+          });
           continue;
         }
 

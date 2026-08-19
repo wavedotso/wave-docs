@@ -298,10 +298,24 @@ export interface DocLinkContext {
 }
 
 /**
+ * What a link problem should do to a build.
+ *
+ * The three Docusaurus settled on, and for the same reason: the tool cannot
+ * know how much a given site cares, and guessing produces either a build that
+ * fails on someone's legitimate URL or one that ships a dead link quietly.
+ *
+ * `'warn'` writes to `console.warn` and continues, which on a docs site is a
+ * line in a build log — useful during a migration, not a substitute for
+ * `'throw'`.
+ */
+export type DocsLinkSeverity = 'throw' | 'warn' | 'ignore';
+
+/**
  * Resolve an internal markdown link target to a route.
  *
  * Called for every relative link found in the source. Returning `undefined`
- * signals "not a documentation page", which — with `assertLinks` on — fails
+ * signals "not a documentation page", which — under the default
+ * `onBrokenLinks: 'throw'` — fails
  * the build rather than shipping a 404 that was valid on GitHub.
  */
 export type LinkResolver = (
@@ -381,10 +395,39 @@ export interface DocsConfig<
    */
   includeDrafts?: boolean | undefined;
   /**
-   * Fail the build when an internal link resolves to a page that does not
-   * exist. Defaults to `true`; there is no good reason to turn it off.
+   * What to do about an internal link that resolves to no published page.
+   * Defaults to `'throw'`.
+   *
+   * A link that 404s was valid in the editor and on GitHub, so it is the kind
+   * of mistake nobody finds by reading. Throwing is the default for that
+   * reason, and there is rarely a good reason to lower it — `'warn'` exists
+   * for a migration where the corpus is knowingly incomplete for a while.
+   *
+   * The error names the file and the line, and offers the closest published
+   * route when the link looks like a typo of one.
    */
-  assertLinks?: boolean | undefined;
+  onBrokenLinks?: DocsLinkSeverity | undefined;
+  /**
+   * What to do about an absolute link this package cannot verify.
+   * Defaults to `'ignore'`.
+   *
+   * ⚠️ ONLY EVER NON-EMPTY AT A ROOT MOUNT, AND THAT IS THE WHOLE REASON IT
+   * EXISTS. To check `[x](/setup)` the package must first know it is a
+   * documentation link, and under `basePath: '/docs'` it plainly is — the
+   * prefix says so. Under `basePath: '/'` there is no prefix: `/setup` may be a
+   * page of yours, and `/login` almost certainly is. The package cannot tell,
+   * so by default it says nothing.
+   *
+   * You can tell it. On a domain that serves nothing but documentation —
+   * `docs.example.com` with the docs at its root — every absolute link IS a
+   * documentation link, so an unknown one is always a bug and `'throw'` is
+   * correct. On a root mount inside a larger application, leave it alone.
+   *
+   * Relative links (`./other.md`) are unaffected: they are resolved against the
+   * content tree, so they are always verifiable and always governed by
+   * {@link DocsConfig.onBrokenLinks}.
+   */
+  onUnverifiableLinks?: DocsLinkSeverity | undefined;
   /**
    * Validates every page's frontmatter. Defaults to `docFrontmatterSchema`
    * from `@waveso/docs/frontmatter`.
@@ -438,7 +481,8 @@ export interface ResolvedDocsConfig<
   contentDir: string;
   basePath: string;
   includeDrafts: boolean;
-  assertLinks: boolean;
+  onBrokenLinks: DocsLinkSeverity;
+  onUnverifiableLinks: DocsLinkSeverity;
   /**
    * As supplied. `resolveDocsConfig` omits the key rather than setting it to
    * `undefined` when the built-in `docFrontmatterSchema` applies, so the

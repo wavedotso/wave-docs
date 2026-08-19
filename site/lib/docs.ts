@@ -25,15 +25,19 @@ import { createDocsRoute } from '@waveso/docs/next';
  * empty base path is a distinct code path in `toHref`, `toRoute` and
  * `isInternalAbsoluteLink`, and until now two unit assertions were all of it.
  *
- * ⚠️ AND IT CHANGES ONE BEHAVIOUR A READER OF THIS FILE SHOULD KNOW. With an
- * empty base, an absolute link like `/installation` cannot be told apart from
- * any other route in the app, so `isInternalAbsoluteLink` declines it and
- * `assertLinks` never checks it. Under `/docs` a typo in `/docs/instalation`
- * fails the build; here it does not. Relative links — which is what this site's
- * markdown uses — are unaffected.
+ * ⚠️ `onUnverifiableLinks: 'throw'` IS WHAT MAKES THE ROOT MOUNT SAFE HERE, AND
+ * IT IS A CLAIM ONLY THIS FILE CAN MAKE. At an empty base path an absolute link
+ * like `/installation` cannot be told apart from any other route in the
+ * application, so the package refuses to guess and says nothing by default.
+ *
+ * This domain has no other routes: it serves documentation and nothing else. So
+ * every absolute link here IS a documentation link, an unknown one is always a
+ * bug, and the site says so. That is the whole design of the option — the tool
+ * does not guess, the site declares.
  */
 export const docs = createDocsRoute({
   contentDir: 'site/content',
   basePath: '/',
   siteUrl: 'https://docs.wave.so',
+  onUnverifiableLinks: 'throw',
 });

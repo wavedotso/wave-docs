@@ -39,7 +39,7 @@ async function readPage(raw: string): Promise<DocFile> {
   dirs.push(dir);
   await writeFile(path.join(dir, 'page.md'), raw, 'utf8');
 
-  const source = createDocsSource({ contentDir: dir, assertLinks: false });
+  const source = createDocsSource({ contentDir: dir, onBrokenLinks: 'ignore' });
   const file = await source.find(['page']);
   if (file === undefined) throw new Error('the page did not resolve');
   return file;

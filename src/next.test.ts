@@ -1215,7 +1215,7 @@ describe('every label reaches a reader', () => {
         'source',
         'labels',
       ),
-      assertLinks: false,
+      onBrokenLinks: 'ignore',
       labels,
     });
 
@@ -1249,7 +1249,7 @@ describe('every label reaches a reader', () => {
         'source',
         'labels',
       ),
-      assertLinks: false,
+      onBrokenLinks: 'ignore',
     });
 
     const markup = renderToStaticMarkup(
@@ -1288,7 +1288,7 @@ describe('the next/image adapter forwards what the component map declares', () =
     });
     const route = createDocsRoute({
       contentDir: dir,
-      assertLinks: false,
+      onBrokenLinks: 'ignore',
       imageResolver: () => ({ src: '/diagram.png', width: 800, height: 600 }),
       rehypePlugins: [
         () => (tree: HastRoot) => {

@@ -184,8 +184,33 @@ describe('remarkDocLinks', () => {
     );
   });
 
-  it('cannot tell an internal absolute link from any other when the base path is empty', () => {
-    const { refs } = run('[a](/login)', FROM_PAGE, { basePath: '' });
+  it('records an absolute link at a root mount, marked as unverifiable', () => {
+    /*
+     * ⚠️ IT USED TO DROP THESE ON THE FLOOR, AND THAT WAS THE WHOLE PROBLEM.
+     * With no prefix, `/login` cannot be proved to be a documentation route —
+     * nor proved not to be — so the plugin recorded nothing and `assertLinks`
+     * never saw it. A typo in an absolute link shipped.
+     *
+     * It is recorded and marked now. The plugin still refuses to guess; the
+     * decision moves to `onUnverifiableLinks`, which the *site* answers,
+     * because only the site knows whether it serves anything but documentation.
+     */
+    const { refs, urls } = run('[a](/login)', FROM_PAGE, { basePath: '' });
+
+    expect(refs).toEqual([
+      { raw: '/login', href: '/login', line: 1, unverifiable: true },
+    ]);
+    // Recorded, not rewritten: an absolute link is already a route.
+    expect(urls).toEqual(['/login']);
+  });
+
+  it('leaves another origin alone at a root mount', () => {
+    // `//host/x` is protocol-relative — somebody else's site, never ours, and
+    // the one absolute-looking form that must not be collected.
+    const { refs } = run('[a](//cdn.example.com/x)', FROM_PAGE, {
+      basePath: '',
+    });
+
     expect(refs).toEqual([]);
   });
 

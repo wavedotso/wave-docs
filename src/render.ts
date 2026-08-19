@@ -44,12 +44,15 @@ import type {
   DocFile,
   DocFrontmatter,
   DocLinkContext,
+  DocsLinkSeverity,
   ImageResolver,
   LinkResolver,
   RenderedDoc,
   ResolvedDocsConfig,
 } from './types.js';
+import type { DocsErrorCode } from './errors.js';
 import { docsError } from './docs-error.js';
+import { describeSuggestion } from './link-suggestion.js';
 
 /*
  * `@shikijs/rehype` asks for `HighlighterGeneric<any, any>` while
@@ -87,7 +90,7 @@ export { resolveMarkdownLink } from './plugins/remark-doc-links.js';
  */
 export type DocsRendererConfig = Pick<
   ResolvedDocsConfig,
-  'basePath' | 'assertLinks'
+  'basePath' | 'onBrokenLinks' | 'onUnverifiableLinks'
 >;
 
 export interface DocsRendererOptions {
@@ -792,20 +795,42 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
   }
 
   /**
-   * Fail the build on a link that would have 404'd.
+   * Act on a link problem at the severity the site chose.
    *
-   * Deliberately a throw and not a warning: the link was valid in the editor
-   * and on GitHub, so a warning in a build log is a warning nobody reads.
+   * ⚠️ `'throw'` IS THE DEFAULT AND SHOULD STAY IT. The link was valid in the
+   * editor and on GitHub, so a warning in a build log is a warning nobody
+   * reads. The setting exists because a migration may knowingly run against an
+   * incomplete corpus for a while and the tool cannot know that — which is the
+   * same reason Docusaurus has one.
    */
+  function report(
+    severity: DocsLinkSeverity,
+    code: DocsErrorCode,
+    message: string,
+  ): void {
+    if (severity === 'ignore') return;
+    if (severity === 'throw') throw docsError(code, message);
+    /*
+     * `console.warn`, ungated. `warnDroppedHref` in the React layer keeps
+     * itself out of a reader's console with a `NODE_ENV` check; this runs in a
+     * build, where production IS the run being reported on, so the same guard
+     * would silence it exactly where it is wanted.
+     */
+    console.warn(docsError(code, message).message);
+  }
+
+  /** Check every link a page recorded, and act at the configured severity. */
   function assertLinks(file: DocFile, refs: readonly DocLinkRef[]): void {
     for (const ref of refs) {
       if (ref.href === undefined) {
-        throw docsError(
+        report(
+          config.onBrokenLinks,
           'broken-link',
           `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
             'which does not resolve to a documentation page. Use a path ' +
             'relative to this file, or an absolute URL for external links.',
         );
+        continue;
       }
       // An asset is a download served beside the docs, never a route, so the
       // published-route set has nothing to say about it. It is still recorded,
@@ -824,13 +849,15 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
        * has no alias to give. Same throw, different diagnosis.
        */
       if (draftRoutes?.has(route)) {
-        throw docsError(
+        report(
+          config.onBrokenLinks,
           'draft-link',
           `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
             `which resolves to '${route}' — a page marked \`draft: true\`, ` +
             'so it is not published and the link would 404. Publish the page, ' +
             'remove the link, or build with `includeDrafts`.',
         );
+        continue;
       }
       /*
        * An alias is a redirect, not a page: `generateStaticParams` never emits
@@ -841,7 +868,8 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
        */
       const aliasTarget = aliasRoutes?.get(route);
       if (aliasTarget !== undefined) {
-        throw docsError(
+        report(
+          config.onBrokenLinks,
           'alias-link',
           `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
             `which resolves to '${route}' — an alias that redirects to ` +
@@ -849,12 +877,35 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
             '`createDocsRedirects` is wired into `next.config.ts`, and it is ' +
             `never prerendered. Link to '${aliasTarget}' directly.`,
         );
+        continue;
       }
-      throw docsError(
+
+      /*
+       * An absolute link at a root mount that matches no page. It may be a
+       * typo, or it may be a route of the host's application that this package
+       * has never heard of and has no way to hear of — so the site says which,
+       * and the default says nothing.
+       */
+      if (ref.unverifiable) {
+        report(
+          config.onUnverifiableLinks,
+          'broken-link',
+          `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
+            `which resolves to '${route}' — no documentation page owns it.` +
+            `${describeSuggestion(route, knownRoutes)} The docs are mounted ` +
+            'at the root, so this may equally be a route of your own ' +
+            "application: leave `onUnverifiableLinks` at `'ignore'` if it is.",
+        );
+        continue;
+      }
+
+      report(
+        config.onBrokenLinks,
         'broken-link',
         `@waveso/docs: ${describeLink(file, ref)} links to '${ref.raw}', ` +
-          `which resolves to '${route}' — no such page exists. Fix the ` +
-          'link, or add an `aliases` entry to the page it used to point at.',
+          `which resolves to '${route}' — no such page exists.` +
+          `${describeSuggestion(route, knownRoutes)} Fix the link, or add an ` +
+          '`aliases` entry to the page it used to point at.',
       );
     }
   }
@@ -903,9 +954,7 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
         hast.children.unshift(titleHeadingNode(file.frontmatter.title));
       }
       await resolveImages(hast, file, imageResolver);
-      if (config.assertLinks) {
-        assertLinks(file, vfile.data.docLinks ?? []);
-      }
+      assertLinks(file, vfile.data.docLinks ?? []);
 
       return {
         frontmatter: file.frontmatter,

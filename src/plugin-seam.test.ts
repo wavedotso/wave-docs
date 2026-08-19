@@ -44,7 +44,11 @@ async function render(
   hooks: Hooks = {},
 ): Promise<RenderedDoc> {
   const renderer = createDocsRenderer({
-    config: { basePath: '/docs', assertLinks: false },
+    config: {
+      basePath: '/docs',
+      onBrokenLinks: 'ignore',
+      onUnverifiableLinks: 'ignore',
+    },
     excludeLangs: ['mermaid'],
     titleHeading: false,
     ...hooks,

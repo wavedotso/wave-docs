@@ -60,6 +60,17 @@ function thrownCodes(): Set<string> {
     for (const match of source.matchAll(/docsError\(\s*'([a-z-]+)'/g)) {
       found.add(match[1] as string);
     }
+    /*
+     * ⚠️ AND THE CODES THAT REACH `docsError` THROUGH A REPORTER. `render.ts`
+     * routes its link failures through `report(severity, code, message)` so a
+     * site can lower them to a warning, which means `draft-link` and
+     * `alias-link` stopped appearing beside a literal `docsError(` — and this
+     * walk declared them thrown by nothing. The codes are as thrown as they
+     * ever were; only the call shape moved.
+     */
+    for (const match of source.matchAll(/report\(\s*[^,]+,\s*'([a-z-]+)'/g)) {
+      found.add(match[1] as string);
+    }
   }
   return found;
 }

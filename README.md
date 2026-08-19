@@ -791,10 +791,47 @@ interface DocsConfig<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
   contentDir: string;        // relative paths resolve against process.cwd()
   basePath?: string;         // default '/docs'; '/' normalises to ''
   includeDrafts?: boolean;   // default false
-  assertLinks?: boolean;     // default true
+  onBrokenLinks?: DocsLinkSeverity;        // default 'throw'
+  onUnverifiableLinks?: DocsLinkSeverity;  // default 'ignore'
   frontmatterSchema?: StandardSchemaV1<unknown, TFrontmatter>;
 }
+
+type DocsLinkSeverity = 'throw' | 'warn' | 'ignore';
 ```
+
+### Broken links
+
+**`onBrokenLinks` defaults to `'throw'`, and should stay there.** A link that 404s was valid in your editor and on GitHub, so it is the kind of mistake nobody finds by reading — and a warning in a build log is a warning nobody reads. `'warn'` exists for a migration running knowingly against an incomplete corpus.
+
+The error names the file, the line and the closest published route when the link looks like a typo of one:
+
+```
+@waveso/docs: guide.md:12 links to './instalation.md', which resolves to
+'/docs/instalation' — no such page exists. Did you mean '/docs/installation'?
+Fix the link, or add an `aliases` entry to the page it used to point at.
+```
+
+A suggestion is offered only for a genuine near-miss. `/docs/instructions` is five edits from `/docs/installation` — a different word, not a typo — and gets none, because a wrong suggestion sends you to rename a link that was correct.
+
+### Links this package cannot check
+
+**`onUnverifiableLinks` only ever applies at a root mount**, and it defaults to `'ignore'`.
+
+To check `[x](/setup)` the package must first know it is a documentation link. Under `basePath: '/docs'` it plainly is — the prefix says so, and the link is governed by `onBrokenLinks` like any other. Under `basePath: '/'` there is no prefix: `/setup` may be a page of yours and `/login` almost certainly is, and nothing in the markdown distinguishes them. So by default the package says nothing rather than failing a build over a URL that is perfectly correct.
+
+You can tell it. On a domain serving nothing but documentation — `docs.example.com` with the docs at its root — every absolute link *is* a documentation link, so an unknown one is always a bug:
+
+```ts
+import { createDocsRoute } from '@waveso/docs/next';
+
+export const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  basePath: '/',
+  onUnverifiableLinks: 'throw',
+});
+```
+
+Relative links (`./other.md`) are resolved against the content tree, so they are verifiable at every mount and always governed by `onBrokenLinks`. Writing them relative is the way to keep every link checked without touching either setting.
 
 `createDocsRoute` additionally accepts:
 
