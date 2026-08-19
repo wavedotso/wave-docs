@@ -1,5 +1,178 @@
 # @waveso/docs
 
+## 0.5.0
+
+### Minor Changes
+
+- 0d61f5d: **The content scan no longer opens every markdown file at once.** It failed on exactly the large documentation sets this package exists for, and it got worse as a site grew.
+
+  `scanDir` read its own pages with a bare `Promise.all` _and_ recursed into its subdirectories with another, so the number of `readFile` calls in flight equalled the page count of the whole tree. Reproduced on a 1,201-page corpus at the 1,024-descriptor soft limit every Linux and CI image ships with: `next build` died with
+
+  ```
+  Error: EMFILE: too many open files, open '<contentDir>/s33/p0829.md'
+  ```
+
+  — no error code, no mention that this was the docs scan, and a filename out of a thousand that sends the author to inspect a page which is perfectly fine.
+
+  **Every filesystem call in the scan now goes through one process-wide semaphore**, bounded at 64. Process-wide rather than per-scan because descriptors are a process resource: two routes scanning two content directories would each stay under a per-scan bound and together exceed the only one that matters. The bound is on the leaf calls — `readFile`, `readdir`, `stat`, `realpath` — and deliberately not on the recursion, which would deadlock the moment every slot were held by a directory waiting for a slot to read its children.
+
+  **64 is chosen for the tightest descriptor limit, not for speed.** Measured over those 1,201 pages in 49 directories, nine runs, medians: **88 ms ungated, 106 ms at a bound of 16, 102 ms at 64, 101 ms at 128 and at 256.** Flat from 64 upwards — so the ~14 ms is the gate's own per-call overhead, not lost parallelism, and there is no speed to buy above 64. libuv's filesystem pool is four threads by default, so there was never 1,201-way parallelism there to lose. 14 ms sits against a build that highlights those same pages with Shiki, which is three orders of magnitude more.
+
+  **New error code `descriptor-limit`**, for when the limit is lower than the bound or something else in the process has the descriptors. It says which content directory was being scanned, that the scan holds at most 64 open, and that the fix is `ulimit -n` rather than a smaller corpus — the opposite of what a reader concludes from an error naming one of their own pages. Documented in the troubleshooting table and offered in the bug form.
+
+  The regression test asserts the invariant rather than the number: peak concurrent filesystem calls during a 300-page scan across 30 directories, which had 300 in flight before and has a fixed ceiling now however large the corpus.
+
+- 6c244e5: **The mobile drawer now opens on the page you are reading.** Scroll-the-current-item-into-view had never run on a phone — not intermittently, never.
+
+  Below 64rem the sidebar lives inside `<dialog class="wave-docs-layout__drawer">`, which the UA stylesheet keeps at `display: none` until `showModal()`, wrapped in a `.wave-docs-layout__sidebar` that is `display: contents`. An element in a `display: none` subtree generates no boxes at all, so both report `scrollHeight === clientHeight === 0` and the walk for a scrollable ancestor went past the drawer, past the grid, and returned `null`.
+
+  The timing is what made it unreachable rather than merely unreliable: the effect was keyed on `pathname` alone, and `DocsNav` closes the drawer on every `pathname` change — so at the one moment it could fire, the drawer was always shut, and nothing re-ran when the reader opened it. Measured in Chromium at 390×800 on a 60-item nav: the active item's bottom edge sat at **1594px in an 800px drawer**, 794px below the fold, on the one navigation where the reader knows exactly what they asked for.
+
+  `DocsSidebar` now also positions itself when a `<dialog>` around it opens. It finds that dialog with `closest('dialog')` rather than taking a prop from `DocsNav`, because the condition is "I am inside something that can be hidden and revealed" rather than "I am inside the drawer" — so a consumer who puts `DocsSidebar` in a dialog of their own gets the same behaviour, and nothing in the sidebar has to know what the drawer is.
+
+  **Size budgets raised deliberately:** `sidebar` 1.8 → 1.9 KB, `nav` 2.2 → 2.25 KB, `next-nav` 2.25 → 2.34 KB. The cost is one `toggle` listener; the sidebar was sitting at exactly 100% of its old budget, which is a CI failure waiting for the next byte rather than a limit doing any work.
+
+  **Why no other tier could see it:** jsdom has no layout and no `showModal`, and the stylesheet read as text says nothing about what `display: contents` does to a scrollport. The new tests assert the premise first — that the item measures zero height while the drawer is closed — so they cannot quietly degrade into tests that pass by measuring nothing.
+
+- f2ad4f4: **Every string this package renders is now yours to set.** `DocsLayoutProps.labels` documented itself as "the whole of what a non-English site has to say" and reached four strings of twenty-two.
+
+  Verified in this repository's own `site/out`, which is how it was found: a site built exactly the documented way shipped `<nav aria-label="On this page">`, a visible `Back to top`, `aria-label="Tip"` on every callout, `aria-label="Table"` on every wide table, `Copy code` on every fence, `(opens in a new tab)` after every external link, `Expand <group>` on every sidebar disclosure, and `Play video` on every embed — in English, whatever language the site was written in. The copy runtime announced `Copied to the clipboard.` to a screen reader, in English, on every site on earth.
+
+  **`createDocsRoute({ labels })` is where they live now**, because they are not rendered in one place and a layout prop could never have reached them:
+
+  | where                                                    | strings | cost to override              |
+  | -------------------------------------------------------- | ------- | ----------------------------- |
+  | the shell                                                | 4       | none, server-rendered         |
+  | the navigation tree                                      | 3       | crosses to a client component |
+  | the table of contents                                    | 2       | crosses to a client component |
+  | your content — callouts, tables, external links, YouTube | 9       | none, server-rendered         |
+  | code frames                                              | 2       | none, baked in at build time  |
+  | the copy runtime                                         | 2       | crosses to a client component |
+
+  `docs.Layout`'s `labels` prop still exists and now overrides the route's **key by key**, for a site with two shells or a section in another language — a whole-object override would mean naming one string cost you the other twenty-one.
+
+  `{title}` is a placeholder in the five strings that interpolate a name, rather than a function: three of them cross a Server → Client boundary where a function cannot go, and a translator has to be able to move the name within the sentence, which concatenation forbids.
+
+  **`rehypeCodeFrame` has taken a `copyLabel` since it was written and nothing ever passed one.** The plugin is private, so the option was unreachable from every entry point while the README said the label was configurable. It is wired now, and joined by `copyCodeFrom` for a titled fence.
+
+  **Sizes moved, and the published figures moved with them.** `sidebar` 1.9 → 2.0 KB, `nav` 2.25 → 2.45, `next-nav` 2.34 → 2.55, `code-runtime` 0.98 → 1.15. The README's cost table now reads 13.5 KB for the quick start, 2.4 KB for navigation and 1.1 KB for the copy runtime. About 200 gzipped bytes for a chrome that can be translated at all.
+
+  **A key that is declared and never wired now fails the suite.** `LABEL_COVERAGE` in `next.test.ts` requires every member of `DocsLabels` to name where it is proven, and fourteen of them are asserted against real rendered markup with sentinel values — a string that cannot occur by accident cannot pass by accident.
+
+- 952e182: **Image sources are now split and percent-decoded, exactly as links have always been.** `foldImageSrc` handed the authored `src` straight to `foldSegments`, so three ordinary spellings broke — and the first is the one GitHub's own editor writes for you.
+
+  - **`![a](./getting%20started.png)`** — drag a file whose name has a space into GitHub's editor and this is what it writes. It reached the `imageResolver` still encoded, so `readFile(path.join('content/docs', src))` — the implementation this README gives — threw `ENOENT` and the build died with `invalid-image` on a file that is plainly on disk and that GitHub renders correctly.
+  - **`![a](./diagram.png?v=2)` and `![a](./sprite.svg#icon)`** — the query and the fragment were baked into the filename, so the resolver looked for a file called `diagram.png?v=2`. They are split off before the call now and re-attached to whatever the resolver returns, so the cache-buster survives and `#icon` still selects the symbol inside the sprite. A resolver returning a query or fragment of its own keeps its own, because two `?` in one URL is not a URL.
+  - **`![a](./%2E%2E%2Fsecret.png)`** — folded without decoding, that is one segment with no slash in it, so the climb check never fired. `ImageResolver`'s contract promises the path is contained; any resolver that decodes — anything building a `URL` — was outside it. `foldSegments` can only refuse a `../` that is spelled as one, which is why decoding happens first.
+
+  **One implementation, in `splitHref`.** Four call sites need the same split-decode-fold-reattach sequence; three had it inline and the fourth had none of it. They now share one.
+
+  **`invalid-image` covers malformed encoding too.** Decoding means the image path can raise `URIError`, and an unwrapped one would reach the build with no code, no file and no line — past the very check that exists to make image failures locatable.
+
+  `ImageResolver`'s docstring now says what its argument is: a file path, decoded, with the query and fragment already removed.
+
+- 791c1c0: **Link errors now name the line the link is on.** Every `broken-link`, `draft-link` and `alias-link` reported a line number offset by the length of the frontmatter block — which is to say, a wrong one, on every page that has frontmatter, which is every page.
+
+  `vfile-matter` with `strip: true` deletes the block from the body, so remark counts `node.position.start.line` from the first line of the _body_. The error prints `relativePath:line`, the exact `file:line` form a terminal and an editor turn into a jump. A page with `title`, `description`, `label` and `order` — four fields and two delimiters — is six lines out:
+
+  ```
+  - @waveso/docs: setup.md:4 links to './nowhere.md', which resolves to '/docs/nowhere'
+  + @waveso/docs: setup.md:10 links to './nowhere.md', which resolves to '/docs/nowhere'
+  ```
+
+  Line 4 is the middle of a block that is no longer there. Locatability is that error's entire job.
+
+  **The fix is padding rather than arithmetic.** `DocFile` carries a new `frontmatterLines`, set by the scan, and the renderer prepends that many newlines to what the parser sees. A blank line produces no markdown node, so it costs nothing in the output — and every position downstream is simply correct, including any a future plugin reports, which an offset applied at the four known throw sites would not be.
+
+  `content` is untouched. It is public, its exact value is pinned by tests, and a consumer measuring it should not have to know about this.
+
+  `frontmatterLines` is optional and treated as `0` when absent, so a host loading content itself — the documented reason `@waveso/docs/render` is an entry point — is unaffected.
+
+  **Why nothing caught it:** the render tests hand the renderer a body they wrote themselves, with no frontmatter and therefore no offset, and the source tests never render. The defect lived in the seam and was invisible from either side; the new tests scan a real file and render it.
+
+- 5117aa4: **The search dialog's props are in the README, and the ones that were missing were the ones the changelog told you to migrate to.** A consumer on 0.3.0 with `<DocsSearch maxResults={20} />` upgraded to 0.4.0, watched TypeScript reject `maxResults`, opened the file the Stability section calls the definition of public API, searched 57 KB of it for the replacement — and found neither `pageSize` nor `minQueryLength`.
+
+  There is a props table under **Search → The dialog's props** now, and a check that stops the next rename shipping undocumented: `manifest.test.ts` reads every `…Props` interface out of the emitted `.d.ts` and requires each member to be named in the README. It found seven more the moment it was written — `DocsTocProps.rootMargin` and `.topLabel`, `DocsLinkProps.prefetch`, `DocsImageProps.sizes` and `.loading`, and two of my own — all now documented rather than allowlisted.
+
+  **Six of the dialog's strings turned out to be hardcoded English**, which is the same defect this release fixes everywhere else and was hiding behind a prop list that looked complete: `triggerLabel`, `placeholder` and `dialogLabel` were props from the start, so `search={{ … }}` read as _the_ channel for the dialog's words — while every state message was a literal. They are props now: `hintLabel`, `shortQueryLabel`, `loadingLabel`, `errorLabel`, `emptyLabel`, with `{min}` and `{query}` interpolated.
+
+  **And the live region announced "3 results" in English on every site on earth.** `resultCountLabels` is keyed by plural category rather than being a singular and a plural, because most languages are not English — Polish takes four forms, Arabic six. `Intl.PluralRules` picks, using `locale` or the document's own `<html lang>`, and a category you do not list falls back to `other`. An invalid `lang` is caught rather than thrown: that is the site's typo, not a reason to announce nothing.
+
+  **`hotkey` does not exist and never did.** `DocsLayoutProps.search` listed it among the props an object may carry. The shortcut is ⌘K / Ctrl-K and is not configurable; the docstring says so now. `SearchDialogProps.indexUrl` likewise documented itself in terms of `writeSearchIndex`, which was deleted in 0.3.0.
+
+  **Published figure raised:** search dialog and router wiring, 9.0 → 9.3 KB.
+
+- 114eb3d: **`docs.Layout` no longer breaks `next build` when the route tunes MiniSearch with a function.** It has been doing so since 0.3.0, in exactly the case the option's own capitalised warning tells you to use it for.
+
+  `createDocsRoute({ miniSearchOptions })` and `export default docs.Layout` are the two things the quick start tells you to do, and the layout forwards those options to the dialog because it must — MiniSearch reads `tokenize` and `processTerm` when indexing _and_ when querying, so an index built with one and queried with another matches nothing at all and says nothing. But `docs.Layout` is a Server Component and the dialog is a Client Component, and React serialises what crosses between them. So a `processTerm` in that object took the whole build down:
+
+  ```
+  Error: Functions cannot be passed directly to Client Components
+    {processTerm: function processTerm}
+  ```
+
+  Serialisable overrides — `storeFields`, `boost`, anything under `searchOptions` — were unaffected, which is why this survived two releases: every documented example uses those.
+
+  **The fix is a refusal, not a silent drop.** Forwarding the serialisable half and discarding the rest would rebuild the original defect: an index built with a `processTerm` the query does not share is the zero-results-and-no-error failure the forwarding exists to prevent. `docs.Layout` now throws `invalid-config` instead, naming every offending option — `miniSearchOptions.processTerm`, `miniSearchOptions.searchOptions.filter` — and naming the remedy.
+
+  **The remedy is a client boundary of your own**, which is the only place the two halves can share a function by module reference rather than by prop. Keep it on `createDocsRoute` so the index is still built with it, pass `search={false}`, and render the dialog from a `'use client'` module that imports the same function — `README.md` has the three files under **Search → Functions need a client boundary**. `search={false}` deliberately does not throw: it is the supported path, so it must not be the one that fails.
+
+  **TypeScript now says so at the seam.** `DocsLayoutProps['search']` takes the new `SerializableSearchOptions` rather than MiniSearch's full `Options`, so `<docs.Layout search={{ miniSearchOptions: { tokenize } }}>` does not compile. `DocsSearch` and `SearchDialog` are unchanged and still take everything — they are already client components, which is the whole point. The type is the friendlier half of the guard, not the load-bearing one: a JavaScript caller has no types, and an `Omit` list goes stale the minor MiniSearch adds a callback, so the runtime check walks the values structurally and finds a function wherever it is.
+
+  **`DocsLayoutSearchProps` and `SerializableSearchOptions` are now exported from `@waveso/docs/next`.** Both already appeared in `DocsLayoutProps.search`; until now there was no way to spell either one.
+
+  **Why nothing caught it:** the test asserted on `element.props.search` and so never crossed the boundary it was testing. A props assertion is not an RSC test. The smoke build now checks that the forwarded options reach the flight payload — `pnpm test:smoke` reads them back out of the prerendered HTML — because only a real build can prove the allowed half arrives.
+
+### Patch Changes
+
+- a5136d5: **An alias copied out of the address bar was encoded twice.** An alias _is_ a former URL, so `aliases: [getting%20started]` is the ordinary way to write one — and the route builder encoded the `%` again, producing a redirect source of `/docs/getting%2520started` that no request can ever match. The page moved, the alias was written, and the old URL still 404'd.
+
+  It decodes first now, which makes both spellings round-trip: the pasted form decodes and re-encodes to itself, and the readable `c# guide` has nothing to decode and still becomes `c%23%20guide`. The `.`/`..` and redirect-pattern checks moved to the decoded value too — `%2E%2E` is `..` in disguise and `%28` is `(`, so checking the raw text passed exactly the inputs those checks exist to catch.
+
+  **`basePath: '//docs'` pointed the whole site off itself.** A browser reads a leading `//` as scheme-relative, so `//docs/setup` navigates to a host called `docs` — and `basePath` builds every canonical, every `og:url` and every sitemap entry. Runs of slashes collapse now.
+
+- 511ec6f: **Five documentation claims that were not true, and the tests that stop them rotting again.**
+
+  **`pnpm size` now really does gate `prepublishOnly`.** The paragraph introducing the cost table says every figure is enforced "in CI and again in `prepublishOnly`" — the sentence that makes the whole table worth trusting — and the script ran typecheck, lint, test, build, `check:readme` and `check:package`. Nothing verified the published numbers at the one moment they became published. The claim is now true rather than deleted, and a test compares the two.
+
+  **The README no longer claims CI runs `pnpm shoot --check`.** It never has: the gate was added and removed without running once, because byte-compared PNGs cannot survive a change of operating system — the font stack resolves to SF Pro on the machine that shot them and to DejaVu on a Linux runner, so every text pixel differs and no tolerance rescues glyphs that are different shapes. A test now requires the README and `ci.yml` to agree either way.
+
+  **The screenshots are pinned to a tag whose images they actually are.** The pin said `v0.3.0` while the committed PNGs had been regenerated for 0.4.0's search work, so the README on npm showed a dialog the release it documented had replaced. A test compares the committed bytes against `git show <tag>:docs/media/…` — exact, offline, and skipped only in a shallow clone.
+
+  **`src/react/` does not import nothing from `next/*`.** Two modules do, and are named after the fact: `next-nav` for `usePathname` and `next-search` for `useRouter`. The project-structure listing and the Components paragraph both said otherwise.
+
+  **`SECURITY.md` supports `0.5.x`**, not `0.3.x`.
+
+  And two comments in `next.ts` that misdescribed the code they sit on: `layout.tsx` was called a `'use client'` module — it is a Server Component, and its own docstring has always said so — and the lazy import beside it was justified by that non-fact rather than by the real reason, which is that `layout.tsx` statically imports two client modules that reach `next/navigation` and `next/link`.
+
+- b3c0fa6: **`search={{ className }}` no longer deletes the class the header depends on.** It was applied before the spread, so a host passing a class — the ordinary reason to pass `search` an object — replaced `wave-docs-layout__search` instead of adding to it, and the trigger lost its place in the header grid. Adding a class should not remove one.
+
+  **A declining `imageResolver` no longer emits an unusable src.** Returning `undefined` for a relative image wrote the folded path — `guide/diagram.png` — which the browser resolves against the _route_: `/docs/guide` asks for `/docs/guide/diagram.png` and `/docs/guide/setup` asks for `/docs/guide/setup/guide/diagram.png`, from identical markdown, with a green build. That is the precise failure unconditional folding exists to prevent, surviving in the one branch that skipped the check for it. It is the same `invalid-image` as having no resolver at all, because it is the same situation. A _public_ src that a resolver declines still passes through untouched — "leave it as it is" is a complete answer for one of those.
+
+  **`decoding` and `fetchPriority` reach a custom `Image` component.** `createImage` spreads the tree's attributes into whichever component it was given, under a comment saying those two survive into the optimising branch — and `wrapNextImage` destructures a fixed list, so they did not. They are declared members of `DocsImageProps` now, which is the right shape for a component seam; a comment promising an open one was not.
+
+  **An equal theme pair written two ways no longer builds two highlighters.** The cache key was `JSON.stringify({ langs, themes })`, and `JSON.stringify` preserves insertion order — so `{ light, dark }` and `{ dark, light }` produced two keys and two whole Shiki instances, each loading every grammar. `langs` was already sorted for exactly this reason.
+
+  **`@waveso/docs/highlighter` has tests.** It is a public subpath and had none: the escape hatch a consumer reaches for precisely when the defaults do not fit, and the least likely to be exercised by anything else here. Seven now cover the cache identity, both refusals, every default grammar, and the `cfg / `conf aliases the module exists for — which Shiki resolves against a grammar's own alias list rather than against ours, so registering `ini` under a `cfg` key would not have worked and nothing would have said so.
+
+- f97c345: **`meta.json` is now read the way markdown is.** Four ways it was not, and one of them is a security gap.
+
+  **A hand-written nav entry went round the link allowlist.** `{ "title": "Status", "href": "javascript:alert(1)" }` reached `<a href>` through `DocsSidebar` with nothing looking at its scheme — while a `javascript:` link in the markdown beside it was dropped by a check whose own comment calls it load-bearing. Both paths end at the same anchor, so both now use the same allowlist, and it lives in one module rather than two copies. `meta.json` is refused at parse time rather than dropped at render, because the file is authored and a nav entry that silently vanishes is the quietest possible failure.
+
+  **A `mailto:` entry was announced as opening a new tab.** `external` was "has a scheme", so `mailto:` and `tel:` were given `target="_blank"`, an external-link icon and an "(opens in a new tab)" suffix — describing a tab that never appears, to precisely the reader who cannot see that it did not. The markdown path has always drawn the line at http(s); the sidebar does now too. (The test asserting the old behaviour asserted the bug, and said so in its own name.)
+
+  **A UTF-8 BOM failed the build on a character nobody can see.** `readFile(…, 'utf8')` leaves it in and `JSON.parse` refuses it — `Unexpected token ''`, in the file the author is looking straight at. `readPage` learned this for markdown when `gray-matter` was swapped out; this is the same line for the same reason.
+
+  **A name in `meta.json` is matched in NFC**, because the filenames it is matched against are. `source.ts` normalises at the `readdir` boundary — macOS hands back decomposed forms — so a `meta.json` written on a Mac could list `café` and fail with `lists "café", which does not exist`, beside a list of available names containing a visually identical `café`.
+
+- 0670710: **A YouTube link's timestamp and playlist are no longer dropped.** Only the video id survived the substitution, so `https://youtu.be/x?t=754` — a link to one moment in a two-hour talk, which is most of why anyone deep-links a video — opened at zero. And because the facade passes `autoplay=1`, it did not merely start in the wrong place: it started _playing_ there, leaving the reader to work out that the author had meant somewhere else.
+
+  Every spelling YouTube's own share dialog produces is understood — `t=754`, `t=90s`, `t=1m30s`, `t=1h2m3s`, the older `#t=` fragment, and `start=` on an embed URL — along with `list=`.
+
+  Both go into a URL, so both are checked: a playlist id has to look like one, a timestamp has to parse to a positive number of seconds, and the embed URL is built with `URLSearchParams` rather than by concatenation. Hand-built, a crafted `list=x%26autoplay%3D0` would have decoded into a real `&autoplay=0` and silently turned off the one interaction the facade exists to own.
+
+  `YouTube` takes `start` and `list` props to match. `parseYouTubeId` is now `parseYouTubeRef` and returns the whole reference; it is private, so nothing outside the package moves.
+
 ## 0.4.0
 
 ### Minor Changes
