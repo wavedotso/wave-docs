@@ -1,0 +1,88 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  # So a broken deploy can be retried without an empty commit.
+  workflow_dispatch:
+
+concurrency:
+  # Never cancel a deploy mid-flight: GitHub Pages swaps the live site at the
+  # end of `deploy-pages`, and a cancelled run can leave the previous build
+  # serving while the next one is queued behind it. Queue instead.
+  group: pages
+  cancel-in-progress: false
+
+# The three Pages needs, and nothing else. `contents: read` because this
+# workflow only builds what is already committed.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    name: Build the site
+    runs-on: ubuntu-latest
+
+    steps:
+      # Third-party actions are pinned to a full commit SHA, not a tag, for the
+      # reason ci.yml gives: tags are mutable, and this job holds an OIDC token
+      # that can publish to a real domain. Bump them by hand, moving the
+      # trailing version comment with the SHA so the two never disagree.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # See ci.yml for why this is one step and why pnpm's version is not
+      # repeated here.
+      - name: Install pnpm and Node.js
+        uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
+        with:
+          runtime: node@26
+          cache: true
+          install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ⚠️ THE LIBRARY FIRST, ALWAYS. `site/lib/docs.ts` imports
+      # `@waveso/docs/next` BY NAME — Node self-references it through the real
+      # `exports` map into `dist/`, exactly as a consumer resolves it. That is
+      # the whole point of the harness: the site is built against the published
+      # shape of the package, not against `src/`. Without this step the site
+      # build fails on an unresolvable import rather than quietly using stale
+      # output, which is the right failure but a confusing one to debug.
+      - name: Build library
+        run: pnpm run build
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      # `output: 'export'` writes `site/out`. The site sets no `basePath` of its
+      # own beyond the docs route, because it is served from a custom domain at
+      # the apex of its host — see `site/lib/docs.ts` and `site/public/CNAME`.
+      - name: Build the site
+        run: pnpm run build:site
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site/out
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
