@@ -124,7 +124,7 @@
     "check:package": "publint && attw --pack . --ignore-rules no-resolution cjs-resolves-to-esm",
     "check:readme": "node scripts/check-readme.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run check:readme && pnpm run check:package",
+    "prepublishOnly": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build && pnpm run size && pnpm run check:readme && pnpm run check:package",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "pnpm run build && changeset publish",

@@ -45,7 +45,7 @@ Out of scope, though still worth an issue:
 
 ## Supported versions
 
-Pre-1.0, only the latest minor. `0.3.x` today.
+Pre-1.0, only the latest minor. `0.5.x` today.
 
 ## What to expect
 

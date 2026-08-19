@@ -22,23 +22,29 @@
   old version's README displays a future product: someone reading 0.3.0 in 2027
   would see whatever the shell looks like then.
 
-  `pnpm shoot` regenerates these from the real site build; CI runs
-  `pnpm shoot --check` on any pull request touching the stylesheet, the React
-  layer or the site.
+  `pnpm shoot` regenerates these from the real site build. It is a LOCAL
+  command and CI deliberately does not run `pnpm shoot --check`: these PNGs are
+  compared byte for byte, and bytes do not survive a change of operating system
+  — the font stack resolves to SF Pro on the machine that shot them and to
+  DejaVu on a Linux runner, so every pixel of text differs and no tolerance
+  rescues glyphs that are different shapes. The regression that gate was meant
+  to catch — a stylesheet change reflowing the shell — is covered by the browser
+  tier, which asserts geometry rather than pixels in the same Chromium
+  everywhere. `scripts/shoot.ts` says the same at greater length.
 -->
 <picture>
   <source
     media="(prefers-color-scheme: dark)"
-    srcset="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.3.0/docs/media/hero-dark.png"
+    srcset="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.4.0/docs/media/hero-dark.png"
   />
   <img
-    src="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.3.0/docs/media/hero-light.png"
+    src="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.4.0/docs/media/hero-light.png"
     alt="A documentation page rendered by @waveso/docs: a navigation sidebar, prose with syntax-highlighted code frames, and a table of contents."
     width="100%"
   />
 </picture>
 
-<p align="center"><em>The default page, with no CSS of your own. <a href="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.3.0/docs/media/search.png">Search dialog →</a></em></p>
+<p align="center"><em>The default page, with no CSS of your own. <a href="https://raw.githubusercontent.com/wavedotso/wave-docs/v0.4.0/docs/media/search.png">Search dialog →</a></em></p>
 
 ---
 
@@ -211,7 +217,7 @@ Every subpath is enumerated in `exports` — there is no wildcard. A name that i
 
 ## Components
 
-Every component takes data as props and imports nothing from `next/*` — the adapter injects `next/link` and `next/image`. That keeps the renderer host-agnostic and testable without a router. `DocsSearch` is the one exception, and it exists precisely so that the exception is ours rather than yours: it is the fifteen-line wrapper you would otherwise write around `SearchDialog`.
+Every component takes data as props, and two modules in `src/react/` import from `next/*` — `next-nav` for `usePathname` and `next-search` for `useRouter`, each named so the exception is visible in the file list. Everything else has `next/link` and `next/image` injected. That keeps the renderer host-agnostic and testable without a router. `DocsSearch` is the one exception, and it exists precisely so that the exception is ours rather than yours: it is the fifteen-line wrapper you would otherwise write around `SearchDialog`.
 
 | Component | Subpath | Notes |
 | --- | --- | --- |
@@ -1120,7 +1126,7 @@ src/
   next.ts             # The App Router adapter
   meta.ts             # meta.json ordering
   plugins/            # remark/rehype plugins
-  react/              # Components. Import nothing from next/*
+  react/              # Components. Only next-nav and next-search touch next/*
   styles.css          # Theme tokens + prose styles
 ```
 

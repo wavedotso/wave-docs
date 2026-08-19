@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -454,6 +455,107 @@ describe('the documented surface', () => {
     },
   );
 });
+
+describe("the README's claims about this repository", () => {
+  const readme = readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+
+  it('names a publish gate that `prepublishOnly` actually runs', () => {
+    /*
+     * ⚠️ IT CLAIMED `pnpm size` RAN AT PUBLISH TIME AND IT DID NOT. The
+     * paragraph introducing the cost table says every figure is enforced "in CI
+     * and again in `prepublishOnly`", which is the sentence that makes the whole
+     * table worth trusting — and the script ran typecheck, lint, test, build,
+     * check:readme and check:package. Nothing verified the published numbers at
+     * the one moment they became published.
+     */
+    const chain = String(section(manifest, 'scripts').prepublishOnly);
+
+    expect(chain).toContain('pnpm run build');
+    expect(chain).toContain('pnpm run size');
+  });
+
+  it('does not claim CI runs a screenshot check, because CI refuses to', () => {
+    /*
+     * The README's media comment said CI runs `pnpm shoot --check` on any pull
+     * request touching the stylesheet. It never has: the gate was added and
+     * removed without running once, because byte-compared PNGs cannot survive a
+     * change of operating system — the font stack resolves to SF Pro locally and
+     * to DejaVu on the runner, so every text pixel differs and no tolerance
+     * rescues glyphs that are different shapes.
+     */
+    const ci = readFileSync(
+      path.join(ROOT, '.github', 'workflows', 'ci.yml'),
+      'utf8',
+    );
+    const ciRunsIt = /^\s*run:.*shoot --check/m.test(ci);
+    const readmeClaimsIt = /CI runs `pnpm shoot --check`/.test(
+      readme.replace(/\s+/g, ' '),
+    );
+
+    expect(readmeClaimsIt).toBe(ciRunsIt);
+  });
+
+  it('pins every screenshot to one tag, and never to a branch', () => {
+    const tags = [...readme.matchAll(MEDIA_TAG)].map((match) => match[1]);
+
+    // The guard on the guard: no matches would make the rest vacuous.
+    expect(tags.length).toBeGreaterThan(1);
+    expect(new Set(tags).size).toBe(1);
+    /*
+     * Not `main`: an old version's README would display a future product —
+     * someone reading 0.3.0 in 2027 would see whatever the shell looks like
+     * then. The comment above the `<picture>` says so; this holds it.
+     */
+    expect(tags[0]).toMatch(/^v\d+\.\d+\.\d+$/);
+  });
+
+  it('shows the screenshots that are actually at that tag', () => {
+    /*
+     * ⚠️ THE PIN WENT STALE AND NOTHING NOTICED. It pointed at `v0.3.0` while
+     * the committed images had been regenerated for 0.4.0's search work — so the
+     * README on npm showed a search dialog the release it documented had
+     * replaced, and the only way to find out was to look.
+     *
+     * Bytes rather than the number: `git show <tag>:<path>` is exact and needs
+     * no network. Skipped when the tag is not in the clone, which is every
+     * shallow CI checkout — this is for the machine that changes the images.
+     */
+    const [tag] = [...readme.matchAll(MEDIA_TAG)].map((match) => match[1]);
+    if (tag === undefined) throw new Error('no pinned media tag');
+
+    const known = spawnSync(
+      'git',
+      ['rev-parse', '--verify', `${tag}^{commit}`],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+      },
+    );
+    if (known.status !== 0) return;
+
+    const stale: string[] = [];
+    for (const name of MEDIA_FILES) {
+      const atTag = spawnSync('git', ['show', `${tag}:docs/media/${name}`], {
+        cwd: ROOT,
+        maxBuffer: 32 * 1024 * 1024,
+      });
+      const committed = readFileSync(path.join(ROOT, 'docs', 'media', name));
+      if (atTag.status !== 0 || !committed.equals(atTag.stdout)) {
+        stale.push(name);
+      }
+    }
+
+    expect(stale, `README pins ${tag}; run \`pnpm shoot\` and re-pin`) //
+      .toEqual([]);
+  });
+});
+
+/** The pinned tag in every README screenshot URL. */
+const MEDIA_TAG =
+  /raw\.githubusercontent\.com\/wavedotso\/wave-docs\/([^/]+)\/docs\/media\//g;
+
+/** The screenshots `pnpm shoot` writes, and the README shows. */
+const MEDIA_FILES = ['hero-light.png', 'hero-dark.png', 'search.png'];
 
 /**
  * Props that are plumbing rather than API, and so are documented by prose

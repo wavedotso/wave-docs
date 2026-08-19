@@ -61,9 +61,19 @@ import type {
   DocsThemes,
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
-// Type-only, so it is erased: `layout.tsx` is a `'use client'` module and this
-// entry point must not put it on `next.config.ts`'s graph. `Layout` reaches the
-// value through the dynamic `import()` below, which is the same reason.
+/*
+ * Type-only because only the type is wanted here; the erasure is not doing
+ * anything clever.
+ *
+ * ⚠️ THIS COMMENT USED TO CALL `layout.tsx` A `'use client'` MODULE. It is not
+ * one — its own docstring opens "Private, and a Server Component", and it ships
+ * no JavaScript of its own. What it does do is statically import `next-nav` and
+ * `next-search`, which are client modules and which reach `next/navigation` and
+ * `next/link`. That, and not a directive on this file, is why `Layout` takes the
+ * value through a dynamic `import()`: a static one would put both Next modules
+ * on the graph of `next.config.ts`, which loads this entry point for
+ * `createDocsSitemap` and `createDocsRedirects` outside the Next runtime.
+ */
 import type { DocsLayoutSearchProps } from './react/layout.js';
 import type { DocsLabels } from './react/shell-labels.js';
 import { DocsToc } from './react/toc.js';
@@ -1176,11 +1186,12 @@ export function createDocsRoute<
       labels,
     }: DocsLayoutProps): Promise<ReactNode> {
       /*
-       * Lazy, and load-bearing. The shell reaches `next/navigation` and
-       * `next/link` through its client components, and a static import here
-       * would put both on the module graph of `next.config.ts` — which loads
-       * this entry point for `createDocsSitemap` and `createDocsRedirects`,
-       * outside the Next runtime entirely.
+       * Lazy, and load-bearing. `layout.tsx` is itself a Server Component, but
+       * it statically imports `next-nav` and `next-search` — which are client
+       * modules, and which reach `next/navigation` and `next/link`. A static
+       * import here would put both on the module graph of `next.config.ts`,
+       * which loads this entry point for `createDocsSitemap` and
+       * `createDocsRedirects` outside the Next runtime entirely.
        */
       const { DocsLayoutShell } = await import('./react/layout.js');
 
