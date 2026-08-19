@@ -29,8 +29,8 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useCallback } from 'react';
 
-import type { NextLinkComponent } from './next-link.js';
-import { wrapNextLink } from './next-link.js';
+import type { NextLinkComponent } from './link-adapter.js';
+import { wrapNextLink } from './link-adapter.js';
 import { SearchDialog } from './search-dialog.js';
 import type { SearchDialogProps } from './search-dialog.js';
 

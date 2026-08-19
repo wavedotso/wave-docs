@@ -19,8 +19,8 @@ import type { ReactNode } from 'react';
 
 import type { DocNavNode } from '../types.js';
 import { DocsNav } from './nav.js';
-import type { NextLinkComponent } from './next-link.js';
-import { wrapNextLink } from './next-link.js';
+import type { NextLinkComponent } from './link-adapter.js';
+import { wrapNextLink } from './link-adapter.js';
 
 /** Module scope: a fresh identity here remounts every nav link on every render. */
 const Link = wrapNextLink(NextLink as NextLinkComponent);

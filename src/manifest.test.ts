@@ -159,11 +159,16 @@ describe('node version floors', () => {
  * below would be silently completed by whoever adds the first one.
  */
 const INTERNAL_REACT_MODULES = new Set<string>([
-  // The `next/link` → `DocsLinkProps` adapter, shared by `@waveso/docs/next`
-  // (server, markdown components) and `./next-search` (client, search
-  // results). Private on purpose: it exists to stop those two answering the
-  // same question differently, not to be a third answer.
-  'next-link',
+  // The `next/link` → `DocsLinkProps` adapter *factory*, shared by
+  // `@waveso/docs/next` (server, markdown components), `./next-search` and
+  // `./next-nav` (client). Private on purpose: it exists to stop those
+  // answering the same question differently, not to be another answer — and it
+  // takes the component as a parameter precisely so `next.ts`, which must not
+  // statically import an optional peer, can use it too.
+  //
+  // `./react/next-link` IS exported: it is the ready-made component built from
+  // this, which is what a consumer composing a shell by hand actually wants.
+  'link-adapter',
   // The shell. `docs.Layout` is the public name for all three, and it has to
   // be, because two of them only work when the route wires them together: the
   // drawer's trigger lives in the header and binds to the dialog by a fixed
@@ -180,11 +185,11 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   // separate from the component so it can be tested exhaustively — jsdom
   // reports every rectangle as zero, so nothing driving the effect could.
   'nearest-scroll-top',
-  // The shell's four strings and their defaults. The *type* is public, through
-  // `DocsLayoutProps['labels']`; the module is not, because the merge is an
-  // implementation detail of `docs.Layout` and a second caller would be a
-  // second set of defaults — which is the bug it was written to end, not one
-  // to publish a new way of having.
+  // Every string the shell renders, and their defaults. The *type* is public,
+  // through `DocsLayoutProps['labels']` and `DocsRouteOptions['labels']`; the
+  // module is not, because the merge is an implementation detail of the route
+  // and a second caller would be a second set of defaults — which is the bug it
+  // was written to end, not one to publish a new way of having.
   'shell-labels',
 ]);
 

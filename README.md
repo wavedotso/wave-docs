@@ -198,6 +198,7 @@ Every component takes data as props, and two modules in `src/react/` import from
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation` |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
+| `DocsLink` | `react/next-link` | `next/link`, adapted — pass it as `Link` when composing by hand |
 | `SearchDialog` | `react/search-dialog` | ⌘K, arrow keys, focus trap. Host-agnostic |
 | `Callout` | `react/callout` | Note · tip · important · warning · caution. `CALLOUT_TYPES` is the list |
 | `YouTube` | `react/youtube` | Click-to-load facade. `title`, `playLabel`, `hideLabel` — `{title}` interpolates the first |
@@ -978,14 +979,25 @@ ESM-only is forced rather than chosen: `unified` and the entire `remark-*` / `re
 If you extend the frontmatter schema, use `.exactOptional()` rather than `.optional()` for optional fields: the latter infers `{ description?: string | undefined }`, which is not assignable to `DocFrontmatter`.
 
 > [!NOTE]
-> Under `exactOptionalPropertyTypes: true`, passing `next/link` straight into
-> `DocsSidebar` does not type-check. Next's `LinkProps` re-declares `onClick?`,
-> `onMouseEnter?` and `onTouchStart?` *without* `| undefined`, and React's
+> Passing `next/link` **straight** into `DocsSidebar` does not type-check under
+> `exactOptionalPropertyTypes: true`. Next's `LinkProps` re-declares `onClick?`,
+> `onMouseEnter?` and `onTouchStart?` *without* `| undefined` while React's
 > anchor props include it, so the two declaration files disagree — about props
-> `next/link` accepts perfectly well at runtime. It is true of every
-> `next/link` call site in a project with that flag on, not just this one.
-> Cast at the call site (`Link={Link as DocsLinkComponent}`) until the
-> Next-wired navigation component ships.
+> `next/link` accepts perfectly well at runtime. It is true of every `next/link`
+> call site in a project with that flag on, not just this one.
+>
+> Import `DocsLink` instead of casting:
+>
+> ```tsx
+> 'use client';
+> import { DocsLink } from '@waveso/docs/react/next-link';
+> import { DocsSidebar } from '@waveso/docs/react/sidebar';
+>
+> <DocsSidebar nav={nav} pathname={pathname} Link={DocsLink} />
+> ```
+>
+> `docs.Layout` and `DocsSearch` have always used the same adapter internally,
+> so this only ever came up when composing a shell by hand.
 >
 > `docs.Page` and `DocsSearch` are both unaffected — each wraps `next/link`
 > inside the package, which is where that cast belongs. Without the flag,

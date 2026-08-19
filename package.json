@@ -76,6 +76,10 @@
       "types": "./dist/react/markdown-components.d.ts",
       "default": "./dist/react/markdown-components.js"
     },
+    "./react/next-link": {
+      "types": "./dist/react/next-link.d.ts",
+      "default": "./dist/react/next-link.js"
+    },
     "./react/next-search": {
       "types": "./dist/react/next-search.d.ts",
       "default": "./dist/react/next-search.js"

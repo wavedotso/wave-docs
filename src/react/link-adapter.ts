@@ -1,7 +1,10 @@
 /**
  * One adapter from `next/link` to {@link DocsLinkProps}, for both halves.
  *
- * Private — deliberately not an entry point. It exists because the mismatch it
+ * Private — deliberately not an entry point. The ready-made component built
+ * from it is `@waveso/docs/react/next-link`, which is what a consumer wants;
+ * this is the factory, and it takes the component as a parameter so that one
+ * function can serve a module that may not import `next` at all. It exists because the mismatch it
  * absorbs is real and would otherwise be solved twice, on opposite sides of
  * the bundle boundary: `@waveso/docs/next` wires `next/link` into the markdown
  * components on the server, and `@waveso/docs/react/next-search` wires it into

@@ -85,8 +85,8 @@ import type {
 import type { MarkdownLabels } from './react/markdown-components.js';
 import { createMarkdownComponents } from './react/markdown-components.js';
 import { DOCS_CONTENT_ID } from './docs-content-id.js';
-import type { NextLinkComponent } from './react/next-link.js';
-import { wrapNextLink } from './react/next-link.js';
+import type { NextLinkComponent } from './react/link-adapter.js';
+import { wrapNextLink } from './react/link-adapter.js';
 import type { DocsRenderer } from './render.js';
 import { createDocsRenderer } from './render.js';
 import type { DocsSource } from './source.js';

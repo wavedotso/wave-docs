@@ -27,6 +27,10 @@
     "toc": {
       "max": 900,
       "note": "A list plus one IntersectionObserver. The smallest client component here, and it should stay that way."
+    },
+    "next-link": {
+      "max": 300,
+      "note": "`next/link` with three props adapted, and nothing else. It exists so a consumer composing a shell by hand has something that type-checks under `exactOptionalPropertyTypes` without a cast \u2014 so it should stay the thinnest thing in this list. Growth here means the adapter started having opinions, and the place for those is the component using it."
     }
   },
   "payload": {
