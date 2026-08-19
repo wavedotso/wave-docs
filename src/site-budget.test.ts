@@ -213,9 +213,21 @@ describe('the site is an acceptance harness', () => {
       const body = readFileSync(path.join(CONTENT, name), 'utf8');
 
       markdownLinks += [...body.matchAll(/\]\(\.\/[^)]+\.md\)/g)].length;
-      // A link straight to `/docs/...` bypasses resolution and would survive a
-      // page being renamed or deleted.
-      expect([...body.matchAll(/\]\(\/docs\/[^)]*\)/g)]).toEqual([]);
+      /*
+       * ⚠️ ANY ABSOLUTE LINK, NOT JUST A `/docs/` ONE. This used to forbid
+       * `](/docs/…)`, which stopped being a pattern that can occur the moment
+       * the site moved to the root mount — so the guard was checking for
+       * something impossible while the real bypass, `](/installation)`, went
+       * unchecked.
+       *
+       * It matters more here than it did before. `assertLinks` compares a
+       * recorded link against the published routes, and at an empty base path an
+       * absolute link cannot be told apart from any other route in the
+       * application, so it is not recorded at all. Relative links are always
+       * resolved and always checked, which makes "write them relative" the whole
+       * of the rule on a root-mounted site — and this is what enforces it.
+       */
+      expect([...body.matchAll(/\]\(\/[^)]*\)/g)]).toEqual([]);
     }
 
     expect(markdownLinks).toBeGreaterThan(0);
