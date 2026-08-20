@@ -158,7 +158,7 @@ There is no root export. Every entry point is a subpath, so an import always nam
 | `@waveso/docs/render` | Node | `createDocsRenderer`, `resolveMarkdownLink` |
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS`, `DEFAULT_DOCS_THEMES` |
 | `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex` |
-| `@waveso/docs/react/<name>` | Browser + RSC | Nine components, one per subpath — see [Components](#components) |
+| `@waveso/docs/react/<name>` | Browser + RSC | Ten subpaths, one component each — see [Components](#components) |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/types` | Any | Every shared type. Type-only |
 | `@waveso/docs/errors` | Any | `DocsErrorCode`, `DocsError`, `isDocsError`, `DOCS_ERROR_PREFIX` |
@@ -190,7 +190,7 @@ Every subpath is enumerated in `exports` — there is no wildcard. A name that i
 
 ## Components
 
-Every component takes data as props, and two modules in `src/react/` import from `next/*` — `next-nav` for `usePathname` and `next-search` for `useRouter`, each named so the exception is visible in the file list. Everything else has `next/link` and `next/image` injected. That keeps the renderer host-agnostic and testable without a router. `DocsSearch` is the one exception, and it exists precisely so that the exception is ours rather than yours: it is the fifteen-line wrapper you would otherwise write around `SearchDialog`.
+Every component takes data as props, and every module that imports from `next/*` is named for it — `next-nav` for `usePathname`, `next-search` for `useRouter`, `next-link` for `next/link` itself — so the exception is visible in the file list rather than three imports deep. Everything else has `next/link` and `next/image` injected. That keeps the renderer host-agnostic and testable without a router. `DocsSearch` is the one exception, and it exists precisely so that the exception is ours rather than yours: it is the fifteen-line wrapper you would otherwise write around `SearchDialog`.
 
 | Component | Subpath | Notes |
 | --- | --- | --- |
@@ -849,7 +849,7 @@ A link is skipped when it equals one of these or begins with one followed by `/`
 
 ### Translating the chrome
 
-Twenty-two strings, and every one of them is yours to set. They go on `createDocsRoute` rather than on `docs.Layout`, because they are not all rendered in the same place: four are the shell's, two the table of contents', nine come from the markdown component map, two are baked into the HTML by a rehype plugin at build time, and two are announced by a client-side runtime after a copy. A layout prop is upstream of the first four and nothing else.
+Twenty-two strings, and every one of them is yours to set. They go on `createDocsRoute` rather than on `docs.Layout`, because they are not all rendered in the same place: four are the shell's, three the navigation tree's, two the table of contents', nine come from the markdown component map, two are baked into the HTML by a rehype plugin at build time, and two are announced by a client-side runtime after a copy. A layout prop is upstream of the first four and nothing else.
 
 ```ts
 // lib/docs-pt.ts
@@ -1147,7 +1147,7 @@ src/
   next.ts             # The App Router adapter
   meta.ts             # meta.json ordering
   plugins/            # remark/rehype plugins
-  react/              # Components. Only next-nav and next-search touch next/*
+  react/              # Components. Only the next-* modules touch next/*
   styles.css          # Theme tokens + prose styles
 ```
 

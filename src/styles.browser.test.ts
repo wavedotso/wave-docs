@@ -389,3 +389,147 @@ describe('the responsive shell', () => {
     expect(box('.wave-docs-layout').width).toBeLessThanOrEqual(100 * 16);
   });
 });
+
+/**
+ * ⚠️ THIS PACKAGE MUST NOT DEPEND ON THE HOST'S RESET, AND IT DID.
+ *
+ * `.wave-docs-sidebar__link` is `width: 100%` with `0.5rem` of inline padding
+ * and `justify-content: space-between`, so the external-link icon is pinned to
+ * the far end of the box. Under `content-box` that box is the track's width
+ * *plus* 1rem, and the icon renders outside the sidebar — clipped in half,
+ * measured at 8px over on the real site.
+ *
+ * It survived because almost every host ships `box-sizing: border-box`
+ * globally: Tailwind's preflight sets it, and so does every normalize-style
+ * reset. The one configuration that does not is a site with no CSS of its own,
+ * which is exactly what `site/` is — so the harness found a defect that no
+ * consumer's project could have shown us.
+ *
+ * Geometry rather than a declaration check, because the declaration is the
+ * thing that was missing: a text assertion would have to name the rule that
+ * does not exist yet.
+ */
+describe('the box model', () => {
+  function mountSidebar(): { sidebar: HTMLElement; link: HTMLElement } {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    // A bounded track, as the grid gives it. The width is the point: the link
+    // inside must not be wider than what encloses it.
+    document.body.innerHTML = `
+      <div class="wave-docs-sidebar" style="width: 16rem">
+        <nav class="wave-docs-nav">
+          <a class="wave-docs-sidebar__link" href="https://example.com">GitHub<svg
+            class="wave-docs-sidebar__external" viewBox="0 0 24 24" width="12"
+            height="12"></svg><span class="wave-docs-sr-only"> (opens in a new tab)</span></a>
+        </nav>
+      </div>`;
+
+    const sidebar = document.querySelector('.wave-docs-sidebar');
+    const link = document.querySelector('.wave-docs-sidebar__link');
+    if (!(sidebar instanceof HTMLElement) || !(link instanceof HTMLElement)) {
+      throw new Error('failed to mount the sidebar fixture');
+    }
+    return { sidebar, link };
+  }
+
+  it('keeps a padded full-width link inside its track', async () => {
+    const { sidebar, link } = mountSidebar();
+    await resize(1440);
+
+    const track = sidebar.getBoundingClientRect();
+    const box = link.getBoundingClientRect();
+    expect(box.width).toBeLessThanOrEqual(track.width);
+    expect(box.right).toBeLessThanOrEqual(track.right);
+  });
+
+  it('keeps the external-link icon inside it too', async () => {
+    const { sidebar } = mountSidebar();
+    await resize(1440);
+
+    const icon = document.querySelector('.wave-docs-sidebar__external');
+    if (!(icon instanceof SVGElement)) throw new Error('no external icon');
+    expect(icon.getBoundingClientRect().right).toBeLessThanOrEqual(
+      sidebar.getBoundingClientRect().right,
+    );
+  });
+
+  it('sizes every element it owns as a border box', async () => {
+    const { link } = mountSidebar();
+    await resize(1440);
+
+    expect(getComputedStyle(link).boxSizing).toBe('border-box');
+  });
+});
+
+/**
+ * The header row at a phone's width, where four things compete for 390px: a
+ * 44px drawer trigger, the brand, the search trigger and whatever the host put
+ * in `actions`.
+ *
+ * ⚠️ THE TRIGGER WAS WINNING, AND IT SHOULD LOSE. `.wave-docs-search-trigger`
+ * is `width: 100%`, so its flex base is the whole row; it took ~200px of 390
+ * and the brand — which carries `text-overflow: ellipsis` so that a long
+ * product name cannot push search off the edge — rendered as "Wa…". A brand is
+ * identity and a search box is a control, and a short control still works.
+ */
+describe('the header at a phone width', () => {
+  function mountHeader(): HTMLElement {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    document.body.innerHTML = `
+      <header class="wave-docs-layout__header">
+        <div class="wave-docs-layout__header-inner">
+          <button type="button" class="wave-docs-layout__nav-trigger"></button>
+          <div class="wave-docs-layout__title"><a href="/">Wave Docs</a></div>
+          <button type="button" class="wave-docs-search-trigger wave-docs-layout__search">
+            <span class="wave-docs-search-trigger-label">Search</span>
+            <kbd class="wave-docs-search-trigger-kbd">\u2318K</kbd>
+          </button>
+          <div class="wave-docs-layout__actions"><a href="#">GitHub</a></div>
+        </div>
+      </header>`;
+
+    const title = document.querySelector('.wave-docs-layout__title');
+    if (!(title instanceof HTMLElement)) {
+      throw new Error('failed to mount the header fixture');
+    }
+    return title;
+  }
+
+  it('shows a nine-character brand whole at 390px', async () => {
+    const title = mountHeader();
+    await resize(390);
+
+    // `scrollWidth > clientWidth` is the ellipsis firing: the text is wider
+    // than the box painting it.
+    expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth + 1);
+  });
+
+  it('does not put the row into horizontal scroll at 320px', async () => {
+    mountHeader();
+    await resize(320);
+
+    const inner = document.querySelector('.wave-docs-layout__header-inner');
+    if (!(inner instanceof HTMLElement)) throw new Error('no header inner');
+    // The brand may ellipsise at 320 — that is what the ellipsis is for. What
+    // must not happen is the row overflowing the viewport.
+    expect(inner.scrollWidth).toBeLessThanOrEqual(inner.clientWidth + 1);
+  });
+
+  it('gives the trigger the full 20rem once there is room', async () => {
+    mountHeader();
+    await resize(1440);
+
+    const trigger = document.querySelector('.wave-docs-layout__search');
+    if (!(trigger instanceof HTMLElement)) throw new Error('no search trigger');
+    expect(trigger.getBoundingClientRect().width).toBeGreaterThan(240);
+  });
+});

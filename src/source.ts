@@ -41,7 +41,7 @@ const INDEX_NAME = 'index';
  * ⚠️ THE SCAN USED TO OPEN EVERY MARKDOWN FILE AT ONCE. `scanDir` recursed into
  * its subdirectories in parallel and read that directory's pages with a bare
  * `Promise.all`, so the number of `readFile` calls in flight equalled the number
- * of markdown files in the entire tree. On a 1,200-page corpus and the common
+ * of markdown files in the entire tree. On a 1,201-page corpus and the common
  * 1,024-descriptor soft limit, `next build` died with a bare `EMFILE: too many
  * open files` — no error code, no mention that this was the docs scan, and
  * nothing pointing at the fix. Exactly the large content set this package is

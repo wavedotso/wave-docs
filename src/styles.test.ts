@@ -1150,3 +1150,57 @@ describe('the converter itself', () => {
     expect(contrast(accent, [1, 0, 0])).toBeCloseTo(5.16, 1);
   });
 });
+
+/**
+ * The header is the one region of the shell a host puts its own markup into,
+ * and it is the one region the grounding rules in `base` do not reach.
+ *
+ * ⚠️ IT IS A SIBLING OF EVERYTHING THAT RULE PAINTS. `.wave-docs-layout`,
+ * `.wave-docs-prose`, `.wave-docs-sidebar` and `.wave-docs-toc` get a
+ * foreground and a face; `.wave-docs-layout__header` is none of them — it sits
+ * above the grid, outside it. So it painted its own background and inherited
+ * its text colour and its typeface from the host's `body`.
+ *
+ * That was invisible for as long as the bar held nothing but the drawer trigger
+ * and the search button, both of which carry their own. It became visible the
+ * first time a real site passed `title` and `actions` — the two documented ways
+ * to put chrome there — and got a serif brand and an underlined blue link.
+ */
+describe('the header', () => {
+  const block = readBlock(sheet, sheet.indexOf('.wave-docs-layout__header {'));
+
+  it('paints its own foreground, not just its background', () => {
+    expect(block).toContain('background-color: var(--wave-docs-bg)');
+    expect(block).toContain('color: var(--wave-docs-fg)');
+  });
+
+  it('is named in the rule that assigns the typeface', () => {
+    const rule =
+      /([^{}]*)\{\s*font-family: var\(--wave-docs-font-sans\);\s*\}/.exec(
+        sheet,
+      );
+    expect(rule?.[1]).toContain('.wave-docs-layout__header');
+  });
+
+  /**
+   * `title` and `actions` are `ReactNode`, so a host fills them with its own
+   * markup — and written plainly that is a bare `<a>`. Defaulting it is not an
+   * imposition: these rules are in `@layer components`, so any unlayered CSS
+   * the host writes outranks the whole layer without a specificity fight.
+   */
+  it.each(['__title', '__actions'])(
+    'defaults an anchor dropped into %s',
+    (slot) => {
+      const selector = `.wave-docs-layout${slot} a`;
+      const at = sheet.indexOf(selector);
+      expect(at, `no rule for ${selector}`).toBeGreaterThan(-1);
+      expect(readBlock(sheet, at)).toContain('text-decoration: none');
+    },
+  );
+
+  it('gives those anchors a visible focus ring', () => {
+    const at = sheet.indexOf('.wave-docs-layout__title a:focus-visible');
+    expect(at, 'no focus style for the header slots').toBeGreaterThan(-1);
+    expect(readBlock(sheet, at)).toContain('outline: 2px solid');
+  });
+});

@@ -260,6 +260,28 @@
 
 @layer base {
   /*
+   * ⚠️ THE SHELL DEPENDED ON THE HOST SHIPPING A RESET, AND MOST HOSTS DO.
+   *
+   * `.wave-docs-sidebar__link` is `width: 100%` with `0.5rem` of inline
+   * padding. Under `content-box` that is a 272px box in a 256px track, so the
+   * external-link icon `justify-content: space-between` pins to the far end
+   * lands 8px outside the sidebar and is clipped in half — measured, on the
+   * site in `site/`. Tailwind's preflight and every normalize-style reset set
+   * `border-box` globally, so the overflow was invisible in every project that
+   * has one, and visible on the only site here that ships no CSS at all.
+   *
+   * Scoped to this package's own namespace rather than to `*`. The prose
+   * renders a consumer's components as well as ours, and a global reset
+   * arriving inside a stylesheet they imported for their documentation is not
+   * ours to write — but every element carrying a `wave-docs-` class is one this
+   * package emitted and sized.
+   */
+  [class^='wave-docs-'],
+  [class*=' wave-docs-'] {
+    box-sizing: border-box;
+  }
+
+  /*
    * The ground the ramp is composed against.
    *
    * A foreground token is only as legible as the background under it, and this
@@ -315,6 +337,7 @@
   .wave-docs-sidebar,
   .wave-docs-toc,
   .wave-docs-skip-link,
+  .wave-docs-layout__header,
   .wave-docs-search-trigger,
   .wave-docs-search-dialog {
     font-family: var(--wave-docs-font-sans);
@@ -1632,6 +1655,16 @@
   .wave-docs-layout__header {
     position: sticky;
     top: 0;
+    /*
+     * ⚠️ `color` IS HERE BECAUSE THE HEADER IS OUTSIDE `.wave-docs-layout`.
+     * The grounding rule in `base` paints the grid, the prose, the sidebar and
+     * the table of contents; the header is a sibling of all four, so it painted
+     * its own background and then inherited its foreground from the host's
+     * `body`. Invisible while the bar held nothing but two controls that carry
+     * their own colour — and the moment a host passed `title` or `actions`,
+     * their text rendered in whatever the page inherits.
+     */
+    color: var(--wave-docs-fg);
     /* Above the sticky sidebar and TOC, which establish their own stacking
      * contexts; below the search dialog, which portals to `<body>`. */
     z-index: 20;
@@ -1661,8 +1694,8 @@
 
   .wave-docs-layout__title {
     font-weight: 600;
-    /* The brand is not a link target here and must not swallow the row: a long
-     * product name would otherwise push search off the right edge. */
+    /* The brand must not swallow the row: a long product name would otherwise
+     * push search off the right edge. */
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1674,6 +1707,37 @@
    * the title that would not exist. */
   .wave-docs-layout__search {
     margin-inline-start: auto;
+  }
+
+  /*
+   * `title` and `actions` are `ReactNode` slots, so what lands in them is the
+   * host's markup — and the documented way to fill them is a brand and a link
+   * to a repository. Written plainly, that is a bare `<a>`: underlined, in the
+   * UA's link blue, against a header this package styles. Defaulting them costs
+   * a host nothing, because these rules are in `@layer components` and any
+   * unlayered CSS of their own outranks the whole layer.
+   */
+  .wave-docs-layout__title a,
+  .wave-docs-layout__actions a {
+    color: inherit;
+    text-decoration: none;
+    border-radius: var(--wave-docs-radius-sm);
+  }
+
+  .wave-docs-layout__actions a {
+    color: var(--wave-docs-fg-muted);
+    font-size: 0.875rem;
+  }
+
+  .wave-docs-layout__title a:hover,
+  .wave-docs-layout__actions a:hover {
+    color: var(--wave-docs-accent);
+  }
+
+  .wave-docs-layout__title a:focus-visible,
+  .wave-docs-layout__actions a:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: 2px;
   }
 
   .wave-docs-layout__actions {
@@ -1809,6 +1873,35 @@
     cursor: pointer;
   }
 
+  /*
+   * ⚠️ IN THE SHELL'S HEADER THE TRIGGER IS WHAT GIVES WAY, NOT THE BRAND.
+   *
+   * `width: 100%` makes the trigger's flex base the whole row, so on a phone it
+   * took ~200px of 390 and `title` — which carries `text-overflow: ellipsis`
+   * precisely so a long product name cannot push search off the edge —
+   * collapsed to "Wa…". A brand is identity and a search box is a control: the
+   * control is the one that can be short and still work.
+   *
+   * Scoped with both classes rather than by editing the trigger's own
+   * `max-width`, because the trigger is also rendered standalone, in a host's
+   * own header, where nothing else is competing for the row.
+   */
+  .wave-docs-search-trigger.wave-docs-layout__search {
+    max-width: 9rem;
+  }
+
+  @media (min-width: 30rem) {
+    .wave-docs-search-trigger.wave-docs-layout__search {
+      max-width: 11rem;
+    }
+  }
+
+  @media (min-width: 48rem) {
+    .wave-docs-search-trigger.wave-docs-layout__search {
+      max-width: 20rem;
+    }
+  }
+
   .wave-docs-search-trigger:hover {
     border-color: var(--wave-docs-border-strong);
     color: var(--wave-docs-fg);
@@ -1826,6 +1919,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /*
+   * ⚠️ HIDDEN WHERE THE SHORTCUT CANNOT BE PRESSED, WHICH IS NOT A WIDTH
+   * QUESTION. `⌘K` is an instruction, and on a phone or a tablet it is one the
+   * reader cannot follow — a 10-inch tablet at 1024px would keep it under any
+   * breakpoint rule. It also bought ~40px back in the row where the brand and
+   * the trigger are competing hardest.
+   */
+  @media (hover: none) and (pointer: coarse) {
+    .wave-docs-search-trigger-kbd {
+      display: none;
+    }
   }
 
   .wave-docs-search-trigger-kbd {

@@ -265,9 +265,9 @@ function createImage(Image: DocsImageComponent | undefined) {
     const resolvedLoading = loading ?? 'lazy';
     const resolvedClassName = joinClassNames('wave-docs-image', className);
 
-    // `next/image` throws without intrinsic dimensions, and the build-time
-    // image resolver is optional (`image-size` is an optional peer). Degrade to
-    // a plain `<img>` instead of failing the page.
+    // `next/image` throws without intrinsic dimensions, and `imageResolver` is
+    // optional — nothing here reads a file to measure one. Degrade to a plain
+    // `<img>` instead of failing the page.
     if (
       Image !== undefined &&
       typeof src === 'string' &&
