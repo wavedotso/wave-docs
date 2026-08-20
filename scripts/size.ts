@@ -44,6 +44,7 @@ import type { DocFile } from '../dist/types.js';
 const ROOT = path.join(import.meta.dirname, '..');
 const BUDGET_FILE = path.join(ROOT, 'size-budget.json');
 const README_FILE = path.join(ROOT, 'README.md');
+const SITE_CONTENT = path.join(ROOT, 'site', 'content');
 
 interface Budget {
   /** The measured ceiling. */
@@ -363,19 +364,47 @@ function publishedFigure(
   return Number.isNaN(value) ? undefined : value;
 }
 
-function checkReadme(measured: {
-  client: Record<string, number>;
-  payload: Record<string, number>;
-  render: Record<string, number>;
-}): void {
-  const readme = readFileSync(README_FILE, 'utf8');
-  console.log('\nreadme (published ceilings)');
+/** Every `.md` under `site/content/`, at any depth. */
+function siteContentFiles(dir: string = SITE_CONTENT): string[] {
+  const found: string[] = [];
 
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...siteContentFiles(full));
+      continue;
+    }
+    if (entry.name.endsWith('.md')) found.push(full);
+  }
+  return found;
+}
+
+/**
+ * Check one document's published figures against what was measured.
+ *
+ * `requireEveryRow` is the difference between the two callers, and it is the
+ * whole of it. The README is the contract and must carry all eight rows, so a
+ * deleted one is a failure. A page of the site publishes whichever subset its
+ * argument needs — but every row it *does* publish is held to the same two
+ * assertions, because a second document repeating these numbers is a second
+ * document that can rot.
+ */
+function checkDocument(
+  source: string,
+  text: string,
+  measured: {
+    client: Record<string, number>;
+    payload: Record<string, number>;
+    render: Record<string, number>;
+  },
+  requireEveryRow: boolean,
+): void {
   for (const claim of README_CLAIMS) {
-    const published = publishedFigure(readme, claim);
+    const published = publishedFigure(text, claim);
     if (published === undefined) {
+      if (!requireEveryRow) continue;
       failures.push(
-        `readme/${claim.label}: no row in the "What it costs" table — ` +
+        `${source}/${claim.label}: no row in the "What it costs" table — ` +
           'a figure this script checks was deleted or retitled',
       );
       console.log(`  ✗ ${claim.label} — no such row`);
@@ -403,9 +432,9 @@ function checkReadme(measured: {
 
     if (actual > published) {
       failures.push(
-        `readme/${claim.label}: measured ${actual}${unit} exceeds the published ` +
-          `${published}${unit}. The README may not understate what this costs — ` +
-          'raise the published figure, deliberately.',
+        `${source}/${claim.label}: measured ${actual}${unit} exceeds the ` +
+          `published ${published}${unit}. A document here may not understate ` +
+          'what this package costs — raise the published figure, deliberately.',
       );
       console.log(
         `  ✗ ${claim.label}: ${actual}${unit} > published ${published}${unit}`,
@@ -414,8 +443,9 @@ function checkReadme(measured: {
     }
     if (published > ceiling) {
       failures.push(
-        `readme/${claim.label}: the published ${published}${unit} is above the ` +
-          `budget's ${ceiling}${unit}, so the table promises worse than the build enforces`,
+        `${source}/${claim.label}: the published ${published}${unit} is above ` +
+          `the budget's ${ceiling}${unit}, so the table promises worse than the ` +
+          'build enforces',
       );
       console.log(
         `  ✗ ${claim.label}: published ${published}${unit} > budget ${ceiling}${unit}`,
@@ -425,6 +455,42 @@ function checkReadme(measured: {
     console.log(
       `  ✓ ${claim.label.padEnd(42)} ${`${actual}${unit}`.padStart(9)} ≤ published ${published}${unit}`,
     );
+  }
+}
+
+/**
+ * Every document that publishes one of these numbers, checked.
+ *
+ * ⚠️ THE SITE IS HERE BECAUSE IT BECAME A SECOND PLACE THE NUMBERS ARE
+ * PUBLISHED. `site/content/` was six fixture pages when this axis was written
+ * and is a documentation site now, with a cost table on its landing page and
+ * another in its installation guide — and the first thing that happened was the
+ * drift this axis exists to catch: the site said 13.0 KB under a sentence
+ * calling it a ceiling, while the README said 13.5 KB, for as long as nobody
+ * compared them.
+ *
+ * Unlike the README, a page is not required to carry every row. It is required
+ * to be right about the rows it carries.
+ */
+function checkPublishedFigures(measured: {
+  client: Record<string, number>;
+  payload: Record<string, number>;
+  render: Record<string, number>;
+}): void {
+  console.log('\nreadme (published ceilings)');
+  checkDocument('readme', readFileSync(README_FILE, 'utf8'), measured, true);
+
+  console.log('\nsite (published ceilings)');
+  for (const file of siteContentFiles()) {
+    const text = readFileSync(file, 'utf8');
+    const label = `site/${path.relative(SITE_CONTENT, file)}`;
+    // Most pages publish no figure at all. Naming only the ones that do keeps
+    // the output a list of what is checked rather than a list of files.
+    if (!README_CLAIMS.some((c) => publishedFigure(text, c) !== undefined)) {
+      continue;
+    }
+    console.log(`  ${label}`);
+    checkDocument(label, text, measured, false);
   }
 }
 
@@ -474,7 +540,7 @@ compare(
   budgets.render,
   (value) => `${value.toFixed(2)}×`,
 );
-checkReadme(measured);
+checkPublishedFigures(measured);
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} budget failure(s):`);

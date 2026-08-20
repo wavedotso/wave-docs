@@ -1,33 +1,33 @@
 ---
 title: Wave Docs
-description: Markdown documentation for Next.js, with no parser in the browser.
+description: Markdown documentation for Next.js. The parser runs in Node at build time and never reaches the browser.
 ---
 
 Point `@waveso/docs` at a folder of `.md` files and you get a documentation
-site: routing, navigation, a table of contents, syntax highlighting, search and
-redirects.
+site: routing, navigation, a table of contents, syntax highlighting, search,
+redirects and a sitemap.
 
-This site is one of them. Every page you can reach from the sidebar is a
-markdown file in `site/content/`, rendered by the same package you would
-install — and the shell around it is one line in a layout file.
+**This site is one of them.** Every page in the sidebar is a markdown file in
+`site/content/`, rendered by the package you would install, from a layout file
+that is one line of shell and no CSS of its own.
 
-## The idea
+## The decision everything follows from
 
 Markdown becomes [hast](https://github.com/syntax-tree/hast) in Node, at build
 time. A hast tree is plain serialisable JSON, so Next renders it inside a Server
-Component and the browser receives a tree of nodes and a component map.
+Component and the browser receives a tree of nodes and a component map — never
+`unified`, never `remark-parse`, never Shiki.
 
-```ts title="what a page is, by the time React sees it"
-interface RenderedDoc {
-  hast: Root;              // the document, as data
-  toc: TocEntry[];         // headings, from the pass that made the ids
-  frontmatter: DocFrontmatter;
-  href: string;
-}
+```
+content/*.md ──▶ source ──▶ render ──▶ { hast, toc, frontmatter }
+                 (Node)     (Node)              │
+                                          RSC payload
+                                                │
+                                        <DocContent hast={…} />
 ```
 
-Never `unified`, never `remark-parse`, never Shiki. Three things follow, and
-they are the reasons to pick this over the alternatives.
+Three things follow from that shape, and they are the reasons to choose this
+over the alternatives.
 
 **Nothing is stringified to HTML.** The pipeline stops at hast, so the output
 stays *data*. You map `h2`, `a`, `img`, `pre` and `callout` onto your own
@@ -40,19 +40,74 @@ right matches — by construction, not by coincidence.
 
 **Broken internal links fail the build.** `[auth](./api/auth.md)` is the right
 way to link between markdown files: it resolves on GitHub and in every editor
-preview, and it 404s once published. Those links are rewritten to routes and
-their targets checked.
+preview, and it 404s once published. Those links are rewritten to routes, their
+targets checked, and their `#fragments` checked against the headings that exist.
 
-## What it costs a reader
+## What a reader downloads
 
-Under 13 KB gzipped, total, and that is the whole of what this package sends to
-a browser. Every figure is a ceiling a build fails over rather than a number
-somebody remembered to update.
+| | At most |
+| --- | --- |
+| Everything the quick start ships, gzipped | 13.5 KB |
+| Without the search dialog | under 4 KB |
+| Markdown parser | none |
+| Syntax highlighter | none |
 
-> [!NOTE]
-> The one honest cost is the payload: shipping a tree instead of a string is
-> about 20% more brotli on a prose page. That is the price of never handing
-> markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical
-> reviewer should ask for.
+Every figure is a **ceiling** rather than a measurement somebody remembered to
+update: `pnpm size` fails the build when one is passed, in CI and again in
+`prepublishOnly`, and fails it again if the published table ever promises better
+than the code delivers.
 
-Start with [Installation](./installation.md).
+The honest cost is on the other side of the ledger. Shipping a tree instead of a
+string is about 20% more brotli on a prose page, and about 12% on a page with
+code and tables. That is the price of never handing markup to
+`dangerouslySetInnerHTML`, and it is the first number a sceptical reviewer
+should ask for.
+
+## Five files
+
+```ts title="lib/docs.ts"
+import { createDocsRoute } from '@waveso/docs/next';
+
+export const docs = createDocsRoute({ contentDir: 'content/docs' });
+```
+
+```tsx title="app/docs/layout.tsx"
+import '@waveso/docs/styles.css';
+import { docs } from '@/lib/docs';
+
+export default docs.Layout;
+```
+
+The other three are a catch-all page, an index page and the search-index route —
+each one a re-export, each one explained in the
+[quick start](./getting-started/quick-start.md). What that gets you is a working
+documentation site: routing, a navigation sidebar, a table of contents,
+syntax highlighting, search, a mobile drawer and a skip link.
+
+Three peer dependencies, one of them optional. No Tailwind, no MDX toolchain, no
+build step of your own.
+
+## Enforced, not intended
+
+Documentation is full of promises. These are the ones with a test behind them,
+and the test is named so it can be read.
+
+| | Enforced by |
+| --- | --- |
+| Every published cost figure is a ceiling | `pnpm size` |
+| Every subpath, and every name it exports, is public API | `manifest.test.ts` |
+| Every `DocsErrorCode` member is public API | `error-taxonomy.test.ts` |
+| Which Node builtins each entry point needs, exactly | `entry-runtime.test.ts` |
+| Every foreground and background pair clears WCAG 4.5:1 | `styles.test.ts` |
+| Every code example in the README compiles | `pnpm run check:readme` |
+| The shell needs no layout CSS from its host | `site-budget.test.ts` |
+
+That last one is what this site is for. A documentation site built by the people
+who wrote the package will work — they know which class to add when a column
+collapses, and they add it locally without noticing they have papered over a
+defect every consumer will hit. So this site is held to a hard zero: no
+stylesheet, no inline layout style, no wrapper between the shell and the page.
+Anything it needs and cannot have is a bug report against the package, filed by
+construction rather than by goodwill.
+
+Next: [Installation](./getting-started/installation.md).

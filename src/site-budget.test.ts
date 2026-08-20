@@ -43,6 +43,50 @@ function siteFiles(dir: string = SITE): string[] {
   return found;
 }
 
+/** Every `.md` file under `site/content/`, at any depth, as absolute paths. */
+function markdownFiles(dir: string = CONTENT): string[] {
+  const found: string[] = [];
+
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      found.push(...markdownFiles(full));
+      continue;
+    }
+    if (entry.endsWith('.md')) found.push(full);
+  }
+  return found;
+}
+
+/**
+ * A page's prose, with every code fence and inline code span removed.
+ *
+ * ⚠️ THE RULES BELOW ARE ABOUT WHAT THE PIPELINE RESOLVES, AND IT RESOLVES
+ * NEITHER OF THOSE. `guides/images.md` has to show `![](./diagram.png)` to
+ * explain why a relative source needs an `imageResolver`, and `![](/x.png)` to
+ * show the spelling that does not — scanned raw, the page documenting the rule
+ * is the page that breaks it. A fence is text: it never becomes an `image` or a
+ * `link` node, so nothing in one can 404 or throw.
+ *
+ * Opening fences are matched by length, so a ```` ```` ```` block quoting a
+ * ```` ``` ```` block closes on the right line rather than in the middle.
+ */
+function prose(body: string): string {
+  const kept: string[] = [];
+  let fence: string | undefined;
+
+  for (const line of body.split('\n')) {
+    const marker = /^(`{3,})/.exec(line)?.[1];
+    if (marker !== undefined) {
+      if (fence === undefined) fence = marker;
+      else if (marker.length >= fence.length) fence = undefined;
+      continue;
+    }
+    if (fence === undefined) kept.push(line);
+  }
+  return kept.join('\n').replace(/`[^`\n]*`/g, '');
+}
+
 /**
  * Properties that place or size a box.
  *
@@ -79,31 +123,83 @@ const LAYOUT_PROPERTIES = [
 ];
 
 describe('the site is an acceptance harness', () => {
-  it('exists, with the six pages the navigation names', () => {
+  it('exists, and every page in it is ordered by hand', () => {
     // The guard on the guard: a missing directory would make every assertion
     // below iterate over nothing and pass.
     expect(existsSync(CONTENT)).toBe(true);
 
-    const pages = readdirSync(CONTENT)
-      .filter((name) => name.endsWith('.md'))
-      .map((name) => name.replace(/\.md$/, ''))
-      .sort();
+    /*
+     * ⚠️ STRUCTURAL RATHER THAN A HARDCODED LIST, AND THAT IS THE SECOND
+     * SPELLING OF THIS TEST. It used to name the six pages there were. That
+     * pinned the wrong thing: adding a page meant editing a test, and the
+     * assertion it actually wanted — *no page is left to sort itself* — was
+     * never made. `meta.json` naming a missing page already fails the build in
+     * the package. The reverse does not: an unlisted page is legal and lands
+     * after the named ones, alphabetically, which on a curated site is a page
+     * nobody decided the position of.
+     */
+    const unordered: string[] = [];
 
-    expect(pages).toEqual([
-      'index',
-      'installation',
-      'internals',
-      'plugins',
-      'reference',
-      'styling',
-    ]);
+    const check = (dir: string): void => {
+      const metaFile = path.join(dir, 'meta.json');
+      if (!existsSync(metaFile)) return;
 
-    // And `meta.json` orders every one of them, so the sidebar is authored
-    // rather than alphabetical.
-    const meta = JSON.parse(
-      readFileSync(path.join(CONTENT, 'meta.json'), 'utf8'),
-    ) as { pages?: string[] };
-    expect([...(meta.pages ?? [])].sort()).toEqual(pages);
+      const meta = JSON.parse(readFileSync(metaFile, 'utf8')) as {
+        pages?: (string | { title: string; href: string })[];
+      };
+      const entries = meta.pages;
+      if (entries === undefined) return;
+
+      // `"..."` is an explicit decision to let the rest sort itself, so a file
+      // that exists is accounted for either way.
+      const named = new Set(
+        entries.filter((entry): entry is string => typeof entry === 'string'),
+      );
+      if (named.has('...')) return;
+
+      for (const entry of readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          if (!named.has(entry)) unordered.push(path.relative(CONTENT, full));
+          check(full);
+          continue;
+        }
+        if (!entry.endsWith('.md')) continue;
+        if (!named.has(entry.replace(/\.md$/, ''))) {
+          unordered.push(path.relative(CONTENT, full));
+        }
+      }
+    };
+
+    check(CONTENT);
+    expect(unordered).toEqual([]);
+  });
+
+  it('is a documentation site rather than a fixture', () => {
+    /*
+     * The guard on the guard above, and a floor worth having on its own. A
+     * structural rule passes trivially on an empty tree, and the harness is
+     * only worth running if the shell is carrying a real corpus: nested
+     * sections, a navigation deep enough to have groups, and enough pages that
+     * the sidebar scrolls.
+     */
+    const pages: string[] = [];
+
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir)) {
+        const full = path.join(dir, entry);
+        if (statSync(full).isDirectory()) {
+          walk(full);
+          continue;
+        }
+        if (entry.endsWith('.md')) pages.push(path.relative(CONTENT, full));
+      }
+    };
+
+    walk(CONTENT);
+    expect(pages.length).toBeGreaterThanOrEqual(15);
+    // And at least one of them is nested, so `meta.json` groups are exercised.
+    expect(pages.some((page) => page.includes(path.sep))).toBe(true);
   });
 
   it('ships no stylesheet at all', () => {
@@ -181,18 +277,35 @@ describe('the site is an acceptance harness', () => {
      */
     const layout = readFileSync(path.join(SITE, 'app', 'layout.tsx'), 'utf8');
 
-    // `children` is the direct and only child of the shell.
-    expect(layout).toMatch(/<docs\.Layout>\s*\{children\}\s*<\/docs\.Layout>/);
+    /*
+     * `children` is the direct and only child of the shell — props on the
+     * opening tag or not.
+     *
+     * ⚠️ THE PROPS ARE ALLOWED AND THE WRAPPER STILL IS NOT. This asserted a
+     * bare `<docs.Layout>` until the site grew a brand and a repository link,
+     * which are the documented way to put chrome in the header and were
+     * exercised by no real build until then. Refusing them here would have made
+     * the harness cover less than the README describes, in the name of a rule
+     * that was never about props: what must not appear is an element *between*
+     * the shell and the page, because that is what would put the TOC inside the
+     * article's grid column.
+     */
+    expect(layout).toMatch(
+      /<docs\.Layout[\s\S]*?>\s*\{children\}\s*<\/docs\.Layout>/,
+    );
 
     /*
-     * And nothing else is an element. `html` and `body` are the root layout's
-     * own and unavoidable; anything past those three is a wrapper, whatever it
-     * is called.
+     * And nothing else is an element outside those slots. `html` and `body` are
+     * the root layout's own and unavoidable; `Link` and `a` are the header's
+     * two slotted nodes, which `docs.Layout` places itself. Anything past those
+     * is a wrapper, whatever it is called.
      */
     const elements = [...layout.matchAll(/<([A-Za-z][\w.]*)[\s/>]/g)].map(
       (match) => match[1],
     );
     expect([...new Set(elements)].sort()).toEqual([
+      'Link',
+      'a',
       'body',
       'docs.Layout',
       'html',
@@ -208,11 +321,10 @@ describe('the site is an acceptance harness', () => {
      */
     let markdownLinks = 0;
 
-    for (const name of readdirSync(CONTENT)) {
-      if (!name.endsWith('.md')) continue;
-      const body = readFileSync(path.join(CONTENT, name), 'utf8');
+    for (const file of markdownFiles()) {
+      const body = prose(readFileSync(file, 'utf8'));
 
-      markdownLinks += [...body.matchAll(/\]\(\.\/[^)]+\.md\)/g)].length;
+      markdownLinks += [...body.matchAll(/\]\(\.{1,2}\/[^)]+\.md\)/g)].length;
       /*
        * ⚠️ ANY ABSOLUTE LINK, NOT JUST A `/docs/` ONE. This used to forbid
        * `](/docs/…)`, which stopped being a pattern that can occur the moment
@@ -242,12 +354,13 @@ describe('the site is an acceptance harness', () => {
      * asserted here, where the message names the file, rather than discovered
      * in a build log.
      */
-    for (const name of readdirSync(CONTENT)) {
-      if (!name.endsWith('.md')) continue;
-      const body = readFileSync(path.join(CONTENT, name), 'utf8');
+    for (const file of markdownFiles()) {
+      const body = prose(readFileSync(file, 'utf8'));
 
       const relative = [...body.matchAll(/!\[[^\]]*\]\((?!https?:)([^)]+)\)/g)];
-      expect(relative.map((match) => `${name}: ${match[1]}`)).toEqual([]);
+      expect(
+        relative.map((match) => `${path.relative(CONTENT, file)}: ${match[1]}`),
+      ).toEqual([]);
     }
   });
 

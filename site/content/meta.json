@@ -1,10 +1,16 @@
 {
   "pages": [
     "index",
-    "installation",
-    "styling",
-    "plugins",
+    "getting-started",
+    "guides",
     "reference",
-    "internals"
+    "internals",
+    "---Project---",
+    { "title": "GitHub", "href": "https://github.com/wavedotso/wave-docs" },
+    { "title": "npm", "href": "https://www.npmjs.com/package/@waveso/docs" },
+    {
+      "title": "Changelog",
+      "href": "https://github.com/wavedotso/wave-docs/blob/main/CHANGELOG.md"
+    }
   ]
 }

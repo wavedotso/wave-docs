@@ -1,0 +1,10 @@
+{
+  "title": "Reference",
+  "pages": [
+    "configuration",
+    "entry-points",
+    "components",
+    "errors",
+    "stability"
+  ]
+}

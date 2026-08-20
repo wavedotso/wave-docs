@@ -1,0 +1,14 @@
+{
+  "title": "Guides",
+  "pages": [
+    "markdown",
+    "code-blocks",
+    "images",
+    "search",
+    "links",
+    "theming",
+    "layout",
+    "translating",
+    "plugins"
+  ]
+}
