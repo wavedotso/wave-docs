@@ -95,11 +95,9 @@ Why it is a `<dialog>` at all, and what the component adds on top of one, is
 in [Internals](../internals.md).
 
 At 64rem and above the same element becomes the sticky column, via
-`display: contents`, which removes the dialog box from layout *and* from the
-accessibility tree. One navigation in the DOM at every width: one landmark, one
-copy of the links in the payload, nothing to keep in step. The rule is scoped
-`:not(:modal)`, so the drawer still opens as a real modal at any width — a
-64rem viewport at 200% zoom is a narrow one.
+`display: contents`. The rule is scoped `:not(:modal)`, so the drawer still
+opens as a real modal at any width — a 64rem viewport at 200% zoom is a narrow
+one.
 
 ## Composing it yourself
 

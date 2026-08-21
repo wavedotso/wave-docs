@@ -53,36 +53,23 @@ measured.
 An optional catch-all matches `/docs` as well as `/docs/anything`, which looks
 like it saves a file. It leaves `/docs/index` live and serving byte-identical
 HTML with no canonical between them — the duplicate-content problem, shipped by
-default and invisible until a search console mentions it. `[...slug]` does not
-match the index, so the index gets its own `page.tsx` and `docs.IndexPage`. See
+default and invisible until a search console mentions it. It also makes
+`params.slug` possibly `undefined` for every page, which is a narrowing check in
+a route file that can never actually be hit. `[...slug]` does not match the
+index, so the index gets its own `page.tsx` and `docs.IndexPage`. See
 the [quick start](./getting-started/quick-start.md).
 
 ## The search index is a route
 
-Not a build script. `docs.searchIndex` is a `force-static` route handler, so it
-is rebuilt by the same `next build` that builds the pages, and in `next dev` it
-re-reads the disk per request — a page you add is searchable on the next
-keystroke rather than at the next time you remember to run something.
+Not a build script. `docs.searchIndex` is a route handler, so the index is
+built by the same `next build` that builds the pages.
+[Search](./guides/search.md) has the route file, the `force-static` line it
+must carry, and the throw when it is missing.
 
-```ts title="app/search-index.json/route.ts"
-export const GET = docs.searchIndex;
-export const dynamic = 'force-static';
-```
-
-Without `force-static`, Next re-renders the whole corpus per request, from
-markdown that output tracing did not put in the deployment bundle. On a
-serverless host that throws — at the reader, inside the search dialog, with no
-warning at build time.
-
-**Route segment config is parsed out of the module before any of it runs**,
-so `dynamic` has to be a literal: a value computed from a constant is
-invisible to that parse, and the route is marked `ƒ` with nothing said about
-it. So the handler reads the `NEXT_PHASE` Next sets while prerendering and
-fails loudly with [`search-index-dynamic`](./reference/errors.md), naming the
-file to edit. A `console.error` was the alternative and is not one: a warning
-in a serverless log is unread, and the symptom — a search dialog stuck on
-"could not load the index" — reaches [search](./guides/search.md) days later
-with nothing connecting it to a missing line in a route file.
+**The throw is deliberate.** A `console.error` was the alternative and is not
+one: a warning in a serverless log is unread, and the symptom — a search
+dialog stuck on "could not load the index" — arrives days later with nothing
+connecting it to a missing line in a route file.
 
 ## The search dialog navigates through a closure
 
@@ -92,10 +79,9 @@ singleton, so the bare reference is safe today — but that is an implementation
 detail of an optional peer, and the day it becomes a method shorthand, `this` is
 `undefined` and selecting a result throws inside the dialog.
 
-Every component here takes data as props for the same reason. The two that
-cannot — `next-nav` for `usePathname`, `next-search` for `useRouter` — are named
-for it, so the coupling is visible in the file list rather than three imports
-deep. [Components](./reference/components.md) has the full map.
+Every component here takes data as props for the same reason, and the two
+modules that cannot are named for the hook they import —
+[Components](./reference/components.md) maps all of them.
 
 ## The content directory is re-scanned per request outside production
 
@@ -165,13 +151,10 @@ the `:not(:modal)` scope.
 
 ## The copy button is not a component
 
-About nine hundred bytes, mounted by `DocContent` and only when the tree it was
-handed contains a code frame — not a client component per code block. One
-delegated `click` listener on `document` and one live region on `<body>`, both
-behind a module-level ref count, so two `DocContent`s on a page copy once and
-announce once. The button is `visibility: hidden` until the listener attaches, so
-a reader with JavaScript off sees no button and finds no dead tab stop. See
-[Code blocks](./guides/code-blocks.md).
+About nine hundred bytes of delegated listener, not a client component per code
+block. It sits behind a module-level ref count, so two `DocContent`s on a page
+copy once and announce once. [Code blocks](./guides/code-blocks.md) has the
+mechanics.
 
 ## The video facade ships no JavaScript
 

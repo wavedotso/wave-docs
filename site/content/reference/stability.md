@@ -94,14 +94,12 @@ it. `frontmatterSchema` takes `StandardSchemaV1` from `@standard-schema/spec`,
 which carries its version in the type's name rather than only in a range.
 
 **Zod is a dependency, not a peer, and that is deliberate.** Your Zod is yours.
-As a peer — even an optional one, which npm still range-checks whenever the
-package is present — `^4.4.3` refused to install beside the Zod roughly 69% of
-the ecosystem was on at the time of writing: 47% still on 3.x, plus every 4.x
-below 4.4.3. Owning the copy also makes the `.extend()` instance-identity
-guarantee structural rather than documented. When you extend the frontmatter
-schema, take `z` from `@waveso/docs/frontmatter` — see
-[Writing content](../getting-started/writing-content.md), and
-[Installation](../getting-started/installation.md) for the peers you do install.
+As a peer it was an install-time failure for most of the ecosystem —
+[Installation](../getting-started/installation.md) has the measurement, and
+the peers you do install. Owning the copy also makes the `.extend()`
+instance-identity guarantee structural rather than documented. When you extend
+the frontmatter schema, take `z` from `@waveso/docs/frontmatter` — see
+[Writing content](../getting-started/writing-content.md).
 
 > [!IMPORTANT]
 > `tailwindcss` is not a peer either, for the same reason and one worse. A

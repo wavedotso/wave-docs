@@ -51,9 +51,8 @@ emits `/docs/index`, and `/docs` returns 404. The root `index.md` is absent from
 catch-all cannot render an empty parameter list.
 
 **The fix is a sibling `page.tsx`, not an optional catch-all.** `[[...slug]]`
-does match `/docs`, but it also leaves `/docs/index` live and serving
-byte-identical HTML — a duplicate-content pair with no canonical between them —
-and it makes `params.slug` possibly `undefined` on every page.
+would match `/docs` and save this file, at the cost of a duplicate route —
+[Internals](../internals.md) has the argument.
 
 > [!IMPORTANT]
 > `dynamicParams` must be written out as the literal `false`. Route segment

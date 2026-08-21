@@ -126,43 +126,15 @@ a redirect. It only costs you the six in the inferred type.
 
 ### The two severities
 
-Both take `'throw'`, `'warn'` or `'ignore'`, and both default to `'throw'`. A
-link that 404s was valid in your editor and on GitHub, so it is the kind of
-mistake nobody finds by reading — and `'warn'` is a line in a build log, which
-is a line nobody reads. It exists for a migration running knowingly against an
-incomplete corpus.
-
-`onBrokenAnchors` is the more common failure of the two: headings get renamed
-constantly and nothing renames the links into them. It is checked against every
-`id` in the rendered page rather than against the table of contents, which
-captures `h2`–`h3` only — so a link to an `h4`, or to an id one of your
-`rehypePlugins` added, is fine. Lower it to `'warn'` if a plugin of yours adds
-ids this package cannot see at render time. Both errors name the file, the line
-and the closest near-miss; [Links](../guides/links.md) has the messages.
+Both take `'throw'`, `'warn'` or `'ignore'`, and both default to `'throw'`.
+The argument for leaving them there, what each of the two checks covers and
+the messages the errors carry are in [Links](../guides/links.md).
 
 ### `externalRoutes`
 
-**Only meaningful at a root mount, which is also the only place it is needed.**
-Under `basePath: '/docs'` an absolute link either carries the prefix — so it is
-documentation, and is checked — or it does not, and this package leaves it
-alone. Under `basePath: '/'` there is no prefix: `/setup` and `/login` look
-identical, and both are checked against the published pages.
-
-That is the right default, because a root mount is what you choose when the
-origin serves documentation and nothing else. If yours serves something else
-too, name what is yours:
-
-```ts title="lib/docs.ts"
-export const docs = createDocsRoute({
-  contentDir: 'content/docs',
-  basePath: '/',
-  externalRoutes: ['/login', '/dashboard', '/api/'],
-});
-```
-
-A link is skipped when it equals one of these or begins with one followed by
-`/` — so `/api` covers `/api/keys` and not `/apiary`. It is a statement about
-your application, so nothing here infers it.
+**Only meaningful at a root mount**, because under `basePath: '/docs'` an
+absolute link either carries the prefix — so it is documentation — or it is
+not documentation at all. [Links](../guides/links.md) has the rest.
 
 ## The pipeline
 
@@ -189,12 +161,11 @@ was called default — which used to paint the light background onto code blocks
 in dark mode, and could only be fought off with `!important`. See
 [Theming](../guides/theming.md).
 
-Both plugin slots are attached once, to a processor shared by every file, so a
-plugin holding state accumulates it across the whole build rather than per
-document. The positions are the useful ones and are not negotiable —
-[Plugins](../guides/plugins.md) explains what each slot sees. Grammars and fence
-handling are in [Code blocks](../guides/code-blocks.md); the resolvers, their
-arguments and the folding done before they are called are in
+The two plugin positions are the useful ones and are not negotiable —
+[Plugins](../guides/plugins.md) explains what each slot sees, and what one
+processor shared by every file means for a plugin that holds state. Grammars
+and fence handling are in [Code blocks](../guides/code-blocks.md); the
+resolvers, their arguments and the folding done before they are called are in
 [Images](../guides/images.md) and [Links](../guides/links.md).
 
 ## Search
@@ -260,10 +231,7 @@ runs, so `export const dynamicParams = docs.dynamicParams` fails `next build`
 outright — `docs.dynamicParams` exists to document the value and type it as
 `false`, and you write `export const dynamicParams = false` yourself. The other
 is `dynamic = 'force-static'` on the search-index route, which is not on this
-object at all: without it Next re-renders your entire corpus on every request,
-from markdown that output tracing did not put in the deployment bundle. The
-handler detects that at runtime and throws `search-index-dynamic` rather than
-failing quietly.
+object at all — [Search](../guides/search.md) has what omitting it costs.
 
 Outside a production build the route re-reads the content directory once per
 request, because markdown is not in Next's module graph and nothing

@@ -63,10 +63,8 @@ import { DocContent } from '@waveso/docs/react/doc-content';
 at build time; this walks the resulting tree, and nothing here pulls unified,
 remark or a highlighter into the browser.
 
-`className` is appended, never substituted: nearly every rule in the stylesheet
-is scoped under `.wave-docs-prose`, `.wave-docs-prose .shiki` included, so
-dropping it leaves a page whose code blocks keep their syntax colours and lose
-everything else — which reads as a design choice rather than as a mistake.
+`className` is appended, never substituted — [Theming](../guides/theming.md)
+has what dropping `.wave-docs-prose` costs.
 
 `labels` takes `copied`, default `'Copied to the clipboard.'`, and
 `copyFailed`, default `'Copy failed. Select the code and press Control or
@@ -197,9 +195,8 @@ plain string because it arrives as an unvalidated hast attribute, and a blank
 name, which is the one thing this component exists to provide.
 
 It renders an `<aside role="note">` carrying the label on `aria-label`, rather
-than leaving the kind to the coloured border — which conveys nothing to a
-screen reader and nothing to the 8% of men who cannot separate the red one from
-the green one.
+than leaving the kind to the coloured border — [Markdown](../guides/markdown.md)
+has who that border reaches and who it does not.
 
 ## YouTube
 
@@ -301,9 +298,8 @@ without them, short of `fill`; they come from the build-time `ImageResolver`.
 Where either is missing the mapping degrades to a plain `<img>` rather than
 failing the page — [Images](../guides/images.md) has that path in full.
 
-`loading` defaults to `lazy`, but never over the author's own choice: a leading
-image is lifted out of its paragraph precisely because it is usually the page's
-LCP element, and lazy-loading that costs it a round trip.
+`loading` defaults to `lazy`, but never over the author's own choice —
+[Images](../guides/images.md) has why a leading image is the exception.
 
 > [!IMPORTANT]
 > **Only what `DocsImageProps` declares reaches a custom `Image`.** Markdown

@@ -118,10 +118,9 @@ image is prose, and stays one. `imageResolver` is in [Images](./images.md).
 ## YouTube URLs
 
 A paragraph containing nothing but a YouTube URL becomes a click-to-load
-facade — one ~15 KB thumbnail, against the ~717 KB an eager `<iframe>` fetches
-on every page view whether or not anyone presses play: ~137 KB of embed document
-plus ~580 KB gzipped of player JavaScript. The facade is a `<details>` element
-and ships no client JavaScript at all.
+facade: one ~15 KB thumbnail against the ~717 KB an eager `<iframe>` fetches on
+every page view, pressed or not. It is a `<details>` element and ships no client
+JavaScript at all — [Internals](../internals.md) has the accounting.
 
 ```md
 https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=754

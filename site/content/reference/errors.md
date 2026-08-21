@@ -60,8 +60,8 @@ Twenty-one, exhaustively.
 | `broken-link` | A markdown link resolves to a route no published page owns. | Fix the link, or add an `aliases` entry to the page that moved. The message names the closest published route when it looks like a typo. |
 | `draft-link` | A link points at a page that exists but is `draft: true`. | Publish the page, drop the link, or build with `includeDrafts`. |
 | `alias-link` | A link points at an alias, which is a redirect and not a page. | Link the page the alias redirects to — the error names it. |
-| `broken-anchor` | A `#fragment` that no heading on the target page owns. | Fix the link, or restore the heading. |
-| `invalid-alias` | An `aliases` entry is empty, escapes the content root, is not valid percent-encoding, or contains redirect pattern syntax. | Write it as a literal former URL, relative to the base path — `aliases: [legacy/old-name]`. |
+| `broken-anchor` | A `#fragment` that no heading on the target page owns. | Fix the link, or restore the heading — heading ids come from the heading text. |
+| `invalid-alias` | An `aliases` entry is empty, escapes the content root, is not valid percent-encoding, or contains redirect pattern syntax — `:` `(` `)` `+` `*` `?` `{` `}`. | Write it as a literal former URL, relative to the base path — `aliases: [legacy/old-name]`. The accepted spellings are in [Links](../guides/links.md). |
 | `alias-collision` | Two pages claim one alias, or an alias shadows a real route. | Remove one of them; a redirect cannot have two destinations. |
 | `route-collision` | Two files resolve to the same route. | Usually `about.md` beside `about/index.md`. Rename one, or delete the other. |
 | `invalid-frontmatter` | A page has no frontmatter block, or the schema rejected it. | Every page needs at least `title`. The message names the file and the field. |
@@ -100,32 +100,6 @@ The scan holds at most 64 descriptors open at a time, so reaching this code
 means the limit is below 64, or something else in the process holds them.
 Raise it with `ulimit -n`; [Internals](../internals.md) measures the bound.
 
-### `invalid-alias`, and `v1:beta`
-
-Next compiles a redirect `source` as a path pattern, not as the literal URL it
-looks like. `aliases: ['v1:beta']` compiled to `/docs/v1([^/]+?)` — a wildcard.
-The build passed, and then `/docs/v1-guide`, a real prerendered page, was
-permanently 308'd away to somewhere else.
-
-So `:` `(` `)` `+` `*` `?` `{` `}` are rejected as the page is read, along with
-`.` and `..` segments, empty entries, and percent-encoding that does not decode.
-Every rejection names the markdown file it came from. The full table of accepted
-and rejected spellings is in [Links](../guides/links.md).
-
-### `broken-anchor`, and where ids come from
-
-Heading ids come from the heading text, so renaming a heading renames its anchor
-and nothing renames the links into it. The check runs against every `id` on the
-rendered page rather than against the table of contents, which captures `h2`–`h3`
-only — a link to an `h4`, or to an id one of your
-[plugins](../guides/plugins.md) added to something that is not a heading, is
-fine.
-
-Same-page anchors are checked as each page renders, so those errors carry the
-file and the line. Cross-page anchors need the target page's ids and are checked
-by `renderAll`, which is the first point at which they exist; positions are
-stripped from a returned tree, so those name the page and the link instead.
-
 ### `internal` is a bug here
 
 Every other code describes something in a project's own content or configuration.
@@ -148,12 +122,7 @@ not even a reliable filter.
 spread. Error objects look exactly as they did, and are branchable.
 
 In a build log a failure reads as one paragraph — the package, the file, the
-line, what was written, what it resolved to, and what to do about it:
-
-```
-@waveso/docs: guide.md:12 links to './instalation.md', which resolves to
-'/docs/instalation' — no such page exists. Did you mean '/docs/installation'?
-Fix the link, or add an `aliases` entry to the page it used to point at.
-```
+line, what was written, what it resolved to, and what to do about it.
+[Links](../guides/links.md) prints one in full.
 
 Next: [Stability](./stability.md).
