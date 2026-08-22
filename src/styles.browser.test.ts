@@ -507,31 +507,65 @@ describe('the drawer trigger at a phone width', () => {
     return trigger;
   }
 
-  it('is at least 44px, the floor iOS and WCAG share', async () => {
+  /**
+   * ⚠️ 24px OF BAR, 44px OF TARGET, AND THE SECOND NUMBER IS NOT IN THE BOX.
+   *
+   * WCAG 2.5.8 asks for 24 and iOS and WCAG 2.5.5 ask for 44, so the painted
+   * strip satisfies only the first. The rest of the target comes from an
+   * `::after` that extends past what is painted — which
+   * `getBoundingClientRect` cannot see, because a pseudo-element is not in the
+   * element's border box. Hit-testing is the only way to assert it, and it is
+   * the thing that actually matters: what a thumb landing at 40px reaches.
+   */
+  it('paints 24px and answers to 44', async () => {
     const trigger = mountTrigger();
     await resize(390);
 
-    const { width, height } = trigger.getBoundingClientRect();
-    expect(width).toBeGreaterThanOrEqual(44);
-    expect(height).toBeGreaterThanOrEqual(44);
+    const { width } = trigger.getBoundingClientRect();
+    expect(width).toBeGreaterThanOrEqual(24);
+    expect(width).toBeLessThan(44);
+
+    const mid = window.innerHeight / 2;
+    expect(document.elementFromPoint(12, mid)).toBe(trigger);
+    expect(document.elementFromPoint(40, mid)).toBe(trigger);
+    // And no further: past the target it is the page again.
+    expect(document.elementFromPoint(60, mid)).not.toBe(trigger);
   });
 
   /**
-   * The point of moving it here: it holds its corner while the document
-   * scrolls, so the nav is one tap from anywhere in a long page — and it is
-   * nowhere near the top edge a host's own navbar occupies.
+   * It runs the full height of the viewport and stays there while the document
+   * scrolls, so the navigation is one tap from anywhere in a long page.
    */
-  it('holds its corner, far from the top edge', async () => {
+  it('runs the full height and holds it while the page scrolls', async () => {
     const trigger = mountTrigger();
     await resize(390);
 
     const before = trigger.getBoundingClientRect();
+    expect(Math.round(before.height)).toBe(Math.round(window.innerHeight));
+
     window.scrollTo(0, 800);
     await new Promise((resolve) => requestAnimationFrame(resolve));
     const after = trigger.getBoundingClientRect();
 
     expect(Math.round(after.top)).toBe(Math.round(before.top));
-    expect(after.top).toBeGreaterThan(window.innerHeight / 2);
+    expect(Math.round(after.height)).toBe(Math.round(before.height));
+  });
+
+  /**
+   * The article clears it rather than running underneath. `position: fixed`
+   * takes the bar out of flow, so without matching padding on the grid the
+   * first words of every line sit under a control.
+   */
+  it('does not put the article under the bar', async () => {
+    const trigger = mountTrigger();
+    await resize(390);
+
+    const main = document.querySelector('.wave-docs-layout__main');
+    if (!(main instanceof HTMLElement)) throw new Error('no article');
+
+    expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(
+      trigger.getBoundingClientRect().right,
+    );
   });
 
   it('takes no space in the flow, so the article starts at the top', async () => {

@@ -1548,8 +1548,17 @@
     gap: 0 1.5rem;
     /* 1rem on a phone, not 1.5rem: 48px of side padding is 15% of a 320px
      * screen, and it took the reading column to 272px — under the 280px this
-     * package treats as the floor for a usable measure. Measured. */
-    padding-inline: 1rem;
+     * package treats as the floor for a usable measure. Measured.
+     *
+     * ⚠️ THE EDGE TRIGGER HAS TO BE PAID FOR, AND AT 320px IT IS PAID IN
+     * GUTTER RATHER THAN IN MEASURE. The trigger is `fixed` and out of flow, so
+     * the inline start has to clear it or the first words of every line sit
+     * under a control. The obvious spelling — the trigger's width *plus* the
+     * usual 1rem — left a 264px column at 320px, under the 280px floor above.
+     * So the inline start is exactly the trigger's width: its own border is the
+     * separation, and nothing is left over to spend. 320 − 24 − 8 = 288.
+     * Reset at 64rem, where the trigger is not rendered. */
+    padding-inline: 1.5rem 0.5rem;
     /* Without this, `max-width` at the 100rem cap applies to the *content* box
      * and the shell renders 48px wider than the token says — measured 1648
      * against a declared 1600. */
@@ -1558,7 +1567,9 @@
 
   @media (min-width: 30rem) {
     .wave-docs-layout {
-      padding-inline: 1.5rem;
+      /* Still clearing the edge trigger — it is rendered at every width below
+       * 64rem — and with room to spare now that the viewport has some. */
+      padding-inline: calc(1.5rem + 1rem) 1.5rem;
     }
   }
 
@@ -1621,6 +1632,8 @@
   @media (min-width: 64rem) {
     .wave-docs-layout {
       grid-template-columns: var(--wave-docs-sidebar-width) minmax(0, 1fr);
+      /* No edge trigger up here, so no gutter to reserve for it. */
+      padding-inline: 1.5rem;
     }
 
     /*
@@ -1728,37 +1741,62 @@
    * neither side able to detect the collision. That argument is why there is no
    * bar across the top any more.
    *
-   * It still applies here, and this is small, corner-anchored and 48px rather
-   * than a full-width band — so what it can collide with is a host's own
-   * floating control in the same corner, not their navigation. A host who has
-   * one moves ours with `.wave-docs-layout__nav-trigger { inset-block-end: … }`,
-   * or renders their own trigger against `commandfor="wave-docs-nav"`, which is
-   * plain HTML and needs nothing from us.
-   *
-   * `env(safe-area-inset-bottom)` so it clears the home indicator on a phone,
-   * where the whole control lives.
+   * It still applies here, and this is a 24px strip down the inline start edge
+   * rather than a band across the top — so what it can collide with is a host's
+   * own edge affordance, not their navigation, which is the thing that was
+   * actually breaking. A host who has one moves ours with
+   * `.wave-docs-layout__nav-trigger { inset-inline-start: … }`, or renders their
+   * own trigger against `commandfor="wave-docs-nav"`, which is plain HTML and
+   * needs nothing from us.
    */
   .wave-docs-layout__nav-trigger {
     position: fixed;
-    inset-block-end: calc(1rem + env(safe-area-inset-bottom, 0px));
-    inset-inline-end: 1rem;
+    inset-block: 0;
+    inset-inline-start: 0;
     /* Above the sticky columns, below both modals — the drawer it opens and the
      * search dialog are top-layer and outrank any z-index by construction. */
     z-index: 30;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    /* 48px: over the 44px iOS and WCAG 2.5.8 share, because this is the only
-     * control on a phone that reaches the rest of the site and it sits over
-     * content rather than in a bar of its own. */
-    width: 3rem;
-    height: 3rem;
-    border: 1px solid var(--wave-docs-border);
-    border-radius: 999px;
-    background: var(--wave-docs-bg);
-    color: var(--wave-docs-fg);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.12);
+    width: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-inline-end: 1px solid var(--wave-docs-border);
+    background: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg-subtle);
     cursor: pointer;
+  }
+
+  /*
+   * The grip, so 24px of edge reads as a control rather than as a border.
+   * Decorative: the button's accessible name comes from `aria-label`.
+   */
+  .wave-docs-layout__nav-trigger::before {
+    content: '';
+    position: absolute;
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    width: 2px;
+    height: 1.75rem;
+    transform: translate(-50%, -50%);
+    border-radius: 999px;
+    background: currentcolor;
+  }
+
+  /*
+   * ⚠️ 24px OF BAR, 44px OF TARGET. WCAG 2.5.8 asks for 24, iOS and WCAG 2.5.5
+   * ask for 44, and a 24px-wide control satisfies only the first — so the hit
+   * area is widened past what is painted. Full height, so the vertical axis was
+   * never the problem.
+   *
+   * `.wave-docs-layout` carries matching inline-start padding below 64rem, so
+   * the 20px of invisible target lands on the gutter rather than on the first
+   * words of every line.
+   */
+  .wave-docs-layout__nav-trigger::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 2.75rem;
   }
 
   .wave-docs-layout__nav-trigger:hover {

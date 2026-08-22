@@ -134,18 +134,12 @@ export function DocsLayoutShell({
              */
             {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 16 16"
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <path d="M2.5 4h11M2.5 8h11M2.5 12h11" />
-            </svg>
+            {/*
+             * No icon. The control is a 24px strip down the edge of the screen,
+             * which is too narrow to hold one legibly — `styles.css` draws a
+             * grip on it instead, decoratively. The button's accessible name is
+             * `aria-label`, so nothing here is load-bearing for a reader.
+             */}
           </button>
 
           {/* The three the tree renders are forwarded only when set: they cross
