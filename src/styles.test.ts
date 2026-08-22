@@ -999,14 +999,28 @@ describe('the responsive shell', () => {
       expect(outside, `bare 1fr in "${value?.trim()}"`).not.toContain('1fr');
     }
 
-    // And the shell's own tracks, where the overflow was measured, still carry
-    // the guard rather than having quietly lost it to the rule above.
-    const shellTracks = tracks
-      .map(([, value]) => value ?? '')
-      .filter((value) => value.includes('1fr'));
+    /*
+     * And the shell's own tracks — the ones the 1048px-in-1024px overflow was
+     * measured against — still carry the guard rather than having quietly lost
+     * it to the rule above.
+     *
+     * Scoped by selector, not by "any track mentioning 1fr". The table scroller
+     * is a grid too and uses `minmax(max-content, 1fr)`, which is correct there
+     * and cannot cause the shell's failure: it lives inside `overflow-x: auto`,
+     * so what it overflows is clipped and scrolled rather than escaping to the
+     * document.
+     */
+    const shellTracks = RULES.filter((rule) =>
+      splitSelectors(rule.prelude).some((selector) =>
+        selector.startsWith('.wave-docs-layout'),
+      ),
+    )
+      .map((rule) => readBlock(sheet, rule.at))
+      .filter((block) => block.includes('grid-template-columns'));
+
     expect(shellTracks.length).toBeGreaterThan(0);
-    for (const value of shellTracks) {
-      expect(value, `unguarded 1fr in "${value.trim()}"`).toContain(
+    for (const block of shellTracks) {
+      expect(block, 'a shell track lost minmax(0, 1fr)').toContain(
         'minmax(0, 1fr)',
       );
     }

@@ -701,8 +701,18 @@
      * the shadow measured 0/255 at every scroll position. `max-content` makes
      * the cell as wide as the table, which is the span both edges have to reach
      * across.
+     *
+     * ⚠️ AND `max-content` IS THE *MIN*, WHICH IS THE ONLY SPELLING THAT DOES
+     * BOTH JOBS. A bare `max-content` track is exactly the table's width, so
+     * `width: 100%` resolved against that and a table narrower than the reading
+     * column stopped filling it — a bordered box with empty space down its
+     * inline end. `minmax(100%, max-content)` does not fix it either: a track
+     * only grows toward its max when there is free space, and inside a scroll
+     * container there is none, so it stayed at the port's width and the end
+     * overlay lost its containing block again. As the *floor*, `max-content`
+     * wins when the table is wider and `1fr` takes over when it is not.
      */
-    grid-template-columns: max-content;
+    grid-template-columns: minmax(max-content, 1fr);
     overflow-x: auto;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
@@ -1006,10 +1016,19 @@
 
   .wave-docs-code {
     position: relative;
-    /* The `<pre>` inside carries the border and background; the figure is only
-     * a positioning context, and a default `<figure>` margin would indent the
-     * whole block by 40px. */
-    margin: 0;
+    /*
+     * ⚠️ `margin-inline`, NOT `margin`. The `<pre>` inside carries the border
+     * and the background; this figure is only a positioning context, and a
+     * default `<figure>` margin would indent the whole block by 40px — which is
+     * what this rule was written for.
+     *
+     * Zeroing all four also took the *block* margin, and `.wave-docs-prose > *
+     * + *` is the same specificity and declared earlier, so this won. Every
+     * code block sat flush against whatever followed it: two fences touching,
+     * a fence touching the paragraph under it. The flow spacing owns the block
+     * axis; this rule owns the inline one.
+     */
+    margin-inline: 0;
   }
 
   .wave-docs-code__title {

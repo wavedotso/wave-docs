@@ -726,6 +726,20 @@ describe('the table scroll shadow', () => {
     expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth + 1);
     expect(Number(getComputedStyle(scroller, '::before').opacity)).toBe(0);
     expect(Number(getComputedStyle(scroller, '::after').opacity)).toBe(0);
+
+    /*
+     * ⚠️ AND IT STILL FILLS THE COLUMN. The scroller is a grid so the shadow
+     * overlays can share the table's cell, and a bare `max-content` track sizes
+     * that cell to the table — so `width: 100%` resolved against the table's own
+     * width and a narrow table stopped filling the reading column, leaving a
+     * bordered box with empty space down its inline end. Reported from a
+     * screenshot; every assertion about the shadow still passed.
+     */
+    const table = scroller.querySelector('table');
+    if (table === null) throw new Error('expected a table');
+    expect(
+      Math.abs(table.getBoundingClientRect().width - scroller.clientWidth),
+    ).toBeLessThan(2);
   });
 
   /**
@@ -804,5 +818,61 @@ describe('the table scroll shadow', () => {
     // Even down the height: a linear gradient, not a radial one centred midway.
     expect(overlay.backgroundImage).toContain('linear-gradient');
     expect(overlay.backgroundImage).not.toContain('radial-gradient');
+  });
+});
+
+/**
+ * Block spacing around a code fence.
+ *
+ * ⚠️ `.wave-docs-code { margin: 0 }` WAS WRITTEN FOR THE INLINE AXIS AND TOOK
+ * THE BLOCK ONE WITH IT. A `<figure>` carries a 40px user-agent inline margin,
+ * which would indent every code block; zeroing all four sides also beat
+ * `.wave-docs-prose > * + *`, which is the same specificity and declared
+ * earlier in the sheet. Every fence sat flush against whatever followed it —
+ * two fences touching each other, a fence touching the paragraph under it.
+ *
+ * Geometry rather than a declaration, because the defect was a cascade
+ * outcome: both rules were present and correct in isolation, and reading either
+ * one would have told you nothing.
+ */
+describe('code block spacing', () => {
+  it('keeps a gap between a fence and whatever follows it', async () => {
+    const prose = mount(
+      '<figure class="wave-docs-code"><pre class="shiki"><code>one</code></pre></figure>' +
+        '<figure class="wave-docs-code"><pre class="shiki"><code>two</code></pre></figure>' +
+        '<p>After.</p>',
+    );
+    await resize(1024);
+
+    const blocks = [...prose.children];
+    expect(blocks).toHaveLength(3);
+
+    for (let i = 1; i < blocks.length; i += 1) {
+      const previous = blocks[i - 1]?.getBoundingClientRect();
+      const current = blocks[i]?.getBoundingClientRect();
+      if (previous === undefined || current === undefined) {
+        throw new Error('expected three blocks');
+      }
+      expect(
+        current.top - previous.bottom,
+        `no gap before block ${i}`,
+      ).toBeGreaterThan(8);
+    }
+  });
+
+  it('does not indent a fence by the figure default', async () => {
+    const prose = mount(
+      '<p>Before.</p>' +
+        '<figure class="wave-docs-code"><pre class="shiki"><code>one</code></pre></figure>',
+    );
+    await resize(1024);
+
+    const paragraph = prose.children[0]?.getBoundingClientRect();
+    const figure = prose.children[1]?.getBoundingClientRect();
+    if (paragraph === undefined || figure === undefined) {
+      throw new Error('expected two blocks');
+    }
+    // The 40px user-agent margin is what this guards; same inline start as prose.
+    expect(Math.abs(figure.left - paragraph.left)).toBeLessThan(2);
   });
 });
