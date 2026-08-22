@@ -161,18 +161,12 @@ export function DocsNav({
          */
         {...{ command: 'close', commandfor: DOCS_NAV_ID }}
       >
-        <svg
-          aria-hidden="true"
-          viewBox="0 0 16 16"
-          width="16"
-          height="16"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-        >
-          <path d="M4 4l8 8M12 4l-8 8" />
-        </svg>
+        {/*
+         * No icon, and the same absence as the trigger that opens this. Both
+         * are 24px strips down an edge, too narrow to hold one legibly, so
+         * `styles.css` draws the same grip on each. The accessible name is
+         * `aria-label`.
+         */}
       </button>
       {children}
       <DocsSidebar

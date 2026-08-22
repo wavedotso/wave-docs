@@ -495,7 +495,9 @@ describe('the drawer trigger at a phone width', () => {
       <div class="wave-docs-layout">
         <div class="wave-docs-layout__sidebar">
           <button type="button" class="wave-docs-layout__nav-trigger"></button>
-          <dialog class="wave-docs-layout__drawer"></dialog>
+          <dialog class="wave-docs-layout__drawer">
+            <button type="button" class="wave-docs-layout__drawer-close"></button>
+          </dialog>
         </div>
         <main class="wave-docs-layout__main">${'<p>Scroll me.</p>'.repeat(60)}</main>
       </div>`;
@@ -575,6 +577,67 @@ describe('the drawer trigger at a phone width', () => {
     const main = document.querySelector('.wave-docs-layout__main');
     if (!(main instanceof HTMLElement)) throw new Error('no article');
     expect(main.getBoundingClientRect().top).toBeLessThan(48);
+  });
+
+  /**
+   * ⚠️ ONE CONTROL, TWO PLACES. They were two: 24px against 44px, a grip
+   * against an `<svg>` cross, transparent against filled. Opening and closing
+   * the same drawer looked like two different buttons, which is what this
+   * pins — same box, same glyph, and a chevron that points at what pressing it
+   * does.
+   */
+  it('opens and closes with the same control', async () => {
+    mountTrigger();
+    await resize(390);
+
+    const open = document.querySelector('.wave-docs-layout__nav-trigger');
+    const close = document.querySelector('.wave-docs-layout__drawer-close');
+    const drawer = document.querySelector('dialog.wave-docs-layout__drawer');
+    if (
+      !(open instanceof HTMLElement) ||
+      !(close instanceof HTMLElement) ||
+      !(drawer instanceof HTMLDialogElement)
+    ) {
+      throw new Error('expected both controls and a drawer');
+    }
+
+    // The close control lives inside the drawer, which is correctly hidden
+    // until something opens it — so there is nothing to measure until it is.
+    drawer.showModal();
+
+    const a = open.getBoundingClientRect();
+    const b = close.getBoundingClientRect();
+    expect(Math.round(a.width)).toBe(Math.round(b.width));
+    expect(Math.round(a.height)).toBe(Math.round(b.height));
+
+    const glyph = (el: Element): string[] => {
+      const style = getComputedStyle(el, '::before');
+      return [style.width, style.height, style.borderTopWidth];
+    };
+    expect(glyph(open)).toEqual(glyph(close));
+
+    // Opposite directions: out from the edge, back to it.
+    expect(getComputedStyle(open, '::before').transform).not.toBe(
+      getComputedStyle(close, '::before').transform,
+    );
+    drawer.close();
+  });
+
+  /**
+   * The fill is the pointer affordance and the outline is the accessible one.
+   * They were the same rule for a commit, and forced-colours mode discards a
+   * background — so a keyboard reader there would have had no indicator at all.
+   */
+  it('marks focus with an outline, not only a fill', async () => {
+    const trigger = mountTrigger();
+    await resize(390);
+
+    expect(getComputedStyle(trigger).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    trigger.focus();
+    expect(getComputedStyle(trigger).outlineStyle).toBe('solid');
+    expect(
+      Number.parseFloat(getComputedStyle(trigger).outlineWidth),
+    ).toBeGreaterThan(0);
   });
 
   it('is hidden once the sidebar is a column', async () => {
@@ -717,6 +780,43 @@ describe('the table scroll shadow', () => {
     }
     return scroller;
   }
+
+  /**
+   * ⚠️ THE FRAME IS ONE LINE, AND IT WAS TWO.
+   *
+   * `thead` was in the same rule as `tbody tr + tr`, so it carried a
+   * `border-block-start` — and the header is the first thing in the table, so
+   * that landed directly against the scroll container's own border with nothing
+   * between them. Measured at the top-left corner: two adjacent rows of
+   * `--wave-docs-border` where there should be one, which reads as a thick or
+   * doubled line rather than as a frame.
+   *
+   * Geometry, because the defect is the *sum* of two rules that are each
+   * correct alone.
+   */
+  it('frames the table with one line, not two', async () => {
+    const scroller = mountTable(3);
+    await resize(1440);
+
+    const head = scroller.querySelector('thead');
+    if (head === null) throw new Error('expected a thead');
+
+    expect(
+      Number.parseFloat(getComputedStyle(scroller).borderBlockStartWidth),
+    ).toBeGreaterThan(0);
+
+    /*
+     * ⚠️ THE COMPUTED VALUE, BECAUSE NO RECT CAN SEE THIS ONE. Two geometry
+     * spellings were tried and both passed the mutation: `getBoundingClientRect`
+     * is the *border* box, so a border on the `thead` sits inside its own rect;
+     * and under `border-collapse` a row-group border is painted on the edge
+     * without moving the cells either, so measuring the `th` did not shift it
+     * a pixel. The difference is real and visible — sampled at the corner, two
+     * adjacent rows of `--wave-docs-border` instead of one — and invisible to
+     * layout. So the assertion is on the declaration that produces it.
+     */
+    expect(getComputedStyle(head).borderBlockStartWidth).toBe('0px');
+  });
 
   it('shows nothing on a table that fits', async () => {
     // Two columns, so it fits inside the 46rem measure rather than overflowing.

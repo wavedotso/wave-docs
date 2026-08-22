@@ -970,7 +970,20 @@
     white-space: nowrap;
   }
 
-  .wave-docs-table :is(thead, tbody tr + tr) {
+  /*
+   * ⚠️ `tbody tr + tr` ONLY. `thead` WAS IN THIS SELECTOR AND DOUBLED THE FRAME.
+   *
+   * The header is the first thing in the table, so its `border-block-start`
+   * landed directly against `.wave-docs-table-scroll`'s own border with nothing
+   * between them: measured at the top-left corner, two adjacent rows of
+   * `--wave-docs-border` instead of one, which reads as a thick or doubled
+   * line rather than as a frame.
+   *
+   * The header's separator is the one below it, and that is drawn by the
+   * `inset 0 -1px 0` box-shadow on `thead th` — a shadow rather than a border
+   * so it survives the cell being `position: sticky`.
+   */
+  .wave-docs-table tbody tr + tr {
     border-block-start: 1px solid var(--wave-docs-border);
   }
 }
@@ -1142,6 +1155,21 @@
   /* A title bar already reserves the space, so there is nothing to reveal. */
   .wave-docs-code:has(.wave-docs-code__title) .wave-docs-code__copy {
     opacity: 1;
+    /*
+     * ⚠️ CENTRED IN THE TITLE BAR, NOT INSET FROM THE FIGURE.
+     *
+     * The button is positioned against the `<figure>`, which is the whole code
+     * block, so a single `top` cannot be right for both shapes. Against a bare
+     * fence, `0.5rem` insets it from the top of the `<pre>`, which is correct.
+     * Against a title bar it measured 8px of space above and **0 below** — the
+     * button sitting flush on the bar's own border, which reads as misaligned
+     * rather than as inset.
+     *
+     * The bar is 40px and the button is 32px, so 4px is the centre. A `top:
+     * 50%` would be wrong here: the percentage resolves against the figure,
+     * which includes the code block below.
+     */
+    top: 0.25rem;
   }
 
   /*
@@ -1922,51 +1950,85 @@
    * ---------------------------------------------------------------------- */
 
   /*
-   * ⚠️ THE ONE FIXED ELEMENT THIS PACKAGE RENDERS, AND IT IS A DELIBERATE TRADE.
+   * ⚠️ THE TWO FIXED ELEMENTS THIS PACKAGE RENDERS, AND THEY ARE ONE CONTROL.
    *
    * Everything else is in flow: two elements in flow push each other and both
    * stay visible, while a fixed one overlaps whatever is beneath it with
    * neither side able to detect the collision. That argument is why there is no
    * bar across the top any more.
    *
-   * It still applies here, and this is a 24px strip down the inline start edge
-   * rather than a band across the top — so what it can collide with is a host's
-   * own edge affordance, not their navigation, which is the thing that was
-   * actually breaking. A host who has one moves ours with
-   * `.wave-docs-layout__nav-trigger { inset-inline-start: … }`, or renders their
-   * own trigger against `commandfor="wave-docs-nav"`, which is plain HTML and
-   * needs nothing from us.
+   * It still applies here, and these are 24px strips down an edge rather than
+   * bands across the top — so what they can collide with is a host's own edge
+   * affordance, not their navigation, which is the thing that was actually
+   * breaking. A host who has one moves ours with
+   * `.wave-docs-layout__nav-trigger { inset-inline-start: … }`, or renders
+   * their own trigger against `commandfor="wave-docs-nav"`, which is plain HTML
+   * and needs nothing from us.
+   *
+   * ⚠️ ONE RULE, BECAUSE THEY ARE THE SAME AFFORDANCE SEEN FROM EITHER SIDE.
+   * They were two: 24px against 44px, a grip against an `<svg>` cross, a filled
+   * strip against a transparent one. Opening and closing the same drawer should
+   * not look like two different controls.
+   *
+   * Transparent until hovered, then the accent — the strip is the target and
+   * the grip is what says so.
    */
-  .wave-docs-layout__nav-trigger {
+  .wave-docs-layout__nav-trigger,
+  .wave-docs-layout__drawer-close {
     position: fixed;
     inset-block: 0;
-    inset-inline-start: 0;
-    /* Above the sticky columns, below both modals — the drawer it opens and the
-     * search dialog are top-layer and outrank any z-index by construction. */
     z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 1.5rem;
     padding: 0;
     border: 0;
-    border-inline-end: 1px solid var(--wave-docs-border);
-    background: var(--wave-docs-bg-subtle);
+    background: none;
     color: var(--wave-docs-fg-subtle);
     cursor: pointer;
   }
 
+  .wave-docs-layout__nav-trigger {
+    inset-inline-start: 0;
+  }
+
+  /* On the drawer's own inline end, so it reads as part of the panel.
+   * `--wave-docs-drawer-width` is inherited from the dialog, so the two edges
+   * cannot drift apart. */
+  .wave-docs-layout__drawer-close {
+    inset-inline-start: calc(var(--wave-docs-drawer-width) - 1.5rem);
+  }
+
   /*
-   * The grip, so 24px of edge reads as a control rather than as a border.
-   * Decorative: the button's accessible name comes from `aria-label`.
+   * A chevron, and it points at what pressing it does: right to open the drawer
+   * out, left to collapse it back. One glyph, one size, one direction each —
+   * two different icons for one drawer is what made these read as two controls.
+   *
+   * Two borders on a rotated square rather than an `<svg>`: 24px of edge cannot
+   * hold an icon file legibly, this scales with `currentcolor` through the
+   * hover state for free, and it keeps both buttons empty of markup.
    */
-  .wave-docs-layout__nav-trigger::before {
+  .wave-docs-layout__nav-trigger::before,
+  .wave-docs-layout__drawer-close::before {
     content: '';
-    position: absolute;
-    inset-block-start: 50%;
-    inset-inline-start: 50%;
-    width: 2px;
-    height: 1.75rem;
-    transform: translate(-50%, -50%);
-    border-radius: 999px;
-    background: currentcolor;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-block-start: 2px solid currentcolor;
+    border-inline-end: 2px solid currentcolor;
+  }
+
+  .wave-docs-layout__nav-trigger::before {
+    /* Points inline-end: the drawer opens out from this edge. */
+    transform: rotate(45deg);
+    /* The glyph's mass sits to one side of its box once rotated. */
+    margin-inline-end: 0.125rem;
+  }
+
+  .wave-docs-layout__drawer-close::before {
+    /* Points inline-start: the drawer collapses back to that edge. */
+    transform: rotate(-135deg);
+    margin-inline-start: 0.125rem;
   }
 
   /*
@@ -1979,7 +2041,8 @@
    * the 20px of invisible target lands on the gutter rather than on the first
    * words of every line.
    */
-  .wave-docs-layout__nav-trigger::after {
+  .wave-docs-layout__nav-trigger::after,
+  .wave-docs-layout__drawer-close::after {
     content: '';
     position: absolute;
     inset-block: 0;
@@ -1987,9 +2050,26 @@
     width: 2.75rem;
   }
 
-  .wave-docs-layout__nav-trigger:hover {
-    background-color: var(--wave-docs-bg-subtle);
-    color: var(--wave-docs-fg);
+  .wave-docs-layout__nav-trigger:hover,
+  .wave-docs-layout__drawer-close:hover {
+    background: var(--wave-docs-accent);
+    color: var(--wave-docs-bg);
+  }
+
+  /*
+   * ⚠️ AN OUTLINE, NOT THE FILL. These shared the hover rule for one commit,
+   * and `focus-indicators` caught it: a background change is the one thing
+   * forced-colours mode discards, so a keyboard reader in that mode would have
+   * had no indicator at all. The fill is a pointer affordance; the outline is
+   * the accessible one, and they are different states.
+   *
+   * `outline-offset` is negative because the strip sits against the viewport
+   * edge, where an outset ring is half off-screen.
+   */
+  .wave-docs-layout__nav-trigger:focus-visible,
+  .wave-docs-layout__drawer-close:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: -2px;
   }
 
   /* -------------------------------------------------------------------------
@@ -2016,7 +2096,7 @@
     height: 100dvh;
     max-height: none;
     /* The inline end clears the close strip, which is `fixed` and out of flow. */
-    padding: 1.5rem 3.25rem 1.5rem 1rem;
+    padding: 1.5rem 2rem 1.5rem 1rem;
     border: 0;
     border-inline-end: 1px solid var(--wave-docs-border);
     background-color: var(--wave-docs-bg);
@@ -2030,40 +2110,6 @@
     background-color: oklch(0.2 0.02 262 / 0.55);
   }
 
-  /*
-   * The close control mirrors the one that opened the drawer: a full-height
-   * strip on an edge, not a button in a corner.
-   *
-   * ⚠️ `fixed`, SO IT HOLDS ITS PLACE WHILE THE TREE SCROLLS. The dialog is the
-   * scroll container, so anything positioned inside it travels with the
-   * content — a close button that scrolls out of reach on a long navigation is
-   * one a reader has to scroll back up to find. Fixed inside a top-layer dialog
-   * resolves against the viewport, which is exactly the frame it should hold
-   * still in.
-   *
-   * It sits on the drawer's own inline end rather than the screen's, so it
-   * reads as part of the panel: `--wave-docs-drawer-width` is inherited from
-   * the dialog, so the two edges cannot drift apart.
-   */
-  .wave-docs-layout__drawer-close {
-    position: fixed;
-    inset-block: 0;
-    inset-inline-start: calc(var(--wave-docs-drawer-width) - 2.75rem);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.75rem;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: var(--wave-docs-fg-subtle);
-    cursor: pointer;
-  }
-
-  .wave-docs-layout__drawer-close:hover {
-    background-color: var(--wave-docs-bg-subtle);
-    color: var(--wave-docs-fg);
-  }
 
   /*
    * ⚠️ SCOPED TO OUR DRAWER, DELIBERATELY. `html:has(dialog:modal)` would lock
