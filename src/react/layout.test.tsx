@@ -176,6 +176,56 @@ describe('DocsLayoutShell', () => {
   });
 
   /**
+   * ⚠️ THE SEARCH IS ON THE SIDEBAR. ALWAYS. THERE IS NO WIDTH AT WHICH IT IS
+   * SOMEWHERE ELSE, AND THIS IS THE TEST THAT KEEPS IT THAT WAY.
+   *
+   * It has been in three places: a full-width header, then a strip that
+   * replaced the header, and now the sidebar. Twice it moved because the
+   * container around it moved, not because anyone decided the search should
+   * live somewhere new — which is exactly how it would drift a third time.
+   *
+   * The containment is what makes it structural rather than incidental. The
+   * trigger is inside the drawer `<dialog>`, and the dialog is inside the
+   * sidebar wrapper, so:
+   *
+   * - below 64rem the wrapper is `display: contents` and the dialog is a
+   *   modal — the search is the first thing in the drawer, above the tree;
+   * - at and above 64rem the dialog is `display: contents` — the search is the
+   *   first thing in the sidebar column, above the tree.
+   *
+   * One element, one position relative to the navigation, both shapes. A
+   * refactor that lifts it out of the dialog to "simplify" the tree breaks this
+   * test, and should.
+   */
+  it('puts the search inside the sidebar, above the tree, at every width', () => {
+    const container = renderShell();
+
+    const sidebar = container.querySelector('.wave-docs-layout__sidebar');
+    const drawer = container.querySelector('dialog.wave-docs-layout__drawer');
+    const search = container.querySelector('button.wave-docs-search-trigger');
+    const tree = container.querySelector('.wave-docs-sidebar');
+    if (
+      sidebar === null ||
+      drawer === null ||
+      search === null ||
+      tree === null
+    ) {
+      throw new Error(
+        'expected a sidebar, a drawer, a search trigger and a tree',
+      );
+    }
+
+    expect(sidebar.contains(search)).toBe(true);
+    expect(drawer.contains(search)).toBe(true);
+
+    // Above the tree, and by document order rather than by index arithmetic, so
+    // this survives a change to how many wrappers sit between them.
+    expect(
+      search.compareDocumentPosition(tree) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  /**
    * The trigger opens the drawer by `id`, so it does not have to be a sibling
    * of it — which is what lets the search trigger sit between the two.
    */
