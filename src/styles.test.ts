@@ -1253,12 +1253,17 @@ describe('the chrome', () => {
    * top: two of the sites using it have a fixed navbar of their own, and ours
    * landed on top of theirs at every width.
    *
-   * Two exceptions, and both are deliberate. The search backdrop is a modal's
-   * own scrim — present only while open, so there is nothing to collide with.
-   * The drawer's trigger is 48px in a corner rather than a full-width band, so
-   * what it can reach is a host's own floating control and not their
-   * navigation; a host moves it with one declaration or renders their own
-   * against `commandfor`.
+   * Three, and they fall into two kinds.
+   *
+   * **Modal furniture**, which cannot collide with anything because it is only
+   * rendered while a modal is open and the modal is in the top layer: the
+   * search backdrop, and the drawer's close control.
+   *
+   * **The drawer's trigger**, which is the real exception. It is a 24px strip
+   * down the inline start edge rather than a band across the top, so what it
+   * can reach is a host's own edge affordance and not their navigation — which
+   * was the thing that actually broke. A host moves it with one declaration or
+   * renders their own against `commandfor`.
    *
    * **Anything else appearing in this list is a regression.**
    */
@@ -1270,6 +1275,7 @@ describe('the chrome', () => {
     ).flatMap((rule) => splitSelectors(rule.prelude));
 
     expect(fixed.sort()).toEqual([
+      '.wave-docs-layout__drawer-close',
       '.wave-docs-layout__nav-trigger',
       '.wave-docs-search-backdrop',
     ]);

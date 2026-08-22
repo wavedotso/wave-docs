@@ -584,3 +584,89 @@ describe('the drawer trigger at a phone width', () => {
     expect(getComputedStyle(trigger).display).toBe('none');
   });
 });
+
+/**
+ * The control that closes the drawer, which is the one that opened it seen from
+ * the other side.
+ *
+ * ⚠️ IT IS `fixed`, AND THAT IS THE WHOLE POINT OF THE TEST. The dialog is the
+ * scroll container, so anything positioned inside it travels with the content —
+ * on a navigation longer than the viewport, a close button in the flow scrolls
+ * out of reach and a reader has to scroll back up to find the way out. Fixed
+ * inside a top-layer dialog resolves against the viewport, which is the frame
+ * it should hold still in.
+ *
+ * It sits on the *drawer's* inline end rather than the screen's, so it reads as
+ * part of the panel. The two edges are kept together by a custom property the
+ * dialog declares and this inherits, so neither can be moved without the other.
+ */
+describe('the drawer close control', () => {
+  function mountDrawer(): HTMLDialogElement {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    document.body.innerHTML = `
+      <dialog class="wave-docs-layout__drawer">
+        <button type="button" class="wave-docs-layout__drawer-close"></button>
+        <nav class="wave-docs-sidebar">${'<a href="#x">Item</a>'.repeat(80)}</nav>
+      </dialog>`;
+
+    const dialog = document.querySelector('dialog.wave-docs-layout__drawer');
+    if (!(dialog instanceof HTMLDialogElement)) {
+      throw new Error('failed to mount the drawer fixture');
+    }
+    dialog.showModal();
+    return dialog;
+  }
+
+  it('sits on the drawer edge, not the screen edge', async () => {
+    const dialog = mountDrawer();
+    await resize(390);
+
+    const close = document.querySelector('.wave-docs-layout__drawer-close');
+    if (!(close instanceof HTMLElement)) throw new Error('no close control');
+
+    const panel = dialog.getBoundingClientRect();
+    const button = close.getBoundingClientRect();
+
+    expect(Math.abs(panel.right - button.right)).toBeLessThan(2);
+    // And the panel is not the whole screen, so the two edges are distinct.
+    expect(panel.right).toBeLessThan(window.innerWidth);
+  });
+
+  it('runs the full height and holds it while the tree scrolls', async () => {
+    const dialog = mountDrawer();
+    await resize(390);
+
+    const close = document.querySelector('.wave-docs-layout__drawer-close');
+    if (!(close instanceof HTMLElement)) throw new Error('no close control');
+
+    const before = close.getBoundingClientRect();
+    expect(Math.round(before.height)).toBe(Math.round(window.innerHeight));
+
+    dialog.scrollTop = 400;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const after = close.getBoundingClientRect();
+    expect(Math.round(after.top)).toBe(Math.round(before.top));
+  });
+
+  it('keeps the tree out from under it', async () => {
+    const dialog = mountDrawer();
+    await resize(390);
+
+    const close = document.querySelector('.wave-docs-layout__drawer-close');
+    const tree = document.querySelector('.wave-docs-sidebar');
+    if (!(close instanceof HTMLElement) || !(tree instanceof HTMLElement)) {
+      throw new Error('expected a close control and a tree');
+    }
+
+    expect(tree.getBoundingClientRect().right).toBeLessThanOrEqual(
+      close.getBoundingClientRect().left,
+    );
+    dialog.close();
+  });
+});

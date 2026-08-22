@@ -1820,11 +1820,15 @@
      * auto` in the UA sheet and only a margin overrides that. */
     margin: 0 auto 0 0;
     box-sizing: border-box;
-    width: min(20rem, 85vw);
+    /* Named so the close strip can sit exactly on this edge without restating
+     * the expression — it inherits, and the two cannot drift apart. */
+    --wave-docs-drawer-width: min(20rem, 85vw);
+    width: var(--wave-docs-drawer-width);
     max-width: none;
     height: 100dvh;
     max-height: none;
-    padding: 1.5rem 1rem;
+    /* The inline end clears the close strip, which is `fixed` and out of flow. */
+    padding: 1.5rem 3.25rem 1.5rem 1rem;
     border: 0;
     border-inline-end: 1px solid var(--wave-docs-border);
     background-color: var(--wave-docs-bg);
@@ -1838,18 +1842,33 @@
     background-color: oklch(0.2 0.02 262 / 0.55);
   }
 
+  /*
+   * The close control mirrors the one that opened the drawer: a full-height
+   * strip on an edge, not a button in a corner.
+   *
+   * ⚠️ `fixed`, SO IT HOLDS ITS PLACE WHILE THE TREE SCROLLS. The dialog is the
+   * scroll container, so anything positioned inside it travels with the
+   * content — a close button that scrolls out of reach on a long navigation is
+   * one a reader has to scroll back up to find. Fixed inside a top-layer dialog
+   * resolves against the viewport, which is exactly the frame it should hold
+   * still in.
+   *
+   * It sits on the drawer's own inline end rather than the screen's, so it
+   * reads as part of the panel: `--wave-docs-drawer-width` is inherited from
+   * the dialog, so the two edges cannot drift apart.
+   */
   .wave-docs-layout__drawer-close {
-    display: inline-flex;
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: calc(var(--wave-docs-drawer-width) - 2.75rem);
+    display: flex;
     align-items: center;
     justify-content: center;
     width: 2.75rem;
-    height: 2.75rem;
-    margin-block-end: 0.5rem;
-    margin-inline-start: auto;
+    padding: 0;
     border: 0;
-    border-radius: var(--wave-docs-radius-sm);
     background: none;
-    color: var(--wave-docs-fg-muted);
+    color: var(--wave-docs-fg-subtle);
     cursor: pointer;
   }
 
