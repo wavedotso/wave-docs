@@ -981,15 +981,36 @@ describe('the responsive shell', () => {
     const tracks = [...sheet.matchAll(/grid-template-columns:\s*([^;]+);/g)];
     expect(tracks.length).toBeGreaterThan(0);
 
+    /*
+     * ⚠️ THE RULE IS "NO BARE `1fr`", NOT "ALWAYS `minmax(0, 1fr)`", AND THIS
+     * ASSERTED THE SECOND.
+     *
+     * It was written when every grid in the sheet was the shell, where a `1fr`
+     * content track is the defect it measures. The table scroller is a grid
+     * now too and its track is `max-content` — not a bare `1fr`, not capable of
+     * the failure, and rejected anyway by a test that required a spelling
+     * rather than forbidding one. Widening it to what it means costs nothing:
+     * a bare `1fr` still fails, everywhere.
+     */
     for (const [, value] of tracks) {
-      expect(value, `bare 1fr in "${value?.trim()}"`).toContain(
-        'minmax(0, 1fr)',
-      );
       // The `1fr` inside `minmax(0, 1fr)` is the correct one, so remove every
       // minmax before looking for a bare one.
       const outside = (value ?? '').replace(/minmax\([^)]*\)/g, '');
       expect(outside, `bare 1fr in "${value?.trim()}"`).not.toContain('1fr');
     }
+
+    // And the shell's own tracks, where the overflow was measured, still carry
+    // the guard rather than having quietly lost it to the rule above.
+    const shellTracks = tracks
+      .map(([, value]) => value ?? '')
+      .filter((value) => value.includes('1fr'));
+    expect(shellTracks.length).toBeGreaterThan(0);
+    for (const value of shellTracks) {
+      expect(value, `unguarded 1fr in "${value.trim()}"`).toContain(
+        'minmax(0, 1fr)',
+      );
+    }
+
     expect(
       readBlock(sheet, sheet.indexOf('.wave-docs-layout__main {')),
     ).toContain('min-width: 0');

@@ -686,6 +686,23 @@
 
 @layer components {
   .wave-docs-table-scroll {
+    /*
+     * One cell, three things in it: the table and the two edge overlays below.
+     * `grid` rather than `relative` + `absolute` because an absolutely
+     * positioned child of a scroll container scrolls with the content, and
+     * these have to hold the scrollport's edges.
+     */
+    display: grid;
+    /*
+     * ⚠️ `max-content`, NOT `1fr`, AND THE DIFFERENCE IS WHETHER THE END EDGE
+     * EXISTS. A `1fr` track resolves against the scroll *port*, so the cell is
+     * narrower than the table it holds — and a sticky element can only travel
+     * inside its containing block, so the end overlay scrolled out of view and
+     * the shadow measured 0/255 at every scroll position. `max-content` makes
+     * the cell as wide as the table, which is the span both edges have to reach
+     * across.
+     */
+    grid-template-columns: max-content;
     overflow-x: auto;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
@@ -726,7 +743,140 @@
     outline-offset: 2px;
   }
 
+  /*
+   * ⚠️ THE SAME AFFORDANCE, PAINTED ABOVE THE CONTENT INSTEAD OF BEHIND IT.
+   *
+   * The gradients above are a *background*, and an element's background is by
+   * definition below everything inside it — so the sticky `thead th`, which
+   * carries its own opaque fill, and every inline `<code>` chip, which carries
+   * another, punched holes in the shadow exactly where a wide table is most
+   * likely to be cut off. Found in a screenshot; no test could see it, because
+   * every assertion about the shadow was about declarations rather than pixels.
+   *
+   * These two overlay it. They share the table's grid cell, stick to the
+   * scrollport edges, and sit at `z-index: 2` — above `thead th`, which is 1,
+   * and above the chips, which are in flow.
+   *
+   * `opacity: 0` is the base state and it is load-bearing: see the `@supports`
+   * block below.
+   */
+  .wave-docs-table-scroll::before,
+  .wave-docs-table-scroll::after {
+    content: '';
+    grid-area: 1 / 1;
+    position: sticky;
+    z-index: 2;
+    width: 0.75rem;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /*
+   * ⚠️ LINEAR, NOT RADIAL, AND THE SHAPE WAS HALF THE ORIGINAL BUG.
+   *
+   * The background version used `radial-gradient(farthest-side at 0 50%)`,
+   * which on a full-height box puts the shadow's strength at the *vertical
+   * centre* and fades it to nothing at the top and bottom. Sampled on a real
+   * table: 5–9/255 of darkening beside the first body rows, 1/255 beside the
+   * header, 0 at the right edge — on a long table the affordance is invisible
+   * exactly where a reader looks first.
+   *
+   * A horizontal linear gradient is even down the whole height, so the header
+   * row gets the same shadow as the fiftieth row.
+   */
+  .wave-docs-table-scroll::before {
+    justify-self: start;
+    inset-inline-start: 0;
+    background: linear-gradient(
+      to right,
+      var(--wave-docs-scroll-shadow),
+      transparent
+    );
+  }
+
+  .wave-docs-table-scroll::after {
+    justify-self: end;
+    inset-inline-end: 0;
+    background: linear-gradient(
+      to left,
+      var(--wave-docs-scroll-shadow),
+      transparent
+    );
+  }
+
+  /*
+   * ⚠️ AN INACTIVE TIMELINE IS WHAT MAKES THIS CORRECT, NOT JUST CLEVER.
+   *
+   * A scroll timeline is *inactive* when its scroll container has no scrollable
+   * overflow in the axis, and an animation with an inactive timeline does not
+   * apply — so the base `opacity: 0` wins and a table that fits shows no shadow
+   * at all. No query asks whether it scrolls; the answer falls out of whether
+   * there is anything to scroll.
+   *
+   * ⚠️ `nearest`, NOT `self`. `self` names the element the animation is on, and
+   * the element here is a pseudo-element *inside* the scroll container rather
+   * than the container itself — so `scroll(self inline)` was inactive at every
+   * width, on every table, and the shadow simply never appeared. It looked
+   * exactly like the feature being unsupported: the `@supports` matched, both
+   * animations were listed on the pseudo, and the computed opacity was 0.
+   *
+   * Where it does overflow, scroll position alone drives the fade: no listener,
+   * no state, no hydration, on a table a reader may well meet before JS lands.
+   *
+   * Firefox skips this block — the feature is still behind
+   * `layout.css.scroll-driven-animations.enabled` as of 152, and is an Interop
+   * 2026 priority — and keeps the background gradients above, which is exactly
+   * what it renders today. The two are mutually exclusive on purpose: the
+   * `background: none` here is what stops a supporting browser darkening each
+   * edge twice.
+   */
+  @supports (animation-timeline: scroll()) {
+    .wave-docs-table-scroll {
+      background: none;
+    }
+
+    .wave-docs-table-scroll::before,
+    .wave-docs-table-scroll::after {
+      animation-timeline: scroll(nearest inline);
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+    }
+
+    .wave-docs-table-scroll::before {
+      animation-name: wave-docs-scroll-shadow-start;
+    }
+
+    .wave-docs-table-scroll::after {
+      animation-name: wave-docs-scroll-shadow-end;
+    }
+  }
+
+  /* Absent while the start edge is at rest, present once it is not. */
+  @keyframes wave-docs-scroll-shadow-start {
+    0%,
+    2% {
+      opacity: 0;
+    }
+    8%,
+    100% {
+      opacity: 1;
+    }
+  }
+
+  /* Present until the end edge is reached. */
+  @keyframes wave-docs-scroll-shadow-end {
+    0%,
+    92% {
+      opacity: 1;
+    }
+    98%,
+    100% {
+      opacity: 0;
+    }
+  }
+
   .wave-docs-table {
+    grid-area: 1 / 1;
     width: 100%;
     /*
      * A FLOOR, NOT A SIZING MODE — and `width: 100%` is not one.

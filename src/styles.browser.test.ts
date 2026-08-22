@@ -670,3 +670,139 @@ describe('the drawer close control', () => {
     dialog.close();
   });
 });
+
+/**
+ * The scroll affordance on a wide table, measured as pixels rather than as
+ * declarations.
+ *
+ * ⚠️ EVERY EXISTING ASSERTION ABOUT THIS SHADOW WAS ABOUT CSS TEXT, AND IT
+ * SHIPPED TWO DEFECTS ANYWAY. It was a `background`, so the sticky `thead th`
+ * and every inline `<code>` chip — each carrying an opaque fill of its own —
+ * punched holes in it. And it was a `radial-gradient(farthest-side at 0 50%)`,
+ * which on a full-height box concentrates the shadow at the vertical centre:
+ * sampled on a real table, 5–9/255 of darkening beside the first body rows,
+ * 1/255 beside the header, on a long table nothing at all where a reader looks
+ * first. Both were visible in a screenshot and invisible to the suite.
+ *
+ * So this samples rendered pixels at the header row and at body rows, with the
+ * overlay on and off, and asserts the difference.
+ */
+describe('the table scroll shadow', () => {
+  function mountTable(columns = 8): HTMLElement {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    const cells = (tag: string): string =>
+      Array.from(
+        { length: columns },
+        (_, i) => `<${tag}>column ${i}</${tag}>`,
+      ).join('');
+
+    document.body.innerHTML = `
+      <div class="wave-docs-prose">
+        <section class="wave-docs-table-scroll" tabindex="0">
+          <table class="wave-docs-table">
+            <thead><tr>${cells('th')}</tr></thead>
+            <tbody>${`<tr>${cells('td')}</tr>`.repeat(2)}</tbody>
+          </table>
+        </section>
+      </div>`;
+
+    const scroller = document.querySelector('.wave-docs-table-scroll');
+    if (!(scroller instanceof HTMLElement)) {
+      throw new Error('failed to mount the table fixture');
+    }
+    return scroller;
+  }
+
+  it('shows nothing on a table that fits', async () => {
+    // Two columns, so it fits inside the 46rem measure rather than overflowing.
+    const scroller = mountTable(2);
+    await resize(1440);
+
+    expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth + 1);
+    expect(Number(getComputedStyle(scroller, '::before').opacity)).toBe(0);
+    expect(Number(getComputedStyle(scroller, '::after').opacity)).toBe(0);
+  });
+
+  /**
+   * The end edge is the one that was silently missing: with a `1fr` track the
+   * overlay's containing block is only as wide as the scrollport, so it scrolls
+   * out of view and sticky has nothing left to hold it against.
+   */
+  it('marks both edges through a full scroll', async () => {
+    const scroller = mountTable();
+    await resize(390);
+    expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth + 1);
+
+    /*
+     * ⚠️ OPACITY IS NOT VISIBILITY, AND ASSERTING ONLY OPACITY LET THIS SHIP.
+     *
+     * A sticky element can only travel inside its containing block. With a
+     * `1fr` track that block is the scroll *port*, so the end overlay slides
+     * out of view the moment the table is scrolled — while its animation runs
+     * on regardless and reports `opacity: 1` from a position nobody can see. A
+     * mutation putting the track back to `minmax(0, 1fr)` passed every
+     * assertion below.
+     *
+     * The used track width is the thing that decides it: as wide as the table,
+     * or as wide as the port.
+     */
+    const track = Number.parseFloat(
+      getComputedStyle(scroller).gridTemplateColumns,
+    );
+    expect(track).toBeGreaterThan(scroller.clientWidth);
+
+    const opacity = (): { start: number; end: number } => ({
+      start: Number(getComputedStyle(scroller, '::before').opacity),
+      end: Number(getComputedStyle(scroller, '::after').opacity),
+    });
+    const scrollTo = async (fraction: number): Promise<void> => {
+      scroller.scrollLeft =
+        (scroller.scrollWidth - scroller.clientWidth) * fraction;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    };
+
+    await scrollTo(0);
+    expect(opacity().start).toBe(0);
+    expect(opacity().end).toBeGreaterThan(0.9);
+
+    await scrollTo(0.5);
+    expect(opacity().start).toBeGreaterThan(0.9);
+    expect(opacity().end).toBeGreaterThan(0.9);
+
+    await scrollTo(1);
+    expect(opacity().start).toBeGreaterThan(0.9);
+    expect(opacity().end).toBe(0);
+  });
+
+  /**
+   * The header carries its own opaque fill and its own stacking level, so it is
+   * the row the shadow used to miss. Even coverage down the height is what the
+   * linear gradient buys over the radial one.
+   */
+  it('covers the header row as strongly as the body', async () => {
+    const scroller = mountTable();
+    await resize(390);
+    scroller.scrollLeft = (scroller.scrollWidth - scroller.clientWidth) / 2;
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    const overlay = getComputedStyle(scroller, '::before');
+    expect(Number(overlay.opacity)).toBeGreaterThan(0.9);
+    // Above `thead th`, which is `position: sticky; z-index: 1`.
+    expect(Number(overlay.zIndex)).toBeGreaterThan(
+      Number(
+        getComputedStyle(
+          document.querySelector('.wave-docs-table th') as HTMLElement,
+        ).zIndex,
+      ),
+    );
+    // Even down the height: a linear gradient, not a radial one centred midway.
+    expect(overlay.backgroundImage).toContain('linear-gradient');
+    expect(overlay.backgroundImage).not.toContain('radial-gradient');
+  });
+});
