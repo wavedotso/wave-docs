@@ -519,7 +519,7 @@ describe('the drawer trigger at a phone width', () => {
    * element's border box. Hit-testing is the only way to assert it, and it is
    * the thing that actually matters: what a thumb landing at 40px reaches.
    */
-  it('answers to 44px while painting a 28px button', async () => {
+  it('answers to 44px while painting only the dots', async () => {
     const trigger = mountTrigger();
     await resize(390);
 
@@ -528,12 +528,22 @@ describe('the drawer trigger at a phone width', () => {
     expect(getComputedStyle(trigger).backgroundColor).toBe('rgba(0, 0, 0, 0)');
     expect(getComputedStyle(trigger).borderTopWidth).toBe('0px');
 
-    // The button is what a reader sees, and it is smaller than the target.
-    const button = getComputedStyle(trigger, '::after');
-    const painted = Number.parseFloat(button.width);
-    expect(painted).toBeGreaterThanOrEqual(24);
-    expect(painted).toBeLessThan(44);
-    expect(button.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    /*
+     * Measured off docsify.js.org rather than reasoned about: their toggle is a
+     * full-height strip at `rgba(0, 0, 0, 0)` with `border: 0`, `padding: 0` and
+     * no radius, holding three small circles. No box — two attempts here wrapped
+     * the dots in a bordered disc, and that is the part that never matched.
+     */
+    expect(getComputedStyle(trigger, '::after').content).toBe('none');
+
+    const dots = getComputedStyle(trigger, '::before');
+    expect(dots.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
+    // Three of them: one element and two box-shadow copies, 7px either side.
+    // Matched on the offsets rather than on a colour — the computed value comes
+    // back in whatever colour space the engine resolved `currentcolor` into.
+    expect(dots.boxShadow).not.toBe('none');
+    expect(dots.boxShadow).toContain('-7px');
+    expect(dots.boxShadow).toContain('7px');
 
     const mid = window.innerHeight / 2;
     expect(document.elementFromPoint(12, mid)).toBe(trigger);
@@ -572,19 +582,25 @@ describe('the drawer trigger at a phone width', () => {
    * buys 44px without a 44px slab down the page — but no text may sit under
    * something a reader can see and press.
    */
-  it('does not put the article under the button', async () => {
+  it('does not put the article under the dots', async () => {
     const trigger = mountTrigger();
     await resize(390);
 
     const main = document.querySelector('.wave-docs-layout__main');
     if (!(main instanceof HTMLElement)) throw new Error('no article');
 
-    const painted = Number.parseFloat(
-      getComputedStyle(trigger, '::after').width,
-    );
-    expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(
-      trigger.getBoundingClientRect().left + painted,
-    );
+    /*
+     * The article clears the *painted* dots, not the whole target. The extra
+     * hit area deliberately overlaps the gutter — that is the trade that buys
+     * 44px without a slab down the page — but no text may sit under something
+     * a reader can see and press.
+     */
+    const dots = getComputedStyle(trigger, '::before');
+    const edge =
+      trigger.getBoundingClientRect().left +
+      Number.parseFloat(dots.insetInlineStart) +
+      Number.parseFloat(dots.width) / 2;
+    expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(edge);
   });
 
   it('takes no space in the flow, so the article starts at the top', async () => {
@@ -634,12 +650,9 @@ describe('the drawer trigger at a phone width', () => {
     };
     expect(glyph(open)).toEqual(glyph(close));
 
-    // And the same button around it.
-    const button = (el: Element): string[] => {
-      const style = getComputedStyle(el, '::after');
-      return [style.width, style.height, style.borderRadius];
-    };
-    expect(button(open)).toEqual(button(close));
+    // And neither wraps them in a box: the dots are the whole control.
+    expect(getComputedStyle(open, '::after').content).toBe('none');
+    expect(getComputedStyle(close, '::after').content).toBe('none');
     drawer.close();
   });
 
@@ -713,12 +726,11 @@ describe('the drawer close control', () => {
     if (!(close instanceof HTMLElement)) throw new Error('no close control');
 
     const panel = dialog.getBoundingClientRect();
-    const painted = Number.parseFloat(getComputedStyle(close, '::after').width);
-    const buttonCentre = close.getBoundingClientRect().left + painted / 2;
+    const strip = close.getBoundingClientRect();
 
-    // The button straddles the panel's edge, so it reads as a handle on the
-    // panel rather than a bar beside it.
-    expect(Math.abs(panel.right - buttonCentre)).toBeLessThan(3);
+    // Inside the panel's inline end — not over it, and not beyond it.
+    expect(strip.right).toBeLessThanOrEqual(panel.right + 1);
+    expect(strip.right).toBeGreaterThan(panel.right - 48);
     // And the panel is not the whole screen, so the two edges are distinct.
     expect(panel.right).toBeLessThan(window.innerWidth);
   });
@@ -750,12 +762,13 @@ describe('the drawer close control', () => {
       throw new Error('expected a close control and a tree');
     }
 
-    // Clear of the painted button, which straddles the panel edge — the half
-    // inside the panel is what the tree has to keep out from under.
-    const painted = Number.parseFloat(getComputedStyle(close, '::after').width);
-    expect(tree.getBoundingClientRect().right).toBeLessThanOrEqual(
-      close.getBoundingClientRect().left + painted / 2,
-    );
+    // Clear of the dots, which sit just inside the panel's inline end.
+    const dots = getComputedStyle(close, '::before');
+    const edge =
+      close.getBoundingClientRect().right -
+      Number.parseFloat(dots.insetInlineEnd) -
+      Number.parseFloat(dots.width) / 2;
+    expect(tree.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 1);
     dialog.close();
   });
 });

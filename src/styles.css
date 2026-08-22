@@ -1774,7 +1774,7 @@
      * So the inline start is exactly the trigger's width: its own border is the
      * separation, and nothing is left over to spend. 320 − 24 − 8 = 288.
      * Reset at 64rem, where the trigger is not rendered. */
-    padding-inline: 1.75rem 0.5rem;
+    padding-inline: 1.5rem 0.5rem;
     /* Without this, `max-width` at the 100rem cap applies to the *content* box
      * and the shell renders 48px wider than the token says — measured 1648
      * against a declared 1600. */
@@ -1785,7 +1785,7 @@
     .wave-docs-layout {
       /* Still clearing the edge trigger — it is rendered at every width below
        * 64rem — and with room to spare now that the viewport has some. */
-      padding-inline: calc(1.75rem + 1rem) 1.5rem;
+      padding-inline: calc(1.5rem + 1rem) 1.5rem;
     }
   }
 
@@ -2007,60 +2007,51 @@
    * the two cannot drift apart.
    */
   .wave-docs-layout__drawer-close {
-    inset-inline-start: calc(var(--wave-docs-drawer-width) - 0.875rem);
+    inset-inline-start: calc(var(--wave-docs-drawer-width) - 2.75rem);
   }
 
   /*
-   * The button, and the only painted part of either control. Centred on the
-   * strip's cross axis and pinned to its inline start, so the 20px of invisible
-   * target extends away from what a reader is aiming at.
-   */
-  .wave-docs-layout__nav-trigger::after,
-  .wave-docs-layout__drawer-close::after {
-    content: '';
-    position: absolute;
-    inset-block-start: 50%;
-    inset-inline-start: 0;
-    translate: 0 -50%;
-    width: 1.75rem;
-    height: 1.75rem;
-    border: 1px solid var(--wave-docs-border);
-    border-radius: 999px;
-    background: var(--wave-docs-bg);
-  }
-
-  /*
-   * Three dots, stacked. One element and two `box-shadow` copies rather than an
-   * icon file or three spans: it needs no markup, and it follows `currentcolor`
-   * through the hover state for free.
+   * Three dots, and they are the entire control — no box, no border, no fill.
+   *
+   * Measured off docsify.js.org rather than reasoned about: their toggle is a
+   * full-height strip at `rgba(0, 0, 0, 0)` with `border: 0`, `padding: 0` and
+   * no radius, holding three 4px circles 3px apart in a light grey. Two
+   * attempts here wrapped the dots in a bordered white disc, which is the part
+   * that never matched.
+   *
+   * One element and two `box-shadow` copies rather than three spans: it needs
+   * no markup, and it follows `currentcolor` through the hover state for free.
+   * 4 + 3 + 4 + 3 + 4 is 18px tall, so the offset is 7.
    */
   .wave-docs-layout__nav-trigger::before,
   .wave-docs-layout__drawer-close::before {
     content: '';
     position: absolute;
-    z-index: 1;
     inset-block-start: 50%;
-    /* Half the button, so the dots are centred on it rather than near it. */
-    inset-inline-start: 0.875rem;
-    width: 3px;
-    height: 3px;
+    width: 4px;
+    height: 4px;
     translate: -50% -50%;
     border-radius: 50%;
     background: currentcolor;
     box-shadow:
-      0 -5px 0 currentcolor,
-      0 5px 0 currentcolor;
+      0 -7px 0 currentcolor,
+      0 7px 0 currentcolor;
+  }
+
+  /* Centred in the 24px the page gutter reserves, not in the 44px target. */
+  .wave-docs-layout__nav-trigger::before {
+    inset-inline-start: 0.75rem;
+  }
+
+  /* And just inside the drawer's own inline end, which its padding clears. */
+  .wave-docs-layout__drawer-close::before {
+    inset-inline-end: 0.75rem;
+    translate: 50% -50%;
   }
 
   .wave-docs-layout__nav-trigger:hover,
   .wave-docs-layout__drawer-close:hover {
-    color: var(--wave-docs-bg);
-  }
-
-  .wave-docs-layout__nav-trigger:hover::after,
-  .wave-docs-layout__drawer-close:hover::after {
-    border-color: var(--wave-docs-accent);
-    background: var(--wave-docs-accent);
+    color: var(--wave-docs-accent);
   }
 
   /*
