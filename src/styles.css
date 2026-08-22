@@ -1774,7 +1774,7 @@
      * So the inline start is exactly the trigger's width: its own border is the
      * separation, and nothing is left over to spend. 320 − 24 − 8 = 288.
      * Reset at 64rem, where the trigger is not rendered. */
-    padding-inline: 1.5rem 0.5rem;
+    padding-inline: 1.75rem 0.5rem;
     /* Without this, `max-width` at the 100rem cap applies to the *content* box
      * and the shell renders 48px wider than the token says — measured 1648
      * against a declared 1600. */
@@ -1785,7 +1785,7 @@
     .wave-docs-layout {
       /* Still clearing the edge trigger — it is rendered at every width below
        * 64rem — and with room to spare now that the viewport has some. */
-      padding-inline: calc(1.5rem + 1rem) 1.5rem;
+      padding-inline: calc(1.75rem + 1rem) 1.5rem;
     }
   }
 
@@ -1978,14 +1978,21 @@
     position: fixed;
     inset-block: 0;
     z-index: 30;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
+    /*
+     * ⚠️ 44px OF TARGET AND NOT ONE PIXEL OF PAINT. The strip is the hit area —
+     * full height, wider than anything it draws — and entirely transparent.
+     * What a reader sees is the button below, centred in it.
+     *
+     * WCAG 2.5.8 asks for 24 and iOS and WCAG 2.5.5 ask for 44. Painting the
+     * whole 44 puts a slab down the edge of every page, which is what the
+     * first two attempts at this did; Docsify's toggle is transparent for the
+     * same reason and lets its icon carry the affordance.
+     */
+    width: 2.75rem;
     padding: 0;
     border: 0;
     background: none;
-    color: var(--wave-docs-fg-subtle);
+    color: var(--wave-docs-fg-muted);
     cursor: pointer;
   }
 
@@ -1993,78 +2000,75 @@
     inset-inline-start: 0;
   }
 
-  /* On the drawer's own inline end, so it reads as part of the panel.
-   * `--wave-docs-drawer-width` is inherited from the dialog, so the two edges
-   * cannot drift apart. */
-  .wave-docs-layout__drawer-close {
-    inset-inline-start: calc(var(--wave-docs-drawer-width) - 1.5rem);
-  }
-
   /*
-   * A chevron, and it points at what pressing it does: right to open the drawer
-   * out, left to collapse it back. One glyph, one size, one direction each —
-   * two different icons for one drawer is what made these read as two controls.
-   *
-   * Two borders on a rotated square rather than an `<svg>`: 24px of edge cannot
-   * hold an icon file legibly, this scales with `currentcolor` through the
-   * hover state for free, and it keeps both buttons empty of markup.
+   * Straddling the drawer's own inline end, so it reads as a handle on the
+   * panel rather than a bar beside it — and so the panel needs no extra padding
+   * to clear it. `--wave-docs-drawer-width` is inherited from the dialog, so
+   * the two cannot drift apart.
    */
-  .wave-docs-layout__nav-trigger::before,
-  .wave-docs-layout__drawer-close::before {
-    content: '';
-    width: 0.4375rem;
-    height: 0.4375rem;
-    border-block-start: 2px solid currentcolor;
-    border-inline-end: 2px solid currentcolor;
-  }
-
-  .wave-docs-layout__nav-trigger::before {
-    /* Points inline-end: the drawer opens out from this edge. */
-    transform: rotate(45deg);
-    /* The glyph's mass sits to one side of its box once rotated. */
-    margin-inline-end: 0.125rem;
-  }
-
-  .wave-docs-layout__drawer-close::before {
-    /* Points inline-start: the drawer collapses back to that edge. */
-    transform: rotate(-135deg);
-    margin-inline-start: 0.125rem;
+  .wave-docs-layout__drawer-close {
+    inset-inline-start: calc(var(--wave-docs-drawer-width) - 0.875rem);
   }
 
   /*
-   * ⚠️ 24px OF BAR, 44px OF TARGET. WCAG 2.5.8 asks for 24, iOS and WCAG 2.5.5
-   * ask for 44, and a 24px-wide control satisfies only the first — so the hit
-   * area is widened past what is painted. Full height, so the vertical axis was
-   * never the problem.
-   *
-   * `.wave-docs-layout` carries matching inline-start padding below 64rem, so
-   * the 20px of invisible target lands on the gutter rather than on the first
-   * words of every line.
+   * The button, and the only painted part of either control. Centred on the
+   * strip's cross axis and pinned to its inline start, so the 20px of invisible
+   * target extends away from what a reader is aiming at.
    */
   .wave-docs-layout__nav-trigger::after,
   .wave-docs-layout__drawer-close::after {
     content: '';
     position: absolute;
-    inset-block: 0;
+    inset-block-start: 50%;
     inset-inline-start: 0;
-    width: 2.75rem;
+    translate: 0 -50%;
+    width: 1.75rem;
+    height: 1.75rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: 999px;
+    background: var(--wave-docs-bg);
+  }
+
+  /*
+   * Three dots, stacked. One element and two `box-shadow` copies rather than an
+   * icon file or three spans: it needs no markup, and it follows `currentcolor`
+   * through the hover state for free.
+   */
+  .wave-docs-layout__nav-trigger::before,
+  .wave-docs-layout__drawer-close::before {
+    content: '';
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 50%;
+    /* Half the button, so the dots are centred on it rather than near it. */
+    inset-inline-start: 0.875rem;
+    width: 3px;
+    height: 3px;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: currentcolor;
+    box-shadow:
+      0 -5px 0 currentcolor,
+      0 5px 0 currentcolor;
   }
 
   .wave-docs-layout__nav-trigger:hover,
   .wave-docs-layout__drawer-close:hover {
-    background: var(--wave-docs-accent);
     color: var(--wave-docs-bg);
+  }
+
+  .wave-docs-layout__nav-trigger:hover::after,
+  .wave-docs-layout__drawer-close:hover::after {
+    border-color: var(--wave-docs-accent);
+    background: var(--wave-docs-accent);
   }
 
   /*
    * ⚠️ AN OUTLINE, NOT THE FILL. These shared the hover rule for one commit,
    * and `focus-indicators` caught it: a background change is the one thing
-   * forced-colours mode discards, so a keyboard reader in that mode would have
-   * had no indicator at all. The fill is a pointer affordance; the outline is
-   * the accessible one, and they are different states.
-   *
-   * `outline-offset` is negative because the strip sits against the viewport
-   * edge, where an outset ring is half off-screen.
+   * forced-colours mode discards, so a keyboard reader there would have had no
+   * indicator at all. The fill is a pointer affordance; the outline is the
+   * accessible one, and they are different states.
    */
   .wave-docs-layout__nav-trigger:focus-visible,
   .wave-docs-layout__drawer-close:focus-visible {
@@ -2095,8 +2099,7 @@
     max-width: none;
     height: 100dvh;
     max-height: none;
-    /* The inline end clears the close strip, which is `fixed` and out of flow. */
-    padding: 1.5rem 2rem 1.5rem 1rem;
+    padding: 1.5rem 1rem;
     border: 0;
     border-inline-end: 1px solid var(--wave-docs-border);
     background-color: var(--wave-docs-bg);

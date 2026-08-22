@@ -519,13 +519,21 @@ describe('the drawer trigger at a phone width', () => {
    * element's border box. Hit-testing is the only way to assert it, and it is
    * the thing that actually matters: what a thumb landing at 40px reaches.
    */
-  it('paints 24px and answers to 44', async () => {
+  it('answers to 44px while painting a 28px button', async () => {
     const trigger = mountTrigger();
     await resize(390);
 
-    const { width } = trigger.getBoundingClientRect();
-    expect(width).toBeGreaterThanOrEqual(24);
-    expect(width).toBeLessThan(44);
+    // The strip is the target and paints nothing.
+    expect(trigger.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
+    expect(getComputedStyle(trigger).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    expect(getComputedStyle(trigger).borderTopWidth).toBe('0px');
+
+    // The button is what a reader sees, and it is smaller than the target.
+    const button = getComputedStyle(trigger, '::after');
+    const painted = Number.parseFloat(button.width);
+    expect(painted).toBeGreaterThanOrEqual(24);
+    expect(painted).toBeLessThan(44);
+    expect(button.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
 
     const mid = window.innerHeight / 2;
     expect(document.elementFromPoint(12, mid)).toBe(trigger);
@@ -558,15 +566,24 @@ describe('the drawer trigger at a phone width', () => {
    * takes the bar out of flow, so without matching padding on the grid the
    * first words of every line sit under a control.
    */
-  it('does not put the article under the bar', async () => {
+  /**
+   * The article clears the *painted* button, not the whole target. The extra
+   * 20px of hit area deliberately overlaps the gutter — that is the trade that
+   * buys 44px without a 44px slab down the page — but no text may sit under
+   * something a reader can see and press.
+   */
+  it('does not put the article under the button', async () => {
     const trigger = mountTrigger();
     await resize(390);
 
     const main = document.querySelector('.wave-docs-layout__main');
     if (!(main instanceof HTMLElement)) throw new Error('no article');
 
+    const painted = Number.parseFloat(
+      getComputedStyle(trigger, '::after').width,
+    );
     expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(
-      trigger.getBoundingClientRect().right,
+      trigger.getBoundingClientRect().left + painted,
     );
   });
 
@@ -610,16 +627,19 @@ describe('the drawer trigger at a phone width', () => {
     expect(Math.round(a.width)).toBe(Math.round(b.width));
     expect(Math.round(a.height)).toBe(Math.round(b.height));
 
+    // Same glyph — three dots, drawn by one element and two box-shadow copies.
     const glyph = (el: Element): string[] => {
       const style = getComputedStyle(el, '::before');
-      return [style.width, style.height, style.borderTopWidth];
+      return [style.width, style.height, style.borderRadius, style.boxShadow];
     };
     expect(glyph(open)).toEqual(glyph(close));
 
-    // Opposite directions: out from the edge, back to it.
-    expect(getComputedStyle(open, '::before').transform).not.toBe(
-      getComputedStyle(close, '::before').transform,
-    );
+    // And the same button around it.
+    const button = (el: Element): string[] => {
+      const style = getComputedStyle(el, '::after');
+      return [style.width, style.height, style.borderRadius];
+    };
+    expect(button(open)).toEqual(button(close));
     drawer.close();
   });
 
@@ -693,9 +713,12 @@ describe('the drawer close control', () => {
     if (!(close instanceof HTMLElement)) throw new Error('no close control');
 
     const panel = dialog.getBoundingClientRect();
-    const button = close.getBoundingClientRect();
+    const painted = Number.parseFloat(getComputedStyle(close, '::after').width);
+    const buttonCentre = close.getBoundingClientRect().left + painted / 2;
 
-    expect(Math.abs(panel.right - button.right)).toBeLessThan(2);
+    // The button straddles the panel's edge, so it reads as a handle on the
+    // panel rather than a bar beside it.
+    expect(Math.abs(panel.right - buttonCentre)).toBeLessThan(3);
     // And the panel is not the whole screen, so the two edges are distinct.
     expect(panel.right).toBeLessThan(window.innerWidth);
   });
@@ -727,8 +750,11 @@ describe('the drawer close control', () => {
       throw new Error('expected a close control and a tree');
     }
 
+    // Clear of the painted button, which straddles the panel edge — the half
+    // inside the panel is what the tree has to keep out from under.
+    const painted = Number.parseFloat(getComputedStyle(close, '::after').width);
     expect(tree.getBoundingClientRect().right).toBeLessThanOrEqual(
-      close.getBoundingClientRect().left,
+      close.getBoundingClientRect().left + painted / 2,
     );
     dialog.close();
   });
