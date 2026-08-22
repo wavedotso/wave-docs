@@ -426,27 +426,38 @@ export interface DocsRouteOptions<
 /**
  * Props for {@link DocsRoute.Layout}.
  *
- * Four, and the fourth is a boolean. Everything else a docs shell is asked for
- * turned out to be reachable already: an announcement banner renders *above*
- * `<docs.Layout>` in your own `layout.tsx`, because this does not own `<body>`;
- * a content footer goes inside `children`; and sidebar links, social icons and
- * separators are `DocNavNode`s authored in `meta.json`. The header bar is the
- * one region nothing else can reach, which is what `actions` is for.
+ * Three, and one of them is `children`. Everything else a docs shell is asked
+ * for turned out to be reachable already: an announcement banner renders
+ * *above* `<docs.Layout>` in your own `layout.tsx`, because this does not own
+ * `<body>`; a content footer goes inside `children`; and sidebar links, social
+ * icons and separators are `DocNavNode`s authored in `meta.json`. A theme
+ * toggle and a repository link go in the layout you write around this one — the
+ * host wraps `docs.Layout` exactly as it already wraps `<html>` and `<body>`,
+ * so there is no region only this package can reach.
  *
- * A `slots` map was the alternative, and it can still be added later — two node
- * props can become a slots map, a slots map cannot become two props.
+ * The one region a host cannot reach through `docs.Layout` is *inside* the
+ * sidebar, and the exported primitives are the answer for that: `DocsSidebar`,
+ * `DocsToc`, `DocContent` and `SkipLink` compose into a layout of your own.
+ *
+ * A `slots` map was the alternative, and shipping none is the reversible half —
+ * a map can be added the day something needs one, a map that shipped cannot be
+ * taken back.
  */
 export interface DocsLayoutProps {
   children: ReactNode;
-  /**
-   * Brand at the header start. A string, or your own logo component.
+  /*
+   * ⚠️ `title` AND `actions` WERE HERE, AND BOTH WENT WITH THE HEADER THEY
+   * LIVED IN.
    *
-   * `ReactNode`, so it cannot also serve as the `<title>` or as the header's
-   * accessible name; the landmark carries a fixed label instead.
+   * `title` was a brand slot. A brand belongs to the index page's own title,
+   * which is content — authored, translatable, part of what a reader came for.
+   * `actions` was a theme toggle, a repository link, a version switcher; all
+   * three belong to the host's layout, which wraps this one exactly as it
+   * already does for `<html>` and `<body>`.
+   *
+   * The argument that justified `actions` was that the header bar was the one
+   * region nothing else could reach. There is no header bar.
    */
-  title?: ReactNode;
-  /** Header end, after search: a theme toggle, a version switcher, a link. */
-  actions?: ReactNode;
   /**
    * The search trigger. Defaults to on, and the URL is always derived.
    *
@@ -649,24 +660,32 @@ export interface DocsRoute<
    * export default docs.Layout;
    * ```
    *
-   * Or, with your own chrome in the header:
+   * Or, with your own chrome *around* it — the same layout file `<html>` and
+   * `<body>` live in, and `SiteHeader` is yours:
    *
    * ```tsx
    * export default function DocsLayout({ children }: { children: ReactNode }) {
    *   return (
-   *     <docs.Layout title={<Logo />} actions={<ThemeToggle />}>
-   *       {children}
-   *     </docs.Layout>
+   *     <>
+   *       <SiteHeader />
+   *       <docs.Layout search={{ placeholder: 'Search the docs' }}>
+   *         {children}
+   *       </docs.Layout>
+   *     </>
    *   );
    * }
    * ```
    *
-   * It owns the skip link, the header, the sidebar column, the mobile drawer
-   * and the grid, and it reads `source.nav()` and `searchIndexUrl` itself — so
-   * there is no nav to fetch and no URL to pass. It does **not** own the table
-   * of contents: a Next layout receives `{children, params}` and cannot know
-   * which page is rendering, so `docs.Page` emits the TOC as its second child
-   * and the grid places it.
+   * If that header of yours is sticky, say how tall it is once —
+   * `--wave-docs-chrome-offset: 4rem` — and our sticky columns start below it.
+   *
+   * It owns the skip link, the sidebar — a 16rem column above 64rem, an in-flow
+   * sticky strip below it — the search trigger, the mobile drawer and the grid.
+   * It reads `source.nav()` and `searchIndexUrl` itself, so there is no nav to
+   * fetch and no URL to pass. It does **not** own the table of contents: a Next
+   * layout receives `{children, params}` and cannot know which page is
+   * rendering, so `docs.Page` emits the TOC as its second child and the grid
+   * places it.
    *
    * Your `layout.tsx` stays a Server Component. The two pieces that need a
    * client — the nav's `usePathname`, the search dialog — carry their own
@@ -753,7 +772,7 @@ function serializableSearchOptions(
         '`search={false}` to `docs.Layout`, and render the dialog yourself ' +
         "from a `'use client'` module that imports the same function — " +
         '`<DocsSearch indexUrl={docs.searchIndexUrl} miniSearchOptions={{ ' +
-        'processTerm }} />` — putting that component in `actions`. ' +
+        'processTerm }} />` in your own layout. ' +
         'Serialisable overrides (`storeFields`, `boost`, ' +
         '`searchOptions.fuzzy`) need none of this and are forwarded as before.',
     );
@@ -1157,7 +1176,7 @@ export function createDocsRoute<
          * covered the keyboard case and hid the missing landmark behind it.
          *
          * One `<main>` per document is the constraint, and this satisfies it:
-         * `docs.Layout` renders the header and the navigation and nothing that
+         * `docs.Layout` renders a navigation landmark and nothing else that
          * competes for the role, and `docs.Page` is the only thing inside it.
          */
         'main',
@@ -1222,8 +1241,6 @@ export function createDocsRoute<
 
     async Layout({
       children,
-      title,
-      actions,
       search,
       labels,
     }: DocsLayoutProps): Promise<ReactNode> {
@@ -1313,8 +1330,6 @@ export function createDocsRoute<
         nav: await requestScopedSource.nav(),
         searchIndexUrl,
         search: searchProps,
-        ...(title === undefined ? {} : { title }),
-        ...(actions === undefined ? {} : { actions }),
         ...(shellLabels === undefined ? {} : { labels: shellLabels }),
       });
     },

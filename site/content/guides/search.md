@@ -192,8 +192,10 @@ export function DocsSearchTrigger({ indexUrl }: { indexUrl: string }) {
 
 Add the same function to `createDocsRoute` so the index is built with it, then
 turn the built-in trigger off with `search={false}` and render yours in the
-layout's `actions` slot — [Layout](./layout.md) has both. That is why the
-refusal is scoped to the forward: the route keeps the function for the index
-it builds on the server, and nothing crosses to the client but a string.
+layout you write around `docs.Layout` — [Layout](./layout.md) has that shape.
+That is why the refusal is scoped to the forward: the route keeps the function
+for the index it builds on the server, and nothing crosses to the client but a
+string. To put your trigger *inside* the sidebar rather than above it, compose
+the shell yourself; `docs.Layout` has no slot for it, deliberately.
 
 Next: [Links](./links.md).

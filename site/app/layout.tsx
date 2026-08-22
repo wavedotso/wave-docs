@@ -1,6 +1,5 @@
 import '@waveso/docs/styles.css';
 import type { Metadata, Viewport } from 'next';
-import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { docs } from '@/lib/docs';
@@ -22,13 +21,13 @@ import { docs } from '@/lib/docs';
  * layout rule that is not in the package, that is a defect in the package
  * rather than a thing to add locally.
  *
- * ⚠️ `title` AND `actions` ARE HERE BECAUSE THEY ARE THE DOCUMENTED WAY TO PUT
- * CHROME IN THE HEADER, AND NOTHING EXERCISED THEM. The README tells a reader
- * to call `docs.Layout` rather than re-export it when they want a brand and a
- * repository link; until this site did, the two props were covered by unit
- * tests and by no real build. They also cost nothing the harness protects: both
- * are `ReactNode` slots the shell places itself, so this file still declares no
- * layout of its own.
+ * ⚠️ `title` AND `actions` WERE HERE, AND EXERCISING THEM IS WHAT KILLED THEM.
+ * This file passed a brand and a repository link because the README documented
+ * them as the way to put chrome in the header — and doing it for real surfaced
+ * three defects in one afternoon, then the question of why a documentation
+ * package renders a header at all. At 0.7.0 it does not. The two props are
+ * gone, the brand is the index page's own title, and a repository link
+ * belongs in this file, around `docs.Layout`, not inside it.
  *
  * `color-scheme` is not layout: it tells the browser which form controls and
  * scrollbars to paint, and omitting it gives a dark page white scrollbars.
@@ -51,12 +50,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <docs.Layout
-          title={<Link href="/">Wave Docs</Link>}
-          actions={<a href="https://github.com/wavedotso/wave-docs">GitHub</a>}
-        >
-          {children}
-        </docs.Layout>
+        <docs.Layout>{children}</docs.Layout>
       </body>
     </html>
   );

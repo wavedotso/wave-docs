@@ -172,15 +172,20 @@ That is about **weight, not about `node:fs`** — and the distinction matters, b
 
 ### Layout tokens
 
-Five custom properties size the shell, all layered so an unlayered `:root` of your own still wins. The full contract is in [`docs/adr/001-shell-contract.md`](./docs/adr/001-shell-contract.md).
+Six custom properties size the shell, all layered so an unlayered `:root` of your own still wins. All six are public API: a name changes only in a release that carries the migration.
 
 | Token | Default | Controls |
 | --- | --- | --- |
 | `--wave-docs-measure` | `46rem` | Prose column width. `none` opts out |
-| `--wave-docs-header-height` | `3.5rem` | Header, and the offset sticky columns park below |
+| `--wave-docs-bar-height` | `3.5rem` | The sidebar's strip shape, below 64rem |
 | `--wave-docs-sidebar-width` | `16rem` | Sidebar track |
 | `--wave-docs-toc-width` | `15rem` | Table-of-contents track |
 | `--wave-docs-shell-width` | `100rem` | Maximum shell width |
+| `--wave-docs-chrome-offset` | `0rem` | Where our sticky chrome starts, below a bar of yours |
+
+**`--wave-docs-header-height` split into `--wave-docs-bar-height` and `--wave-docs-chrome-offset` in 0.7.0, and renaming it to either one loses half of what it did.** It sized the header *and* it was the offset both sticky columns parked below. The sizing half is `--wave-docs-bar-height`; the offset half is `--wave-docs-chrome-offset` — `--wave-docs-chrome-offset: 4rem` starts our sticky strip, our sidebar column and our table of contents 4rem down, and feeds the scroll padding that keeps an anchored heading clear of them. Rename and stop there and the desktop offset is gone with no error.
+
+The default is `0rem` rather than `0`, and the unit is load-bearing: it is read inside `calc(100dvh - …)` on both sticky columns, and `calc(100dvh - 0)` is invalid at computed-value time — a unitless zero kills the `max-height` instead of resolving to no change.
 
 The shell has three breakpoints, in `rem` so they scale with the reader's base font size: the sidebar appears at **64rem**, the table of contents at **80rem**, and the whole grid stops growing at **100rem**. 64rem is arithmetic rather than taste — a 16rem sidebar plus a 46rem measure plus two 1.5rem gutters is 65rem, so anything narrower introduces the sidebar exactly where it starts eating the measure it frames.
 
@@ -211,37 +216,53 @@ The two components the adapter injects take a little more than an `<a>` and an `
 
 ### Layout
 
-`export default docs.Layout` — the one line from the [quick start](#quick-start) — is a Server Component that renders the whole shell: skip link, sticky header, sidebar column, mobile drawer, and the grid that arranges them. It reads the navigation tree and the search index URL itself, so there is nothing to fetch and nothing to pass.
+`export default docs.Layout` — the one line from the [quick start](#quick-start) — is a Server Component that renders the whole shell: skip link, sidebar, search trigger, mobile drawer, and the grid that arranges them. It reads the navigation tree and the search index URL itself, so there is nothing to fetch and nothing to pass.
+
+**It renders no header, and that is deliberate.** Two kinds of site use this package: documentation mounted inside an application that already has a header, a navbar and its own search, and documentation that is the whole site. A full-width sticky bar of ours serves the second and fights the first — two stacked bars competing for the viewport's top edge, and two search boxes on one page, one of which knows nothing about the documentation.
+
+So the sidebar is the chrome. It is a real grid item at every width — a 16rem column above 64rem, an in-flow sticky strip below it — and it holds the same three children at both shapes: the drawer trigger, which is `display: none` above 64rem, the search trigger, and the navigation drawer itself. **Every persistent element this package renders is in normal flow, inside the grid, and offsettable; nothing is `position: fixed`.** Two elements in flow push each other and both stay visible, while a fixed one overlaps whatever is beneath it with neither side able to detect the collision — and a host cannot work around a collision it cannot see. Modals are the exception and always were: the search dialog and the drawer are top-layer, present only while open, and nothing collides with something that is not there.
 
 Your layout stays a Server Component. The two pieces that need a client — the navigation's `usePathname`, the search dialog — carry their own `'use client'` boundaries inside the package.
 
-To put your own chrome in the header, call it instead of re-exporting it:
+Your own chrome goes *around* `docs.Layout`, in the layout file you already write — the same place `<html>` and `<body>` live. Call it instead of re-exporting it when you want to wrap it, configure it, or both:
 
 ```tsx
 import type { ReactNode } from 'react';
 import '@waveso/docs/styles.css';
 import { docs } from '@/lib/docs';
 
+/** Yours: the header, theme toggle and repository link the rest of the site has. */
+declare function SiteHeader(): ReactNode;
+
 export default function DocsLayout({ children }: { children: ReactNode }) {
   return (
-    <docs.Layout
-      title="Wave"
-      actions={<a href="https://github.com/waveso/docs">GitHub</a>}
-    >
-      {children}
-    </docs.Layout>
+    <>
+      <SiteHeader />
+      <docs.Layout search={{ placeholder: 'Search the docs' }}>
+        {children}
+      </docs.Layout>
+    </>
   );
+}
+```
+
+If that header of yours is sticky, say how tall it is once and the shell's sticky columns start below it:
+
+```css
+:root {
+  --wave-docs-chrome-offset: 4rem;
 }
 ```
 
 | Prop | Type | Default | |
 | --- | --- | --- | --- |
-| `title` | `ReactNode` | — | Brand, at the header start |
-| `actions` | `ReactNode` | — | Header end, after search |
+| `children` | `ReactNode` | — | What `docs.Page` returns — the `<main>` and the TOC, as two siblings |
 | `search` | `boolean \| DocsSearchProps` | `true` | The search trigger. An object configures the dialog |
 | `labels` | `DocsLabels` | the route's | Overrides `createDocsRoute`'s labels, key by key |
 
-Five props, and two of them are small objects. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. The header bar was the one region nothing else could reach — hence `actions`. Two node props can become a slots map later; a slots map cannot become two props.
+Three props, and one of them is `children`. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. A theme toggle and a repository link go in the layout you write around this one.
+
+**`title` and `actions` were removed in 0.7.0, with the header they lived in.** `title` was a brand slot, and a brand belongs to the index page's own title — content, authored and translatable, part of what the reader came for. The argument for `actions` was that the header bar was the one region nothing else could reach; there is no header bar, and the host wraps `docs.Layout` exactly as it already wraps `<html>` and `<body>`, so there is no region only this package can reach. The one place a host cannot reach through this prop list is *inside* the sidebar, and the answer to that is [composing the primitives yourself](#composing-it-yourself).
 
 `search` takes anything `DocsSearch` takes except `indexUrl`, which stays derived from your `basePath`. You do not need to repeat `miniSearchOptions` here to match `createDocsRoute` — the route's own value is forwarded, so the object that built the index is the object that queries it.
 
@@ -249,9 +270,9 @@ Five props, and two of them are small objects. That is deliberate, and it is the
 
 #### The mobile drawer
 
-Below 64rem the sidebar is a `<dialog>` opened by a server-rendered `<button command="show-modal">` — so it works on the first tap, before hydration, and with JavaScript disabled. Focus moves inside and Tab stays there, Escape closes it and returns focus to the trigger, a click on the backdrop dismisses it, and the page behind does not scroll. All of that is the browser's, not ours.
+Below 64rem the sidebar takes its strip shape: a sticky row `--wave-docs-bar-height` tall, spanning the grid, holding the drawer trigger and the search trigger. The navigation itself is a `<dialog>` opened by a server-rendered `<button command="show-modal">` — so it works on the first tap, before hydration, and with JavaScript disabled. Focus moves inside and Tab stays there, Escape closes it and returns focus to the trigger, a click on the backdrop dismisses it, and the page behind does not scroll. All of that is the browser's, not ours.
 
-At 64rem and above the same element becomes the sticky column, via `display: contents`. One navigation in the DOM at every width: one landmark, one copy of the links in the payload, nothing to keep in step.
+At 64rem and above the strip becomes the 16rem column, the drawer trigger is `display: none`, and the same `<dialog>` becomes that column's contents via `display: contents`. One navigation in the DOM at every width: one landmark, one copy of the links in the payload, nothing to keep in step.
 
 #### Composing it yourself
 
@@ -286,7 +307,7 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
 
 `docs.Page` returns exactly this shape: the `<main>` and the table of contents as **two siblings**, not one wrapped element. They land as direct children of the grid, which is what puts them in separate columns — so if you compose your own page inside `docs.Layout`, return a fragment rather than a wrapper.
 
-**The two class names are load-bearing**, and they are the part of this that is easy to leave off. `wave-docs-layout__main` carries `min-width: 0`, without which a wide table pushes the whole document into horizontal scroll (measured: 1048px of document inside a 1024px viewport). `wave-docs-layout__toc` is what the grid reserves its third track with, via `:has()` — unclassed, the table of contents auto-places into the next row underneath the sidebar above 80rem, and renders inline on a phone instead of being hidden. Both are frozen in [`docs/adr/001-shell-contract.md`](docs/adr/001-shell-contract.md), so they are safe to write by hand.
+**The two class names are load-bearing**, and they are the part of this that is easy to leave off. `wave-docs-layout__main` carries `min-width: 0`, without which a wide table pushes the whole document into horizontal scroll (measured: 1048px of document inside a 1024px viewport). `wave-docs-layout__toc` is what the grid reserves its third track with, via `:has()` — unclassed, the table of contents auto-places into the next row underneath the sidebar above 80rem, and renders inline on a phone instead of being hidden. Both names are public API and change only in a release that carries the migration, so they are safe to write by hand.
 
 The `null` is load-bearing too: `:has()` matches an empty `<aside>` exactly as well as a full one, so a page with no headings would give up 15rem to nothing.
 
@@ -715,7 +736,7 @@ export function DocsSearchTrigger({ indexUrl }: { indexUrl: string }) {
 }
 ```
 
-Add the same function to your `createDocsRoute` call — `miniSearchOptions: { processTerm: stripDashes }` — so the index is built with it. Then turn the built-in trigger off and render yours in `actions`, in `app/docs/layout.tsx`:
+Add the same function to your `createDocsRoute` call — `miniSearchOptions: { processTerm: stripDashes }` — so the index is built with it. Then turn the built-in trigger off and render yours in the layout you write around `docs.Layout`, in `app/docs/layout.tsx`:
 
 ```tsx
 import '@waveso/docs/styles.css';
@@ -725,17 +746,15 @@ import { docs } from '@/lib/docs';
 
 export default function DocsLayout({ children }: { children: ReactNode }) {
   return (
-    <docs.Layout
-      search={false}
-      actions={<DocsSearchTrigger indexUrl={docs.searchIndexUrl} />}
-    >
-      {children}
-    </docs.Layout>
+    <>
+      <DocsSearchTrigger indexUrl={docs.searchIndexUrl} />
+      <docs.Layout search={false}>{children}</docs.Layout>
+    </>
   );
 }
 ```
 
-`search={false}` omits the built-in trigger so yours is the only one, and it is also why the refusal is scoped to the forward: the route keeps the function for the index it builds on the server, and nothing crosses to the client but a string.
+`search={false}` omits the built-in trigger so yours is the only one, and it is also why the refusal is scoped to the forward: the route keeps the function for the index it builds on the server, and nothing crosses to the client but a string. To put your trigger *inside* the sidebar rather than above it, [compose the shell yourself](#composing-it-yourself) — `docs.Layout` has no slot for it, deliberately.
 
 ### Building the index yourself
 
@@ -1051,9 +1070,9 @@ breaking — which is the part most packages leave unsaid until someone is angry
 | --- | --- |
 | Every subpath in `exports`, and every runtime name it exports | ✅ enforced by `manifest.test.ts` |
 | Exported types, including `DocsErrorCode`'s members | ✅ enforced by `error-taxonomy.test.ts` |
-| **CSS class names** — `wave-docs-*`, and the shell's element tree | ✅ frozen in [ADR 001](docs/adr/001-shell-contract.md) |
+| **CSS class names** — `wave-docs-*`, and the shell's element tree | ✅ a name changes only in a release that carries the migration |
 | **The hast this emits** — element names, and the attributes on them | ✅ the same policy as the types |
-| Layout tokens — the five custom properties above | ✅ |
+| Layout tokens — the six custom properties above | ✅ |
 | Anything reachable only through `dist/` internals, or a private module | ❌ |
 
 The two in bold are the ones usually omitted, and omitting them is how a

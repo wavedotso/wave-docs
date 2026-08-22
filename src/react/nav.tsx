@@ -4,7 +4,7 @@
  * The navigation drawer — one `<dialog>` holding the one `<DocsSidebar>`.
  *
  * Private. `docs.Layout` renders it; nothing else should, because the trigger
- * that opens it lives in the header and is bound by `id`.
+ * that opens it lives in the sidebar chrome and is bound by `id`.
  *
  * ## One DOM for both breakpoints
  *
@@ -42,7 +42,7 @@ import type { DocsLinkComponent } from './markdown-components.js';
 import { DocsSidebar } from './sidebar.js';
 
 /**
- * The drawer's `id`, and the header trigger's `commandfor`.
+ * The drawer's `id`, and the sidebar trigger's `commandfor`.
  *
  * A constant rather than a `useId`, for two reasons that both matter: the
  * trigger is rendered on the server in a different subtree and cannot see a
@@ -62,6 +62,17 @@ export interface DocsNavProps {
   label?: string | undefined;
   /** Accessible name for the close button. */
   closeLabel?: string | undefined;
+  /**
+   * Rendered inside the drawer, above the tree. The search trigger goes here.
+   *
+   * ⚠️ IT HAS TO BE INSIDE THE DIALOG, NOT BESIDE IT. Below 64rem the wrapper
+   * around this is `display: contents` and generates no box, so a sibling would
+   * render loose in the grid with nothing placing it. Inside, it is hidden with
+   * the closed dialog on a phone and — because the dialog is `display: contents`
+   * above 64rem — becomes the first child of the sidebar column on a desktop.
+   * One element, both shapes, no second copy in the payload.
+   */
+  children?: ReactNode;
   /** Passed through to the tree. See `DocsSidebarProps.expandGroup`. */
   expandGroup?: string | undefined;
   collapseGroup?: string | undefined;
@@ -73,6 +84,7 @@ export function DocsNav({
   pathname,
   Link,
   label = 'Documentation',
+  children,
   closeLabel = 'Close navigation',
   expandGroup,
   collapseGroup,
@@ -162,6 +174,7 @@ export function DocsNav({
           <path d="M4 4l8 8M12 4l-8 8" />
         </svg>
       </button>
+      {children}
       <DocsSidebar
         nav={nav}
         pathname={pathname}

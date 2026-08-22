@@ -281,31 +281,34 @@ describe('the site is an acceptance harness', () => {
      * `children` is the direct and only child of the shell — props on the
      * opening tag or not.
      *
-     * ⚠️ THE PROPS ARE ALLOWED AND THE WRAPPER STILL IS NOT. This asserted a
-     * bare `<docs.Layout>` until the site grew a brand and a repository link,
-     * which are the documented way to put chrome in the header and were
-     * exercised by no real build until then. Refusing them here would have made
-     * the harness cover less than the README describes, in the name of a rule
-     * that was never about props: what must not appear is an element *between*
-     * the shell and the page, because that is what would put the TOC inside the
-     * article's grid column.
+     * ⚠️ THE PROPS ARE ALLOWED AND THE WRAPPER STILL IS NOT. The opening tag is
+     * matched loosely on purpose, and the harness passes nothing through it
+     * today: `search` and `labels` are all `DocsLayoutProps` carries, and a
+     * harness that could not pass them would cover less than the README
+     * describes. The rule was never about props. What must not appear is
+     * an element *between* the shell and the page, because that is what would
+     * put the TOC inside the article's grid column.
      */
     expect(layout).toMatch(
       /<docs\.Layout[\s\S]*?>\s*\{children\}\s*<\/docs\.Layout>/,
     );
 
     /*
-     * And nothing else is an element outside those slots. `html` and `body` are
-     * the root layout's own and unavoidable; `Link` and `a` are the header's
-     * two slotted nodes, which `docs.Layout` places itself. Anything past those
-     * is a wrapper, whatever it is called.
+     * And nothing else in the file is an element at all. `html` and `body` are
+     * the root layout's own and unavoidable, and `docs.Layout` is the shell
+     * itself. Anything past those is a wrapper, whatever it is called.
      */
     const elements = [...layout.matchAll(/<([A-Za-z][\w.]*)[\s/>]/g)].map(
       (match) => match[1],
     );
+    /*
+     * Three, down from five. `Link` and `a` were here for the brand and the
+     * repository link this file used to pass as `title` and `actions`; both
+     * props are gone, so the layout file is now the shell and nothing else.
+     * A host that wants a repository link renders one in this file, around
+     * `docs.Layout` — and if it ever does, this list is where that shows up.
+     */
     expect([...new Set(elements)].sort()).toEqual([
-      'Link',
-      'a',
       'body',
       'docs.Layout',
       'html',

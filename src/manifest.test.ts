@@ -171,9 +171,9 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   'link-adapter',
   // The shell. `docs.Layout` is the public name for all three, and it has to
   // be, because two of them only work when the route wires them together: the
-  // drawer's trigger lives in the header and binds to the dialog by a fixed
-  // `id`, and the nav reads a `pathname` the layout never sees. Exporting the
-  // pieces would publish a way to render half a shell.
+  // drawer's trigger lives in the sidebar chrome and binds to the dialog by a
+  // fixed `id`, and the nav reads a `pathname` the layout never sees.
+  // Exporting the pieces would publish a way to render half a shell.
   'layout',
   'nav',
   'next-nav',

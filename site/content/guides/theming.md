@@ -1,6 +1,6 @@
 ---
 title: Theming
-description: Five layout tokens, one layer stack, and dark mode that never switches itself on.
+description: Six layout tokens, one layer stack, and dark mode that never switches itself on.
 ---
 
 Retheme by redefining the tokens, restyle by overriding the `wave-docs-*`
@@ -32,21 +32,39 @@ your own `:root`, after the import:
 
 ## Layout tokens
 
-Five custom properties size the shell.
+Six custom properties size the shell.
 
 | Token | Default | |
 | --- | --- | --- |
 | `--wave-docs-measure` | `46rem` | Prose column width. `none` opts out |
-| `--wave-docs-header-height` | `3.5rem` | Header, and the offset sticky columns park below |
+| `--wave-docs-bar-height` | `3.5rem` | The sidebar's strip shape, below 64rem |
 | `--wave-docs-sidebar-width` | `16rem` | Sidebar track |
 | `--wave-docs-toc-width` | `15rem` | Table-of-contents track |
 | `--wave-docs-shell-width` | `100rem` | Maximum shell width |
+| `--wave-docs-chrome-offset` | `0rem` | Where the sticky chrome starts |
 
-Those five are the whole settable layout surface — the gutter and the drawer
+Those six are the whole settable layout surface — the gutter and the drawer
 width are literals, because each appears once. `--wave-docs-scroll-padding` is
-derived rather than set: the header height plus a rem of air, with the sticky
-columns offset by the same token, so changing the header moves all three
-together.
+derived rather than set, and derived twice: how far below the top of the
+scrollport an anchored heading parks is `--wave-docs-chrome-offset` plus
+`--wave-docs-bar-height` plus a rem of air below 64rem, and
+`--wave-docs-chrome-offset` plus a rem at and above it. There is no strip on a
+wide screen, so carrying its height there would park every heading 3.5rem too
+low.
+
+**`--wave-docs-chrome-offset` is the one a host inside an application sets.**
+It is where this package's sticky chrome starts, and nothing here can measure
+it: both sticky columns take it as their `top` and subtract it from `100dvh`,
+so a documentation section mounted under an application's own sticky bar
+starts below that bar instead of behind it. [Layout](./layout.md) has the
+composition it exists for.
+
+> [!WARNING]
+> **It defaults to `0rem`, with a unit, and the unit is load-bearing.** The
+> token is read inside `calc(100dvh - …)` on both sticky columns, and
+> `calc(100dvh - 0)` is invalid at computed-value time. Overriding it with a
+> bare `0` does not mean "no offset" — it drops the `max-height` from the
+> sidebar and the table of contents entirely.
 
 ## Breakpoints
 

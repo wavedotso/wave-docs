@@ -218,7 +218,7 @@ their defaults.
 | `generateStaticParams` | `() => Promise<Array<{ slug: string[] }>>` | For the catch-all. The root `index.md` is absent by design: its segments are `[]` |
 | `generateMetadata` | `(props: DocsPageProps) => Promise<DocsPageMetadata>` | Title, description, `alternates.canonical`, and an `article` Open Graph block |
 | `dynamicParams` | `false` | Read it, do not re-export it. Your route file must declare the literal |
-| `Layout` | `(props: DocsLayoutProps) => Promise<ReactNode>` | The whole shell: skip link, header, sidebar column, mobile drawer, grid |
+| `Layout` | `(props: DocsLayoutProps) => Promise<ReactNode>` | The whole shell: skip link, sidebar column, search trigger, mobile drawer, grid |
 | `source` | `DocsSource<TFrontmatter>` | `all`, `drafts`, `find`, `nav`, `slugs`, `invalidate`, and the resolved `config` |
 | `getPage` | `(segments: string[]) => Promise<RenderedDoc<TFrontmatter> \| undefined>` | One page rendered — `hast`, `toc`, `frontmatter`. `undefined` when there is no such page |
 | `renderAll` | `() => Promise<Array<RenderedDoc<TFrontmatter>>>` | Every published page. The escape hatch behind `searchIndex` |

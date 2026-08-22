@@ -76,9 +76,13 @@ import { docs } from '@/lib/docs';
 export default docs.Layout;
 ```
 
-That line is the whole shell — [Layout](../guides/layout.md) is what it
-renders, and covers header chrome and composing your own instead. The
-stylesheet's tokens are in [Theming](../guides/theming.md).
+That line is the whole shell — a skip link, the grid, and the sidebar that
+carries the navigation, the search trigger and, below 64rem, the drawer
+trigger. **It renders no header.** A host's own header, theme toggle and
+repository link are rendered around `docs.Layout`, in the layout file that
+wraps it. [Layout](../guides/layout.md) covers the three props and composing
+your own instead; the stylesheet's tokens are in
+[Theming](../guides/theming.md).
 
 It does not own the table of contents. A Next layout receives
 `{ children, params }` and cannot know which page is rendering, so `docs.Page`

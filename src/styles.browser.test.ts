@@ -228,7 +228,7 @@ describe('focus indicators', () => {
 
 describe('the responsive shell', () => {
   /**
-   * The shell as `docs.Layout` renders it, per ADR 001.
+   * The shell as `docs.Layout` renders it.
    *
    * The table is deliberately wide and deliberately inside the scroll wrapper
    * the pipeline always emits. That is the ONE shape where `minmax(0, 1fr)` and
@@ -305,16 +305,19 @@ describe('the responsive shell', () => {
 
     await resize(390);
     /*
-     * MEASURED AS GEOMETRY, NOT AS A KEYWORD. This asserted
-     * `display: none` on the sidebar wrapper until the drawer landed, and
-     * `none` is now wrong: the drawer `<dialog>` lives inside this wrapper so
-     * that one nav DOM can serve both breakpoints, and an element inside a
-     * `display: none` subtree generates no boxes at all — including one
-     * promoted to the top layer. `showModal()` would open a drawer that
-     * painted nothing, on exactly the viewports the drawer exists for.
+     * MEASURED AS GEOMETRY, NOT AS A KEYWORD, and the geometry has now been
+     * three different things.
+     *
+     * It asserted `display: none` on the sidebar wrapper until the drawer
+     * landed — wrong, because the drawer `<dialog>` lives inside this wrapper
+     * so one nav DOM can serve both breakpoints, and an element inside a
+     * `display: none` subtree generates no boxes at all, including one promoted
+     * to the top layer. Then it asserted a width of 0, because the wrapper was
+     * `display: contents` and reserved no track.
      *
      * `contents` is what makes that work, and the thing worth asserting was
-     * never the keyword: it is that the column takes up no space.
+     * never the keyword: it is that the wrapper takes up no space, so nothing
+     * of this package's sits between a host's own chrome and the article.
      */
     expect(box('.wave-docs-layout__sidebar').width).toBe(0);
     expect(
@@ -466,18 +469,22 @@ describe('the box model', () => {
 });
 
 /**
- * The header row at a phone's width, where four things compete for 390px: a
- * 44px drawer trigger, the brand, the search trigger and whatever the host put
- * in `actions`.
+ * The drawer's trigger at a phone's width.
  *
- * ⚠️ THE TRIGGER WAS WINNING, AND IT SHOULD LOSE. `.wave-docs-search-trigger`
- * is `width: 100%`, so its flex base is the whole row; it took ~200px of 390
- * and the brand — which carries `text-overflow: ellipsis` so that a long
- * product name cannot push search off the edge — rendered as "Wa…". A brand is
- * identity and a search box is a control, and a short control still works.
+ * ⚠️ THIS DESCRIBE HAS OUTLIVED TWO SHELLS, AND BOTH TIMES THE FIXTURE WENT
+ * STALE BEFORE THE ASSERTIONS DID. It mounted a header, then a strip; each was
+ * deleted, each left markup no shell renders, and every assertion against it
+ * passed against nothing.
+ *
+ * What survives both is the question the header existed to answer: **on a
+ * phone, can a reader reach the rest of the site?** The control that answers it
+ * is a floating button now, and it is the one fixed-position element this
+ * package renders — small and corner-anchored rather than a band across the
+ * top, because two of the sites using this have a fixed navbar of their own and
+ * a second bar at the same edge lands on top of the first.
  */
-describe('the header at a phone width', () => {
-  function mountHeader(): HTMLElement {
+describe('the drawer trigger at a phone width', () => {
+  function mountTrigger(): HTMLElement {
     document.head.querySelector('#wave-docs-styles')?.remove();
     const style = document.createElement('style');
     style.id = 'wave-docs-styles';
@@ -485,51 +492,61 @@ describe('the header at a phone width', () => {
     document.head.append(style);
 
     document.body.innerHTML = `
-      <header class="wave-docs-layout__header">
-        <div class="wave-docs-layout__header-inner">
+      <div class="wave-docs-layout">
+        <div class="wave-docs-layout__sidebar">
           <button type="button" class="wave-docs-layout__nav-trigger"></button>
-          <div class="wave-docs-layout__title"><a href="/">Wave Docs</a></div>
-          <button type="button" class="wave-docs-search-trigger wave-docs-layout__search">
-            <span class="wave-docs-search-trigger-label">Search</span>
-            <kbd class="wave-docs-search-trigger-kbd">\u2318K</kbd>
-          </button>
-          <div class="wave-docs-layout__actions"><a href="#">GitHub</a></div>
+          <dialog class="wave-docs-layout__drawer"></dialog>
         </div>
-      </header>`;
+        <main class="wave-docs-layout__main">${'<p>Scroll me.</p>'.repeat(60)}</main>
+      </div>`;
 
-    const title = document.querySelector('.wave-docs-layout__title');
-    if (!(title instanceof HTMLElement)) {
-      throw new Error('failed to mount the header fixture');
+    const trigger = document.querySelector('.wave-docs-layout__nav-trigger');
+    if (!(trigger instanceof HTMLElement)) {
+      throw new Error('failed to mount the trigger fixture');
     }
-    return title;
+    return trigger;
   }
 
-  it('shows a nine-character brand whole at 390px', async () => {
-    const title = mountHeader();
+  it('is at least 44px, the floor iOS and WCAG share', async () => {
+    const trigger = mountTrigger();
     await resize(390);
 
-    // `scrollWidth > clientWidth` is the ellipsis firing: the text is wider
-    // than the box painting it.
-    expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth + 1);
+    const { width, height } = trigger.getBoundingClientRect();
+    expect(width).toBeGreaterThanOrEqual(44);
+    expect(height).toBeGreaterThanOrEqual(44);
   });
 
-  it('does not put the row into horizontal scroll at 320px', async () => {
-    mountHeader();
-    await resize(320);
+  /**
+   * The point of moving it here: it holds its corner while the document
+   * scrolls, so the nav is one tap from anywhere in a long page — and it is
+   * nowhere near the top edge a host's own navbar occupies.
+   */
+  it('holds its corner, far from the top edge', async () => {
+    const trigger = mountTrigger();
+    await resize(390);
 
-    const inner = document.querySelector('.wave-docs-layout__header-inner');
-    if (!(inner instanceof HTMLElement)) throw new Error('no header inner');
-    // The brand may ellipsise at 320 — that is what the ellipsis is for. What
-    // must not happen is the row overflowing the viewport.
-    expect(inner.scrollWidth).toBeLessThanOrEqual(inner.clientWidth + 1);
+    const before = trigger.getBoundingClientRect();
+    window.scrollTo(0, 800);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const after = trigger.getBoundingClientRect();
+
+    expect(Math.round(after.top)).toBe(Math.round(before.top));
+    expect(after.top).toBeGreaterThan(window.innerHeight / 2);
   });
 
-  it('gives the trigger the full 20rem once there is room', async () => {
-    mountHeader();
+  it('takes no space in the flow, so the article starts at the top', async () => {
+    mountTrigger();
+    await resize(390);
+
+    const main = document.querySelector('.wave-docs-layout__main');
+    if (!(main instanceof HTMLElement)) throw new Error('no article');
+    expect(main.getBoundingClientRect().top).toBeLessThan(48);
+  });
+
+  it('is hidden once the sidebar is a column', async () => {
+    const trigger = mountTrigger();
     await resize(1440);
 
-    const trigger = document.querySelector('.wave-docs-layout__search');
-    if (!(trigger instanceof HTMLElement)) throw new Error('no search trigger');
-    expect(trigger.getBoundingClientRect().width).toBeGreaterThan(240);
+    expect(getComputedStyle(trigger).display).toBe('none');
   });
 });

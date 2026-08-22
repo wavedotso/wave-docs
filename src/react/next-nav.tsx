@@ -29,6 +29,8 @@ export interface DocsNextNavProps {
   nav: DocNavNode[];
   label?: string | undefined;
   closeLabel?: string | undefined;
+  /** Rendered inside the drawer, above the tree. See `DocsNavProps.children`. */
+  children?: ReactNode;
   /** Passed through to the tree. See `DocsSidebarProps.expandGroup`. */
   expandGroup?: string | undefined;
   collapseGroup?: string | undefined;
@@ -39,6 +41,7 @@ export function DocsNextNav({
   nav,
   label,
   closeLabel,
+  children,
   expandGroup,
   collapseGroup,
   externalLink,
@@ -53,6 +56,8 @@ export function DocsNextNav({
       {...(expandGroup === undefined ? {} : { expandGroup })}
       {...(collapseGroup === undefined ? {} : { collapseGroup })}
       {...(externalLink === undefined ? {} : { externalLink })}
-    />
+    >
+      {children}
+    </DocsNav>
   );
 }

@@ -244,9 +244,10 @@ describe('createDocsRoute', () => {
 
   it('renders the content as the main landmark, focusable and with the skip target', async () => {
     /*
-     * `main`, and this is the assertion that keeps it one. The shell renders a
-     * `banner`, a `navigation` and a `complementary`; with an `<article>` here
-     * it rendered no `main` at all, so a screen-reader user navigating by
+     * `main`, and this is the assertion that keeps it one. The shell rendered a
+     * `banner`, a `navigation` and a `complementary` at the time — the banner
+     * has since gone with the header — and with an `<article>` here it rendered
+     * no `main` at all, so a screen-reader user navigating by
      * landmark — the way you skip a hundred-link sidebar without tabbing — had
      * nothing to jump to. The skip link covered the keyboard case and hid the
      * gap behind it.
@@ -548,7 +549,7 @@ describe('docs.Layout', () => {
     });
   });
 
-  it('takes five props, and a sixth is a deliberate act', () => {
+  it('takes three props, and a fourth is a deliberate act', () => {
     /*
      * The count is the point. Fumadocs' layout takes eleven, which promotes its
      * internal anatomy to semver-frozen API — two node props can become a slots
@@ -563,9 +564,14 @@ describe('docs.Layout', () => {
      * caller never passed either. A documentation shell nobody can translate is
      * not one for the whole ecosystem, and four strings behind one prop is the
      * smallest thing that fixes it.
+     *
+     * It fired again, downwards, when the header was removed: `title` and
+     * `actions` went with it, taking the count from five to three. That the
+     * pin catches a *removal* as loudly as an addition is the point of writing
+     * it as an exact union rather than a lower bound.
      */
     expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
-      'children' | 'title' | 'actions' | 'search' | 'labels'
+      'children' | 'search' | 'labels'
     >();
   });
 

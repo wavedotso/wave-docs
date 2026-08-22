@@ -102,7 +102,9 @@ every error code this package throws, and picking the right one saves a round
 trip.
 
 Anything that changes public API: an issue before a pull request, please. The
-surface is deliberately small — `docs.Layout` takes five props and a test fails
-when someone adds a sixth, on purpose.
+surface is deliberately small — `docs.Layout` takes three props and a test fails
+when someone adds a fourth, on purpose. It fired downwards too: when that count
+went from five to three, the pin caught the removal as loudly as it would have
+caught an addition.
 
 Security: see [SECURITY.md](./SECURITY.md). Not an issue.

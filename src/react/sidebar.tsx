@@ -274,11 +274,24 @@ function revealActive(nav: HTMLElement | null): void {
    * wrong here, because `offsetTop` is measured from the nearest *positioned*
    * ancestor — and the scrollport is `position: sticky`, so it IS that
    * ancestor. `active.offsetTop` is therefore already the number wanted, and
-   * subtracting the port's own offset takes off the header height a second
-   * time. Measured in Chromium at 1280×800: the active item scrolled to 206
-   * where 265 was correct, which put a 1024–1055 item inside a 206–1014
-   * viewport — entirely below the fold, the exact failure this exists to
-   * prevent.
+   * subtracting the port's own offset takes off a second distance that belongs
+   * to the port rather than to the item: how far the port sits from *its* own
+   * offsetParent.
+   *
+   * ⚠️ AND THAT DISTANCE IS NOT A FIXED NUMBER. It was written up here as the
+   * header height, measured once at the top of the page, and the shell has since
+   * removed the header. What it actually is: whatever the host stacks above
+   * the shell — the thing `--wave-docs-chrome-offset` is set to match — plus
+   * every pixel the sticky column has already travelled, because a stuck
+   * element reports its shift in `offsetTop`. Measured in Chromium at
+   * 1440×800 with the active item's own `offsetTop` at 1849, `port.offsetTop`
+   * reads 0 at the top of the page, 400 after a 400px scroll, and 64 then 464
+   * with a 4rem host bar above the grid; the naive difference is short by
+   * exactly that each time, while the rect difference is 1849 in all four.
+   * What that cost under the header shell, at 1280×800: the active item
+   * scrolled to 206 where 265 was correct, which put a 1024–1055 item inside a
+   * 206–1014 viewport — entirely below the fold, the exact failure this exists
+   * to prevent.
    *
    * The rect difference is right whether or not the port is the offsetParent,
    * and `+ port.scrollTop` converts it from viewport-relative back to

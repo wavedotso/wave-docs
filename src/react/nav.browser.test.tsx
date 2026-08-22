@@ -17,15 +17,22 @@
  * import arrives as `{ default: Component }` and React throws
  * "Element type is invalid". Rather than encode that quirk, the split is:
  *
- * - **`layout.test.tsx` (jsdom)** pins the *wiring* — that the real header
- *   trigger carries `command="show-modal"` and a `commandfor` equal to the
- *   real dialog's `id`. That is the assertion a hand-written fixture could
- *   drift from, and it is made against the real component.
+ * - **`layout.test.tsx` (jsdom)** pins the *wiring* — that the real drawer
+ *   trigger, the one `docs.Layout` renders inside
+ *   `.wave-docs-layout__sidebar`, carries `command="show-modal"` and a
+ *   `commandfor` equal to the real dialog's `id`. That is the assertion a
+ *   hand-written fixture could drift from, and it is made against the real
+ *   component.
  * - **this file** pins the *behaviour* those attributes buy, against a fixture
  *   built from the same frozen class names, with the real `DocsNav` inside it.
  *
- * The class names are fixed by `docs/adr/001-shell-contract.md`, which is what
- * makes writing them out here safe — `styles.browser.test.ts` does the same.
+ * ⚠️ THE FIXTURE IS THE SHELL AS IT RENDERS TODAY, AND THAT IS NOT COSMETIC.
+ * It used to mount the trigger inside a `.wave-docs-layout__header`, and the
+ * stylesheet has no rule for that class any more — so the fixture would have
+ * been unstyled markup that no shell renders, with every assertion below still
+ * passing against nothing. The class names it does use are public API and
+ * change only in a release that carries the migration, which is what makes
+ * writing them out here safe — `styles.browser.test.ts` does the same.
  *
  * Runs only under `pnpm test:browser`.
  */
@@ -63,34 +70,38 @@ function mount(): Mounted {
   document.head.append(style);
 
   render(
-    <>
-      <header className="wave-docs-layout__header">
-        <div className="wave-docs-layout__header-inner">
-          <button
-            type="button"
-            className="wave-docs-layout__nav-trigger"
-            aria-label="Open navigation"
-            {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
-          >
-            ☰
-          </button>
-          {/* Stands in for the search trigger: something focusable after the
-              menu button, so a leaking focus trap has somewhere to leak to. */}
-          <button type="button" className="wave-docs-search-trigger">
-            Search
-          </button>
-        </div>
-      </header>
-      <div className="wave-docs-layout">
-        <div className="wave-docs-layout__sidebar">
-          <DocsNav nav={NAV} pathname="/docs/guide" />
-        </div>
-        <article className="wave-docs-prose wave-docs-layout__main">
-          {/* Tall, so the scroll lock has something to lock. */}
-          <p style={{ height: '4000px' }}>Body</p>
-        </article>
+    <div className="wave-docs-layout">
+      {/* The chrome strip: the trigger, the search trigger and the drawer, all
+          three children of one wrapper, in the order `docs.Layout` renders
+          them. The trigger opens the dialog by `id`, so the search trigger
+          sitting between the two costs nothing. */}
+      <div className="wave-docs-layout__sidebar">
+        <button
+          type="button"
+          className="wave-docs-layout__nav-trigger"
+          aria-label="Open navigation"
+          {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
+        >
+          ☰
+        </button>
+        {/* Stands in for the search trigger: something focusable after the menu
+            button and outside the drawer, so a leaking focus trap has somewhere
+            to leak to. Both class names, because `docs.Layout` gives it both,
+            and its placement inside the sidebar is the half that matters
+            here. */}
+        <button
+          type="button"
+          className="wave-docs-search-trigger wave-docs-layout__search"
+        >
+          Search
+        </button>
+        <DocsNav nav={NAV} pathname="/docs/guide" />
       </div>
-    </>,
+      <article className="wave-docs-prose wave-docs-layout__main">
+        {/* Tall, so the scroll lock has something to lock. */}
+        <p style={{ height: '4000px' }}>Body</p>
+      </article>
+    </div>,
   );
 
   const trigger = document.querySelector<HTMLButtonElement>(
@@ -132,7 +143,7 @@ describe('the drawer, below 64rem', () => {
     expect(dialog.matches(':modal')).toBe(true);
   });
 
-  it('moves focus inside, and never lets Tab back out to the header', async () => {
+  it('moves focus inside, and never lets Tab back out to the strip', async () => {
     const { trigger, dialog, search } = mount();
     await userEvent.click(trigger);
 
@@ -147,8 +158,10 @@ describe('the drawer, below 64rem', () => {
      * that was behaving perfectly.
      *
      * What matters is the thing the trap exists for: no focusable element
-     * *outside* the drawer is ever reached. Twelve presses is three full
-     * cycles, so a trap with a gap in it has ample opportunity to leak.
+     * *outside* the drawer is ever reached — and both of them, the drawer's
+     * own trigger and the search trigger, sit in the strip the drawer opens
+     * over. Twelve presses is three full cycles, so a trap with a gap in it
+     * has ample opportunity to leak.
      */
     const outside = [trigger, search];
     for (let index = 0; index < 12; index += 1) {

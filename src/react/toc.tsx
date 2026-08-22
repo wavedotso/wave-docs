@@ -13,9 +13,19 @@ export interface DocsTocProps {
   label?: string | undefined;
   /**
    * Region of the viewport that counts as "current", as an
-   * `IntersectionObserver` root margin. The default reserves 80px for a sticky
-   * header and ignores the bottom 60% of the screen, so the active entry
-   * tracks what you are reading rather than what has scrolled into view.
+   * `IntersectionObserver` root margin. The default ignores the bottom 60% of
+   * the screen, so the active entry tracks what you are reading rather than
+   * what has scrolled into view.
+   *
+   * ⚠️ IT USED TO RESERVE 80px FOR A STICKY HEADER, AND TWO THINGS WERE WRONG
+   * WITH THAT. There is no header — above 80rem, where this component
+   * is rendered at all, nothing of ours overlays the content. And 80px never
+   * matched the header anyway: the token was `3.5rem`, which is 56px, so the
+   * figure was never derived from the thing it claimed to reserve for.
+   *
+   * This component is exported standalone, so its default cannot assume our
+   * shell. It assumes nothing overlays the content; a host whose own chrome
+   * does sets this prop, which is what the prop is for.
    *
    * Only `px` and `%` are legal here — `IntersectionObserver` throws on any
    * other unit, `rem` included.
@@ -26,7 +36,7 @@ export interface DocsTocProps {
   className?: string | undefined;
 }
 
-const DEFAULT_ROOT_MARGIN = '-80px 0px -60% 0px';
+const DEFAULT_ROOT_MARGIN = '0px 0px -60% 0px';
 
 /**
  * How many frames to keep looking for headings that are not in the document
@@ -170,6 +180,17 @@ export function DocsToc({
       aria-label={label}
       className={['wave-docs-toc', className].filter(Boolean).join(' ')}
     >
+      {/*
+       * The same string the landmark is named with, now also on the page.
+       *
+       * It was `aria-label` only, so a sighted reader got a column of headings
+       * with nothing saying what they were headings *of* — the one piece of
+       * context a screen-reader user already had. `aria-label` stays: naming the
+       * landmark and titling the column are two different jobs, and a `<nav>`
+       * whose accessible name comes from a heading inside it is named by
+       * whatever that heading happens to say.
+       */}
+      <p className="wave-docs-toc__title">{label}</p>
       <TocList entries={entries} activeId={activeId} onSelect={setActiveId} />
       {/*
        * A fragment link, not a scroll button, and the difference is the whole

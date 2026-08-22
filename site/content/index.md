@@ -1,5 +1,6 @@
 ---
 title: Wave Docs
+label: Overview
 description: Markdown documentation for Next.js. The parser runs in Node at build time and never reaches the browser.
 ---
 

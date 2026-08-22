@@ -14,28 +14,44 @@ breaking — the part most packages leave unsaid until someone is angry.
 | Every subpath in `exports`, and every runtime name it exports | ✅ | `manifest.test.ts` |
 | Every prop of every exported `…Props` interface | ✅ | `manifest.test.ts` |
 | Exported types, including `DocsErrorCode`'s members | ✅ | `error-taxonomy.test.ts` |
-| **CSS class names** — `wave-docs-*` — and the shell's element tree | ✅ | ADR 001, `styles.test.ts`, `layout.test.tsx`, `next.test.ts` |
+| **CSS class names** — `wave-docs-*` — and the shell's element tree | ✅ | `styles.test.ts`, `layout.test.tsx`, `next.test.ts` |
 | **The hast this emits** — element names, and the attributes on them | ✅ | `render.test.ts` |
-| The five layout tokens | ✅ | ADR 001, `styles.test.ts` |
+| The six layout tokens | ✅ | `styles.test.ts` |
 | Anything reachable only through `dist/` internals, or a private module | ❌ | — |
 
 The two in bold are the ones usually omitted, and omitting them is how a package
 ships a "patch" that silently reflows everyone's site. **If a selector can
 reach it, or it can be read out of `RenderedDoc.hast`, this package owes you a
-changelog entry before it moves.** The class vocabulary and the element tree are
-frozen in [ADR 001](https://github.com/wavedotso/wave-docs/blob/main/docs/adr/001-shell-contract.md),
-which is deliberately short and total: everything in it is fixed, and anything
-not in it is free. [Layout](../guides/layout.md) shows the tree a consumer
-restyles; [Components](./components.md) lists the props; [Errors](./errors.md)
-lists the `DocsErrorCode` members.
+changelog entry before it moves.** The class vocabulary and the element tree
+are public API, and a name in either changes only in a release that carries the
+migration. [Layout](../guides/layout.md) shows the tree a consumer restyles;
+[Components](./components.md) lists the props; [Errors](./errors.md) lists the
+`DocsErrorCode` members.
 
-The five layout tokens are `--wave-docs-measure`, `--wave-docs-header-height`,
-`--wave-docs-sidebar-width`, `--wave-docs-toc-width` and
-`--wave-docs-shell-width`. `--wave-docs-scroll-padding` is derived from the
-header height rather than set, and the gutter (`1.5rem`) and the drawer width
-(`min(20rem, 85vw)`) are literals rather than tokens — each appears in a
-single-value declaration, where an ordinary CSS override is already the cleanest
-tool. [Theming](../guides/theming.md) has the defaults.
+**0.7.0 is the first release to break one of the names above, and it breaks
+them in a minor.** `.wave-docs-layout__header` and
+`.wave-docs-layout__header-inner` stop being rendered, and
+`--wave-docs-header-height` splits in two. All three were public API from
+0.3.0, and the changelog entry carries the migration for each.
+
+The six layout tokens are `--wave-docs-measure`, `--wave-docs-bar-height`,
+`--wave-docs-chrome-offset`, `--wave-docs-sidebar-width`,
+`--wave-docs-toc-width` and `--wave-docs-shell-width`.
+`--wave-docs-scroll-padding` is derived rather than set, and
+breakpoint-dependent: `--wave-docs-chrome-offset` plus `--wave-docs-bar-height`
+plus a rem of air below 64rem, and `--wave-docs-chrome-offset` plus a rem at and
+above it, where no strip is rendered. The gutter (`1.5rem`) and the drawer width (`min(20rem, 85vw)`) are literals
+rather than tokens: each appears in a single-value declaration, where an
+ordinary CSS override is already the cleanest tool.
+[Theming](../guides/theming.md) has the defaults.
+
+**`--wave-docs-header-height` split rather than being renamed, and that is the
+sharp edge of the 0.7.0 migration.** It sized the header *and* was the offset
+both sticky columns parked below. `--wave-docs-bar-height` took the size;
+`--wave-docs-chrome-offset` took the offset, and is the one declaration that
+tells this package where a host's own sticky bar ends. A consumer who renames
+the token to `--wave-docs-bar-height` and stops there loses the sticky offset on
+both columns, with no error to say so.
 
 ### Nothing undocumented is exported
 
@@ -113,12 +129,21 @@ the frontmatter schema, take `z` from `@waveso/docs/frontmatter` — see
 Colours, spacing, the type scale. The class names it hangs on will not — that is
 the whole point of freezing the vocabulary and not the paint.
 
-ADR 001 leaves four things deliberately open, so the people building them are not
-boxed in: the header's internal composition, the drawer's animation, the table of
-contents' active-item treatment, and every colour. Those are design decisions
-with no cross-workstream contract to break. If your site depends on one, restate
-it in your own stylesheet — the package's rules are layered, so an unlayered rule
-of yours wins without `!important`.
+Four things are deliberately open, so the people building them are not boxed
+in: the sidebar strip's internal arrangement below 64rem, the sidebar's scroll
+behaviour when the tree is longer than the viewport, the drawer's animation,
+and every colour. Where a version switcher goes, if versioned documentation is
+ever built, is open as well, and listed here so it is not mistaken for an
+oversight. Those are design decisions with no cross-workstream contract to
+break. If your site depends on one, restate it in your own stylesheet — the
+package's rules are layered, so an unlayered rule of yours wins without
+`!important`.
+
+**Two things that were open before 0.7.0 are now closed.** The header's
+internal composition is closed by there being no header. The table of
+contents' active-item treatment is closed by `DocsToc`'s `rootMargin` default,
+which changed at 0.7.0 — a public prop's default, so it is a migration entry
+rather than an open question.
 
 Nothing under `dist/` is API except through a subpath in `exports`, and a deep
 import into a private module is not covered by any of the above.

@@ -1,12 +1,14 @@
 /**
- * The docs shell: skip link, header, sidebar column, drawer, grid.
+ * The docs shell: skip link, sidebar, search trigger, drawer, grid. There is
+ * no header: the sidebar is the chrome at every width, and the comment on it
+ * below is why.
  *
  * Private, and a Server Component — it ships no JavaScript of its own. The two
  * pieces that need a client are `DocsNextNav` and `DocsSearch`, each carrying
  * its own `'use client'`, so a consumer's `app/docs/layout.tsx` stays a Server
  * Component even though it renders all of this.
  *
- * Every class name here is fixed by `docs/adr/001-shell-contract.md` and is
+ * Every class name here is public API from 0.3.0, and is
  * public API from 0.3.0.
  *
  * ## It does not wrap `children`
@@ -58,8 +60,6 @@ export interface DocsLayoutShellProps {
   children: ReactNode;
   nav: DocNavNode[];
   searchIndexUrl: string;
-  title?: ReactNode;
-  actions?: ReactNode;
   /**
    * `false` to omit the trigger; an object to configure it.
    *
@@ -92,8 +92,6 @@ export function DocsLayoutShell({
   children,
   nav,
   searchIndexUrl,
-  title,
-  actions,
   search = true,
   labels,
 }: DocsLayoutShellProps): ReactNode {
@@ -102,8 +100,25 @@ export function DocsLayoutShell({
   return (
     <>
       <SkipLink>{text.skipToContent}</SkipLink>
-      <header className="wave-docs-layout__header">
-        <div className="wave-docs-layout__header-inner">
+
+      <div className="wave-docs-layout">
+        {/*
+         * ⚠️ THIS PACKAGE RENDERS NOTHING ACROSS THE TOP OF THE PAGE.
+         *
+         * It used to render a full-width sticky header holding a brand, the
+         * search trigger and the drawer's trigger. Two of the sites using this
+         * already have a fixed navbar of their own, and a second bar at the same
+         * edge overlaps the first — so the header is gone and nothing replaced
+         * it there.
+         *
+         * Above 64rem this wrapper is the 16rem sidebar column, and the drawer
+         * inside it is `display: contents`, so the search trigger and the tree
+         * become its children directly. Below 64rem it generates no box at all:
+         * the tree and the search live in a closed `<dialog>`, opened by a small
+         * floating button. One nav in the DOM at every width, and nothing of
+         * ours competing for the top edge.
+         */}
+        <div className="wave-docs-layout__sidebar">
           <button
             type="button"
             className="wave-docs-layout__nav-trigger"
@@ -111,10 +126,11 @@ export function DocsLayoutShell({
             /*
              * Server-rendered and declarative: `command` opens the dialog with
              * no JavaScript of ours involved, so the drawer works on the first
-             * tap — before hydration, and with scripts disabled. The attributes
-             * are not in `@types/react` yet, and JSX skips excess-property
-             * checking on a spread; React passes both through because they are
-             * lowercase.
+             * tap — before hydration, and with scripts disabled. `commandfor`
+             * binds by id, so the dialog below being a later sibling rather
+             * than a descendant costs nothing. The attributes are not in
+             * `@types/react` yet, and JSX skips excess-property checking on a
+             * spread; React passes both through because they are lowercase.
              */
             {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
           >
@@ -132,44 +148,6 @@ export function DocsLayoutShell({
             </svg>
           </button>
 
-          {/*
-           * Rendered only when given. An empty wrapper is not free in a flex
-           * row: it still consumes a `gap`, so an unset `title` would push the
-           * search trigger 0.75rem off the trigger button for no reason.
-           */}
-          {title === undefined ? null : (
-            <div className="wave-docs-layout__title">{title}</div>
-          )}
-
-          {search === false ? null : (
-            <DocsSearch
-              indexUrl={searchIndexUrl}
-              {...(search === true ? {} : search)}
-              /*
-               * ⚠️ AFTER THE SPREAD, AND JOINED. `className` was before it, so a
-               * host passing `search={{ className: 'my-search' }}` — the
-               * ordinary reason to pass one — replaced
-               * `wave-docs-layout__search` instead of adding to it, and the
-               * trigger lost the grid placement the header depends on. Adding a
-               * class should not remove one.
-               */
-              className={[
-                'wave-docs-layout__search',
-                search === true ? undefined : search?.className,
-              ]
-                .filter(Boolean)
-                .join(' ')}
-            />
-          )}
-
-          {actions === undefined ? null : (
-            <div className="wave-docs-layout__actions">{actions}</div>
-          )}
-        </div>
-      </header>
-
-      <div className="wave-docs-layout">
-        <div className="wave-docs-layout__sidebar">
           {/* The three the tree renders are forwarded only when set: they cross
               into a client component, so an unconfigured site must not pay for
               them in every page's payload. */}
@@ -186,7 +164,28 @@ export function DocsLayoutShell({
             {...(labels?.externalLink === undefined
               ? {}
               : { externalLink: labels.externalLink })}
-          />
+          >
+            {search === false ? null : (
+              <DocsSearch
+                indexUrl={searchIndexUrl}
+                {...(search === true ? {} : search)}
+                /*
+                 * ⚠️ AFTER THE SPREAD, AND JOINED. `className` was before it, so
+                 * a host passing `search={{ className: 'my-search' }}` — the
+                 * ordinary reason to pass one — replaced
+                 * `wave-docs-layout__search` instead of adding to it, and the
+                 * trigger lost the placement the shell depends on. Adding a
+                 * class should not remove one.
+                 */
+                className={[
+                  'wave-docs-layout__search',
+                  search === true ? undefined : search?.className,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              />
+            )}
+          </DocsNextNav>
         </div>
         {children}
       </div>

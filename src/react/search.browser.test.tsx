@@ -16,8 +16,9 @@
  *
  * The markup is written out rather than mounted through `SearchDialog`, which
  * would need an index fetch and a router: the subject here is what the
- * stylesheet does to a known shape, and the shape is frozen by
- * `docs/adr/001-shell-contract.md`. `code.browser.test.tsx` does the same.
+ * stylesheet does to a known shape, and the shape is frozen — these class
+ * names are public API and change only in a release that carries the
+ * migration. `code.browser.test.tsx` does the same.
  *
  * Runs only under `pnpm test:browser`.
  */

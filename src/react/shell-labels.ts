@@ -48,7 +48,7 @@ export interface DocsLabels {
 
   /** The navigation landmark's accessible name. Default `'Documentation'`. */
   nav?: string | undefined;
-  /** The header button that opens the drawer. Default `'Open navigation'`. */
+  /** The strip button that opens the drawer. Default `'Open navigation'`. */
   openNav?: string | undefined;
   /** The button that closes the drawer. Default `'Close navigation'`. */
   closeNav?: string | undefined;

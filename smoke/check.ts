@@ -215,8 +215,8 @@ async function checkShell(): Promise<void> {
 
   for (const [label, pattern] of [
     ['a skip link, before anything else', /class="wave-docs-skip-link"/],
-    ['the header', /wave-docs-layout__header/],
     ['the grid', /class="wave-docs-layout"/],
+    ['the chrome, in the sidebar', /class="wave-docs-layout__sidebar"/],
     ['the drawer', /<dialog[^>]*id="wave-docs-nav"/],
     ['light dismiss on the drawer', /closedby="any"/],
     ['a declarative trigger', /command="show-modal"/],
@@ -232,6 +232,18 @@ async function checkShell(): Promise<void> {
   ] as Array<[string, RegExp]>) {
     check(`the shell rendered ${label}`, pattern.test(html));
   }
+
+  /*
+   * The shell renders no header, and this is where that belongs. A unit test
+   * sees the component's own output; only a prerender proves nothing put one
+   * back on the way through Next — a stale `dist/`, a cached chunk, a layout
+   * file of the smoke app's own.
+   */
+  check(
+    'the shell rendered no header',
+    !/wave-docs-layout__header/.test(html),
+    'the chrome is the sidebar now; a header in the prerender means a stale build',
+  );
 
   /*
    * Two landmarks, and they must not be two of the same thing. The sidebar

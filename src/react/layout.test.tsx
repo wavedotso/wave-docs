@@ -82,14 +82,14 @@ describe('DocsLayoutShell', () => {
     expect(container.querySelectorAll('dialog')).toHaveLength(1);
   });
 
-  it('binds the header trigger to the drawer it opens', () => {
+  it('binds the nav trigger to the drawer it opens', () => {
     const container = renderShell();
 
     const trigger = screen.getByRole('button', { name: 'Open navigation' });
     const dialog = container.querySelector('dialog');
 
-    // The trigger is server-rendered in a different subtree from the dialog,
-    // so `commandfor` is the only thing connecting them — and a mismatch is
+    // The trigger is server-rendered outside the dialog's subtree, so
+    // `commandfor` is the only thing connecting them — and a mismatch is
     // silent, a button that does nothing at all when tapped.
     expect(trigger.getAttribute('commandfor')).toBe(DOCS_NAV_ID);
     expect(trigger.getAttribute('command')).toBe('show-modal');
@@ -146,46 +146,58 @@ describe('DocsLayoutShell', () => {
     ).toHaveLength(0);
   });
 
-  it('emits no wrapper for chrome it was not given', () => {
-    /*
-     * An empty `<div>` is not free in a flex row: it still consumes a `gap`,
-     * so an unset `title` would push the search trigger 0.75rem off the menu
-     * button — a defect that looks like a design decision.
-     */
+  /**
+   * ⚠️ THE SHELL RENDERS NO HEADER, AND NOTHING ELSE IT RENDERS IS FULL-WIDTH
+   * AND OUT OF FLOW.
+   *
+   * A header is the one element that competes with a host application's own for
+   * the viewport's top edge. The chrome it held is inside
+   * `.wave-docs-layout__sidebar` now, which is a grid item at every width — a
+   * column above 64rem and an in-flow sticky strip below it.
+   */
+  it('renders no header, and puts the chrome in the sidebar', () => {
     const container = renderShell();
 
+    expect(container.querySelector('.wave-docs-layout__header')).toBeNull();
     expect(container.querySelector('.wave-docs-layout__title')).toBeNull();
     expect(container.querySelector('.wave-docs-layout__actions')).toBeNull();
+
+    const sidebar = container.querySelector('.wave-docs-layout__sidebar');
+    if (sidebar === null) throw new Error('expected the chrome wrapper');
+
+    // Both survivors of the header, and the drawer they open onto.
+    expect(
+      sidebar.querySelector('.wave-docs-layout__nav-trigger'),
+    ).not.toBeNull();
+    expect(sidebar.querySelector('.wave-docs-layout__search')).not.toBeNull();
+    expect(
+      sidebar.querySelector('dialog.wave-docs-layout__drawer'),
+    ).not.toBeNull();
   });
 
-  it('places actions after search, inside the header', () => {
-    const container = renderShell({
-      title: <span>Wave</span>,
-      actions: <button type="button">Theme</button>,
-    });
+  /**
+   * The trigger opens the drawer by `id`, so it does not have to be a sibling
+   * of it — which is what lets the search trigger sit between the two.
+   */
+  it('keeps the trigger bound to the drawer across the search trigger', () => {
+    const container = renderShell();
 
-    const header = container.querySelector('.wave-docs-layout__header');
-    const search = container.querySelector('.wave-docs-layout__search');
-    const actions = container.querySelector('.wave-docs-layout__actions');
-
-    expect(header?.contains(actions ?? null)).toBe(true);
-    expect(container.querySelector('.wave-docs-layout__title')).not.toBeNull();
-    // `compareDocumentPosition` rather than index arithmetic: it survives a
-    // change to how many wrappers sit between them.
-    if (search === null || actions === null) {
-      throw new Error('expected both search and actions to render');
+    const trigger = container.querySelector('.wave-docs-layout__nav-trigger');
+    const dialog = container.querySelector('dialog.wave-docs-layout__drawer');
+    if (trigger === null || dialog === null) {
+      throw new Error('expected a trigger and a drawer');
     }
-    expect(
-      search.compareDocumentPosition(actions) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+
+    expect(trigger.getAttribute('commandfor')).toBe(dialog.id);
+    expect(trigger.getAttribute('command')).toBe('show-modal');
+    expect(trigger.contains(dialog)).toBe(false);
   });
 });
 
 describe('the shell in another language', () => {
   /**
    * The four strings `docs.Layout` renders itself, and the only test that can
-   * see all four: they pass through `SkipLink`, the header button and
+   * see all four: they pass through `SkipLink`, the sidebar's nav trigger and
    * `DocsNextNav` into `DocsNav`, and a props assertion on the outermost
    * element proves none of that journey.
    *
@@ -320,12 +332,20 @@ describe('the shell in another language', () => {
     /*
      * ⚠️ `className` WAS BEFORE THE SPREAD, SO A HOST PASSING ONE DELETED
      * `wave-docs-layout__search` — the class that places the trigger in the
-     * header grid. Passing a class is the ordinary reason to pass `search` an
-     * object at all, and the result was a control that lost its position, from
-     * an addition that should not have removed anything.
+     * sidebar chrome at both of its shapes. Passing a class is the ordinary
+     * reason to pass `search` an object at all, and the result was a control
+     * that lost its position, from an addition that should not have removed
+     * anything.
      */
-    renderShell({ search: { className: 'my-search' } });
-    const trigger = screen.getByRole('button', { name: 'Search' });
+    const container = renderShell({ search: { className: 'my-search' } });
+    /*
+     * `querySelector`, not `getByRole`: the trigger lives inside the drawer
+     * `<dialog>`, which is closed until something opens it and is therefore
+     * correctly absent from the accessibility tree at rest. The class is on the
+     * element either way, and the class is what this test is about.
+     */
+    const trigger = container.querySelector('button.wave-docs-search-trigger');
+    if (trigger === null) throw new Error('expected a search trigger');
 
     expect(trigger.className).toContain('wave-docs-layout__search');
     expect(trigger.className).toContain('my-search');

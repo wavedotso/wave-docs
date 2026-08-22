@@ -42,7 +42,7 @@ nothing assumed, which [Entry points](./entry-points.md) states exactly.
 **The shell is not on this list.** Its modules are private —
 [Stability](./stability.md) names them, with the reason for each.
 `docs.Layout` is the public name for the shell, and it has to be: the drawer's
-trigger lives in the header and binds to the dialog by a fixed `id`, so
+trigger lives in the sidebar and binds to the dialog by a fixed `id`, so
 exporting the pieces would publish a way to render half a shell.
 [Layout](../guides/layout.md) covers composing your own.
 
@@ -102,14 +102,18 @@ group, and `sidebar.test.tsx` asserts the absence of both.
 | --- | --- | --- | --- |
 | `entries` | `TocEntry[]` | — | Headings from `docs.getPage`, already nested by depth |
 | `label` | `string` | `'On this page'` | Accessible name for the landmark |
-| `rootMargin` | `string` | `'-80px 0px -60% 0px'` | The `IntersectionObserver` root margin |
+| `rootMargin` | `string` | `'0px 0px -60% 0px'` | The `IntersectionObserver` root margin |
 | `topLabel` | `string` | `'Back to top'` | Text for the back-to-top link |
 | `className` | `string` | — | |
 
-The default reserves 80px for a sticky header and ignores the bottom 60% of the
-screen, so the active entry tracks what you are reading rather than what has
-scrolled into view. **Only `px` and `%` are legal** — `IntersectionObserver`
-throws on any other unit, `rem` included.
+**The default assumes nothing overlays the content**, and ignores the bottom
+60% of the screen so the active entry tracks what you are reading rather than
+what has scrolled into view. It reserved 80px for a sticky header until 0.7.0 —
+a figure that never matched the 3.5rem bar it was meant to clear, and one this
+component cannot assume at all, since it is exported standalone and the shell
+now renders no header. A host whose own chrome overlays the content passes that
+height here, which is what the prop is for. **Only `px` and `%` are legal** —
+`IntersectionObserver` throws on any other unit, `rem` included.
 
 Scrolling is the browser's: the entries are real anchors and nothing here calls
 `scrollTo`. The observer retries for up to 60 frames — about a second at 60 Hz

@@ -125,23 +125,42 @@
 
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
-    /* The shell, per `docs/adr/001-shell-contract.md`. These four plus
-     * `--wave-docs-measure` are the whole settable layout surface; the gutter
-     * and the drawer width are literals, because each appears once and an
-     * ordinary override is already the cleanest tool for them. */
-    --wave-docs-header-height: 3.5rem;
+    /* The shell. These five plus `--wave-docs-measure` are the whole settable
+     * layout surface; the gutter and the drawer width are literals, because each
+     * appears once and an ordinary override is already the cleanest tool for
+     * them. */
+    --wave-docs-bar-height: 3.5rem;
     --wave-docs-sidebar-width: 16rem;
     --wave-docs-toc-width: 15rem;
     --wave-docs-shell-width: 100rem;
 
+    /*
+     * Where our sticky chrome starts, and the one thing only the host knows.
+     *
+     * A documentation section inside an application sits under that
+     * application's own bar. If theirs is sticky, ours has to start below it —
+     * and nothing in this package can measure that. This is the whole
+     * mechanical fix for it. A `standalone`/`embedded` mode flag was considered
+     * and rejected: it would have been an alias for this one line, which the
+     * host has to know the value of either way.
+     *
+     * ⚠️ `0rem`, NOT `0`, AND THE UNIT IS LOAD-BEARING. It is read inside
+     * `calc(100dvh - …)` on both sticky columns, and `calc(100dvh - 0)` is
+     * invalid at computed-value time — a unitless zero would not resolve to "no
+     * change", it would kill the `max-height` outright.
+     */
+    --wave-docs-chrome-offset: 0rem;
+
     /* How far below the top of the scrollport an anchored heading parks.
      *
-     * Derived, not set: it is the sticky header's height plus a rem of air, and
-     * the shell's sticky columns offset by the same token — so a host that
-     * changes the header height moves all three together. An earlier version of
-     * this comment said nothing else in the sheet read it, which stopped being
-     * true the moment the layout landed. */
-    --wave-docs-scroll-padding: calc(var(--wave-docs-header-height) + 1rem);
+     * Derived, not set, and breakpoint-dependent: below 64rem a
+     * heading has to clear the host's bar *and* our strip; at and above it
+     * there is no strip, so only the host's bar. Both terms are needed — an
+     * earlier draft made the desktop value a flat `1rem`, which parks a heading
+     * underneath the host bar of the very persona the ADR is for. */
+    --wave-docs-scroll-padding: calc(
+      var(--wave-docs-chrome-offset) + var(--wave-docs-bar-height) + 1rem
+    );
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
 
@@ -168,9 +187,26 @@
      * all, a 1440px viewport produced a ~140-character line.
      *
      * `--wave-docs-measure: none` opts out entirely, for a host whose own
-     * shell already constrains the column. See `docs/adr/001-shell-contract.md`
-     * — this is one of the five settable layout tokens. */
+     * shell already constrains the column. One of the six settable layout
+     * tokens. */
     --wave-docs-measure: 46rem;
+  }
+
+  /*
+   * The second half of `--wave-docs-scroll-padding`, and it was missing.
+   *
+   * ⚠️ THE COMMENT ABOVE PROMISED TWO DERIVATIONS AND THE SHEET SHIPPED ONE.
+   * Above 64rem the strip is not rendered — the sidebar is a column beside the
+   * content, not a bar above it — so carrying `--wave-docs-bar-height` there
+   * parked every anchored heading 3.5rem lower than it should be. A prose
+   * comment claiming breakpoint-dependence is not a breakpoint, and nothing
+   * failed: the value was legal, plausible, and wrong at exactly one of the two
+   * widths. `styles.test.ts` now asserts both derivations exist.
+   */
+  @media (min-width: 64rem) {
+    :root {
+      --wave-docs-scroll-padding: calc(var(--wave-docs-chrome-offset) + 1rem);
+    }
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -337,7 +373,7 @@
   .wave-docs-sidebar,
   .wave-docs-toc,
   .wave-docs-skip-link,
-  .wave-docs-layout__header,
+  .wave-docs-layout__sidebar,
   .wave-docs-search-trigger,
   .wave-docs-search-dialog {
     font-family: var(--wave-docs-font-sans);
@@ -1459,6 +1495,18 @@
     color: var(--wave-docs-fg-subtle);
   }
 
+  .wave-docs-toc__title {
+    margin: 0 0 0.5rem;
+    /* Aligns with the link text below it. The links carry a 2px rail on their
+     * inline start and 0.75rem of padding inside it; this has no rail, so it
+     * takes the rail's width as padding instead. */
+    padding-inline-start: calc(0.75rem + 2px);
+    color: var(--wave-docs-fg);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
   .wave-docs-toc__link:hover {
     color: var(--wave-docs-fg);
     border-inline-start-color: var(--wave-docs-border-strong);
@@ -1480,8 +1528,8 @@
 /* ---------------------------------------------------------------------------
  * Layout
  *
- * The shell `docs.Layout` renders. Every class here is fixed by
- * `docs/adr/001-shell-contract.md` and is public API from 0.3.0.
+ * The shell `docs.Layout` renders. Every class here is public API from 0.3.0
+ * and changes only in a release that carries the migration.
  *
  * These are the first width-based media queries in this file. Before them there
  * were none at all — every `@media` was `prefers-color-scheme`,
@@ -1520,13 +1568,18 @@
    * The drawer `<dialog>` lives inside this wrapper, so that one nav DOM can
    * serve both breakpoints. An element inside a `display: none` subtree
    * generates no boxes at all — including a dialog promoted to the top layer —
-   * so `showModal()` would open a drawer that paints nothing, on every
-   * viewport narrower than 64rem. Which is to say: on the phones this drawer
-   * exists for.
+   * so `showModal()` would open a drawer that paints nothing, on every viewport
+   * narrower than 64rem. Which is to say: on the phones this drawer exists for.
    *
    * `contents` makes the wrapper generate no box of its own, so it reserves no
    * grid track, while the closed dialog inside stays hidden by the UA's own
    * `dialog:not([open]) { display: none }`.
+   *
+   * There is no bar here and there was one twice: first a full-width sticky
+   * header, then a sticky strip that replaced it. Both took the viewport's top
+   * edge, which is the edge a host application's own navbar already has —
+   * measured against a fixed 64px host bar, ours landed on top of it at every
+   * width. Nothing of this package's is at that edge now.
    */
   .wave-docs-layout__sidebar {
     display: contents;
@@ -1591,13 +1644,17 @@
     }
 
     .wave-docs-layout__sidebar {
+      /* Back to a column: `block`, its own track, no strip chrome. */
       display: block;
+      height: auto;
+      background: none;
+      border-block-end: 0;
       position: sticky;
-      top: var(--wave-docs-header-height);
+      top: var(--wave-docs-chrome-offset);
       /* `dvh`, not `vh`: with a mobile URL bar showing, `vh` is taller than the
        * visible viewport, so the last few nav items sit under the chrome and
        * cannot be reached. */
-      max-height: calc(100dvh - var(--wave-docs-header-height));
+      max-height: calc(100dvh - var(--wave-docs-chrome-offset));
       overflow-y: auto;
       /* Without this, reaching the end of the nav keeps scrolling — the article
        * jumps under the reader's cursor while they are looking at the sidebar. */
@@ -1607,6 +1664,11 @@
        * platforms with classic scrollbars; a jumping column costs more. */
       scrollbar-gutter: stable;
       padding-block: 2rem;
+    }
+
+    /* First child of the column, above the tree. */
+    .wave-docs-layout__search {
+      margin-block-end: 1rem;
     }
   }
 
@@ -1630,8 +1692,8 @@
       /* `align-self: start`, or the sticky box stretches to the row height and
        * has nothing left to travel within. */
       align-self: start;
-      top: var(--wave-docs-header-height);
-      max-height: calc(100dvh - var(--wave-docs-header-height));
+      top: var(--wave-docs-chrome-offset);
+      max-height: calc(100dvh - var(--wave-docs-chrome-offset));
       overflow-y: auto;
       overscroll-behavior: contain;
       padding-block: 2rem;
@@ -1649,121 +1711,53 @@
   }
 
   /* -------------------------------------------------------------------------
-   * Header
+   * The strip's own controls
+   *
+   * The header is gone. Two of its four children survive it — the
+   * drawer trigger and the search trigger — and are children of
+   * `.wave-docs-layout__sidebar` now. `__title` and `__actions` do not: a brand
+   * belongs to the index page's own title, and a theme toggle or a repository
+   * link belongs to the host's layout, which wraps this one.
    * ---------------------------------------------------------------------- */
 
-  .wave-docs-layout__header {
-    position: sticky;
-    top: 0;
-    /*
-     * ⚠️ `color` IS HERE BECAUSE THE HEADER IS OUTSIDE `.wave-docs-layout`.
-     * The grounding rule in `base` paints the grid, the prose, the sidebar and
-     * the table of contents; the header is a sibling of all four, so it painted
-     * its own background and then inherited its foreground from the host's
-     * `body`. Invisible while the bar held nothing but two controls that carry
-     * their own colour — and the moment a host passed `title` or `actions`,
-     * their text rendered in whatever the page inherits.
-     */
-    color: var(--wave-docs-fg);
-    /* Above the sticky sidebar and TOC, which establish their own stacking
-     * contexts; below the search dialog, which portals to `<body>`. */
-    z-index: 20;
-    height: var(--wave-docs-header-height);
-    background-color: var(--wave-docs-bg);
-    border-block-end: 1px solid var(--wave-docs-border);
-  }
-
-  .wave-docs-layout__header-inner {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    height: 100%;
-    /* Matches the grid's own cap and gutters, so the brand lines up with the
-     * sidebar and the actions with the TOC rather than floating past both. */
-    max-width: var(--wave-docs-shell-width);
-    margin-inline: auto;
-    padding-inline: 1rem;
-    box-sizing: border-box;
-  }
-
-  @media (min-width: 30rem) {
-    .wave-docs-layout__header-inner {
-      padding-inline: 1.5rem;
-    }
-  }
-
-  .wave-docs-layout__title {
-    font-weight: 600;
-    /* The brand must not swallow the row: a long product name would otherwise
-     * push search off the right edge. */
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Pushes search and actions to the end, and stays correct when `title` is
-   * absent — which is why it is on the search wrapper rather than a margin on
-   * the title that would not exist. */
-  .wave-docs-layout__search {
-    margin-inline-start: auto;
-  }
-
   /*
-   * `title` and `actions` are `ReactNode` slots, so what lands in them is the
-   * host's markup — and the documented way to fill them is a brand and a link
-   * to a repository. Written plainly, that is a bare `<a>`: underlined, in the
-   * UA's link blue, against a header this package styles. Defaulting them costs
-   * a host nothing, because these rules are in `@layer components` and any
-   * unlayered CSS of their own outranks the whole layer.
+   * ⚠️ THE ONE FIXED ELEMENT THIS PACKAGE RENDERS, AND IT IS A DELIBERATE TRADE.
+   *
+   * Everything else is in flow: two elements in flow push each other and both
+   * stay visible, while a fixed one overlaps whatever is beneath it with
+   * neither side able to detect the collision. That argument is why there is no
+   * bar across the top any more.
+   *
+   * It still applies here, and this is small, corner-anchored and 48px rather
+   * than a full-width band — so what it can collide with is a host's own
+   * floating control in the same corner, not their navigation. A host who has
+   * one moves ours with `.wave-docs-layout__nav-trigger { inset-block-end: … }`,
+   * or renders their own trigger against `commandfor="wave-docs-nav"`, which is
+   * plain HTML and needs nothing from us.
+   *
+   * `env(safe-area-inset-bottom)` so it clears the home indicator on a phone,
+   * where the whole control lives.
    */
-  .wave-docs-layout__title a,
-  .wave-docs-layout__actions a {
-    color: inherit;
-    text-decoration: none;
-    border-radius: var(--wave-docs-radius-sm);
-  }
-
-  .wave-docs-layout__actions a {
-    color: var(--wave-docs-fg-muted);
-    font-size: 0.875rem;
-  }
-
-  .wave-docs-layout__title a:hover,
-  .wave-docs-layout__actions a:hover {
-    color: var(--wave-docs-accent);
-  }
-
-  .wave-docs-layout__title a:focus-visible,
-  .wave-docs-layout__actions a:focus-visible {
-    outline: 2px solid var(--wave-docs-accent);
-    outline-offset: 2px;
-  }
-
-  .wave-docs-layout__actions {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    /* When `search={false}` there is no auto margin ahead of this, so it
-     * carries its own. Both set, only one ever has room to apply. */
-    margin-inline-start: auto;
-  }
-
   .wave-docs-layout__nav-trigger {
+    position: fixed;
+    inset-block-end: calc(1rem + env(safe-area-inset-bottom, 0px));
+    inset-inline-end: 1rem;
+    /* Above the sticky columns, below both modals — the drawer it opens and the
+     * search dialog are top-layer and outrank any z-index by construction. */
+    z-index: 30;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    /* 44px: the smallest target iOS and WCAG 2.5.8 both accept, and this is
-     * the only control on a phone that reaches the rest of the site. */
-    width: 2.75rem;
-    height: 2.75rem;
-    /* Optical alignment: the icon's own padding already insets it from the
-     * screen edge, so the button hangs left of the text below it without this. */
-    margin-inline-start: -0.75rem;
-    border: 0;
-    border-radius: var(--wave-docs-radius-sm);
-    background: none;
-    color: var(--wave-docs-fg-muted);
+    /* 48px: over the 44px iOS and WCAG 2.5.8 share, because this is the only
+     * control on a phone that reaches the rest of the site and it sits over
+     * content rather than in a bar of its own. */
+    width: 3rem;
+    height: 3rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: 999px;
+    background: var(--wave-docs-bg);
+    color: var(--wave-docs-fg);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08), 0 4px 12px rgb(0 0 0 / 0.12);
     cursor: pointer;
   }
 
@@ -1775,6 +1769,12 @@
   /* -------------------------------------------------------------------------
    * Drawer
    * ---------------------------------------------------------------------- */
+
+  /* Inside the drawer it is the first thing above the tree, at every width the
+   * drawer opens at. */
+  .wave-docs-layout__drawer .wave-docs-layout__search {
+    margin-block-end: 1rem;
+  }
 
   dialog.wave-docs-layout__drawer {
     /* A full-height panel against the inline start edge, not a centred box.
@@ -1874,32 +1874,22 @@
   }
 
   /*
-   * ⚠️ IN THE SHELL'S HEADER THE TRIGGER IS WHAT GIVES WAY, NOT THE BRAND.
+   * In the shell, the trigger fills whatever it is placed in — the width of the
+   * strip below 64rem, the width of the column above it.
    *
-   * `width: 100%` makes the trigger's flex base the whole row, so on a phone it
-   * took ~200px of 390 and `title` — which carries `text-overflow: ellipsis`
-   * precisely so a long product name cannot push search off the edge —
-   * collapsed to "Wa…". A brand is identity and a search box is a control: the
-   * control is the one that can be short and still work.
+   * ⚠️ THIS USED TO BE A THREE-STEP `max-width` LADDER (9rem, 11rem at 30rem,
+   * 20rem at 48rem) AND EVERY NUMBER IN IT WAS HEADER ARITHMETIC. The trigger
+   * is `width: 100%`, so in a flex row its base was the whole row; the ladder
+   * existed to stop it starving the brand beside it, and at 390px it had
+   * ellipsised "Wave Docs" to "Wa…". With no header there is no row to share
+   * and no brand to leave room for, so the container decides.
    *
-   * Scoped with both classes rather than by editing the trigger's own
-   * `max-width`, because the trigger is also rendered standalone, in a host's
-   * own header, where nothing else is competing for the row.
+   * The bare `.wave-docs-search-trigger` keeps its own `max-width: 20rem` for
+   * the standalone case — a host rendering `DocsSearch` in their own header,
+   * where something else *is* competing for the row.
    */
   .wave-docs-search-trigger.wave-docs-layout__search {
-    max-width: 9rem;
-  }
-
-  @media (min-width: 30rem) {
-    .wave-docs-search-trigger.wave-docs-layout__search {
-      max-width: 11rem;
-    }
-  }
-
-  @media (min-width: 48rem) {
-    .wave-docs-search-trigger.wave-docs-layout__search {
-      max-width: 20rem;
-    }
+    max-width: none;
   }
 
   .wave-docs-search-trigger:hover {
@@ -1925,8 +1915,7 @@
    * ⚠️ HIDDEN WHERE THE SHORTCUT CANNOT BE PRESSED, WHICH IS NOT A WIDTH
    * QUESTION. `⌘K` is an instruction, and on a phone or a tablet it is one the
    * reader cannot follow — a 10-inch tablet at 1024px would keep it under any
-   * breakpoint rule. It also bought ~40px back in the row where the brand and
-   * the trigger are competing hardest.
+   * breakpoint rule.
    */
   @media (hover: none) and (pointer: coarse) {
     .wave-docs-search-trigger-kbd {
