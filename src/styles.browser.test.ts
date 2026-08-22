@@ -818,6 +818,20 @@ describe('the table scroll shadow', () => {
     // Even down the height: a linear gradient, not a radial one centred midway.
     expect(overlay.backgroundImage).toContain('linear-gradient');
     expect(overlay.backgroundImage).not.toContain('radial-gradient');
+
+    /*
+     * ⚠️ AND THE TAPER IS A MASK WITH A CAP IN IT.
+     *
+     * The original shadow read well — soft at the top and bottom, strongest
+     * through the middle — because `farthest-side` scales the falloff with the
+     * box. That is also why it failed: on a tall table the ends get nothing,
+     * and one of those ends is the header. The mask keeps the look and bounds
+     * the ramp, so a short table tapers over a quarter of its height and a long
+     * one over 5rem. Dropping the `min()` is what would quietly bring the
+     * original defect back.
+     */
+    expect(overlay.maskImage).toContain('linear-gradient');
+    expect(overlay.maskImage).toContain('min(');
   });
 });
 

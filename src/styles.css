@@ -782,18 +782,37 @@
   }
 
   /*
-   * ⚠️ LINEAR, NOT RADIAL, AND THE SHAPE WAS HALF THE ORIGINAL BUG.
+   * ⚠️ THE TAPER IS A MASK, AND THE SHAPE WAS HALF THE ORIGINAL BUG.
    *
    * The background version used `radial-gradient(farthest-side at 0 50%)`,
-   * which on a full-height box puts the shadow's strength at the *vertical
-   * centre* and fades it to nothing at the top and bottom. Sampled on a real
-   * table: 5–9/255 of darkening beside the first body rows, 1/255 beside the
-   * header, 0 at the right edge — on a long table the affordance is invisible
-   * exactly where a reader looks first.
+   * which reads well — soft at the top and bottom, strongest through the middle
+   * — and whose falloff is *proportional to the box*. On a tall table that puts
+   * the strength at the vertical centre and nothing at the ends: sampled on a
+   * real one, 5–9/255 of darkening beside the first body rows and 1/255 beside
+   * the header, which is where a reader looks first.
    *
-   * A horizontal linear gradient is even down the whole height, so the header
-   * row gets the same shadow as the fiftieth row.
+   * So the horizontal falloff is a linear gradient, even down the whole height,
+   * and the taper is a mask with a *bounded* ramp. Proportional while the table
+   * is short — a quarter of the height at each end, which is the oval the
+   * original had — and capped at 5rem once it is tall, so a long table softens
+   * over its first and last 80px instead of over its first and last third.
+   * Measured at the cap: 0/255 at the very top edge, ~14 across the header row,
+   * 24 through the body. Soft where a shadow should be soft, present where a
+   * reader is looking.
    */
+  .wave-docs-table-scroll::before,
+  .wave-docs-table-scroll::after {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      rgb(0 0 0 / 0.55) min(8%, 1.25rem),
+      #000 min(24%, 5rem),
+      #000 calc(100% - min(24%, 5rem)),
+      rgb(0 0 0 / 0.55) calc(100% - min(8%, 1.25rem)),
+      transparent 100%
+    );
+  }
+
   .wave-docs-table-scroll::before {
     justify-self: start;
     inset-inline-start: 0;
