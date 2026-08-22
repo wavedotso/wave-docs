@@ -1300,6 +1300,11 @@ describe('the chrome', () => {
    * was the thing that actually broke. A host moves it with one declaration or
    * renders their own against `commandfor`.
    *
+   * ⚠️ ITS TWIN INSIDE THE DRAWER USED TO BE ON THIS LIST AND IS NOT ANY MORE.
+   * `fixed` put the close control on top of the tree: out of flow, so nothing
+   * in the panel reserved space for it, and the last 44px of every link sat
+   * underneath a button. It is a flex item beside the tree now.
+   *
    * **Anything else appearing in this list is a regression.**
    */
   it('positions nothing in the page flow as fixed', () => {
@@ -1310,7 +1315,6 @@ describe('the chrome', () => {
     ).flatMap((rule) => splitSelectors(rule.prelude));
 
     expect(fixed.sort()).toEqual([
-      '.wave-docs-layout__drawer-close',
       '.wave-docs-layout__nav-trigger',
       '.wave-docs-search-backdrop',
     ]);

@@ -150,6 +150,35 @@ export function DocsNav({
       closedby="any"
       aria-label={label}
     >
+      {/*
+       * ⚠️ TWO CHILDREN IN A ROW, AND THE STRIP IS THE SECOND ONE.
+       *
+       * The close control was `position: fixed` and sat *on top of* the tree —
+       * out of flow, so nothing in the panel knew it was there, and the last
+       * 44px of every link was underneath a button. Padding hid the collision
+       * without removing it.
+       *
+       * In flow there is nothing to hide: the row gives the strip its own
+       * track and the tree gets what is left. The scroll moves here, to the
+       * body, which is also what keeps the strip still while the tree scrolls
+       * — the reason it was `fixed` in the first place.
+       *
+       * Above 64rem this wrapper is `display: contents`, exactly as the dialog
+       * around it is, so the tree is still the sticky column directly and the
+       * payload still holds one copy of the links.
+       */}
+      <div className="wave-docs-layout__drawer-body">
+        {children}
+        <DocsSidebar
+          nav={nav}
+          pathname={pathname}
+          label={label}
+          Link={Link}
+          {...(expandGroup === undefined ? {} : { expandGroup })}
+          {...(collapseGroup === undefined ? {} : { collapseGroup })}
+          {...(externalLink === undefined ? {} : { externalLink })}
+        />
+      </div>
       <button
         type="button"
         className="wave-docs-layout__drawer-close"
@@ -168,16 +197,6 @@ export function DocsNav({
          * `aria-label`.
          */}
       </button>
-      {children}
-      <DocsSidebar
-        nav={nav}
-        pathname={pathname}
-        label={label}
-        Link={Link}
-        {...(expandGroup === undefined ? {} : { expandGroup })}
-        {...(collapseGroup === undefined ? {} : { collapseGroup })}
-        {...(externalLink === undefined ? {} : { externalLink })}
-      />
     </dialog>
   );
 }

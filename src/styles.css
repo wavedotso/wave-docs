@@ -1771,10 +1771,12 @@
      * the inline start has to clear it or the first words of every line sit
      * under a control. The obvious spelling — the trigger's width *plus* the
      * usual 1rem — left a 264px column at 320px, under the 280px floor above.
-     * So the inline start is exactly the trigger's width: its own border is the
-     * separation, and nothing is left over to spend. 320 − 24 − 8 = 288.
+     * So the inline start is the grip plus the smallest gap that keeps text off
+     * it: 320 − 32 − 8 = 280, which lands exactly on the floor rather than
+     * under it. It was 1.5rem for one commit — the width of the grip and not a
+     * pixel more — and the first word of every line touched the tab.
      * Reset at 64rem, where the trigger is not rendered. */
-    padding-inline: 1.5rem 0.5rem;
+    padding-inline: 2rem 0.5rem;
     /* Without this, `max-width` at the 100rem cap applies to the *content* box
      * and the shell renders 48px wider than the token says — measured 1648
      * against a declared 1600. */
@@ -1868,7 +1870,9 @@
      * it is the same element, and a 64rem viewport with a 200% zoom is a
      * narrow one.
      */
-    dialog.wave-docs-layout__drawer:not(:modal) {
+    dialog.wave-docs-layout__drawer:not(:modal),
+    dialog.wave-docs-layout__drawer:not(:modal)
+      .wave-docs-layout__drawer-body {
       display: contents;
     }
 
@@ -1975,59 +1979,124 @@
    */
   .wave-docs-layout__nav-trigger,
   .wave-docs-layout__drawer-close {
-    position: fixed;
-    inset-block: 0;
-    z-index: 30;
     /*
-     * ⚠️ 44px OF TARGET AND NOT ONE PIXEL OF PAINT. The strip is the hit area —
-     * full height, wider than anything it draws — and entirely transparent.
-     * What a reader sees is the button below, centred in it.
+     * ⚠️ 44px OF TARGET, 24px OF PAINT, AND THE DIFFERENCE IS DELIBERATE.
+     * The strip is the hit area — full height, wider than the grip it holds —
+     * and it paints nothing until a pointer is on it. WCAG 2.5.8 asks for 24
+     * and iOS and WCAG 2.5.5 ask for 44; painting the whole 44 puts a slab
+     * down the edge of every page, which is what two earlier attempts did.
      *
-     * WCAG 2.5.8 asks for 24 and iOS and WCAG 2.5.5 ask for 44. Painting the
-     * whole 44 puts a slab down the edge of every page, which is what the
-     * first two attempts at this did; Docsify's toggle is transparent for the
-     * same reason and lets its icon carry the affordance.
+     * ⚠️ THE EXTRA 20px IS A TRANSPARENT BORDER, AND THAT IS THE WHOLE TRICK.
+     * A transparent border is inside the border box, so it is hit-tested; with
+     * `background-clip: padding-box` it is not painted. So the target is 44px
+     * and every background this control ever draws is 24px — including the
+     * hover wash, which is the state that made the difference visible. Painted
+     * across the full 44 it washed the first two characters of every line,
+     * because the gutter it overhangs into is only 24px wide. Measured at
+     * 390px.
      */
+    box-sizing: border-box;
+    /*
+     * ⚠️ `relative` IS LOAD-BEARING, NOT DECORATION. Both the tab and the dots
+     * are `position: absolute`, and an absolutely positioned box resolves
+     * against the nearest *positioned* ancestor. The trigger is `fixed` so it
+     * qualifies; the close control is a flex item and did not — its tab
+     * escaped to the viewport and painted a 300px slab across the drawer with
+     * the dots stranded in the middle of it. Measured at 390px.
+     */
+    position: relative;
     width: 2.75rem;
     padding: 0;
     border: 0;
     background: none;
+    background-clip: padding-box;
     color: var(--wave-docs-fg-muted);
     cursor: pointer;
   }
 
-  .wave-docs-layout__nav-trigger {
-    inset-inline-start: 0;
-  }
-
   /*
-   * Straddling the drawer's own inline end, so it reads as a handle on the
-   * panel rather than a bar beside it — and so the panel needs no extra padding
-   * to clear it. `--wave-docs-drawer-width` is inherited from the dialog, so
-   * the two cannot drift apart.
+   * ⚠️ THE ONE THAT OPENS THE DRAWER IS THE ONLY ONE STILL OUT OF FLOW, AND
+   * IT HAS TO BE. It sits over the article, which is a grid track and not a
+   * row it can join; the grid pays for it in `padding-inline` instead. Its
+   * twin inside the drawer has a row to sit in, so it sits in one.
    */
+  .wave-docs-layout__nav-trigger {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 30;
+    border-inline-end: 1.25rem solid transparent;
+  }
+
+  /* In flow, at the panel's inline end, and full height by `align-self`. */
   .wave-docs-layout__drawer-close {
-    inset-inline-start: calc(var(--wave-docs-drawer-width) - 2.75rem);
+    flex: none;
+    align-self: stretch;
+    border-inline-start: 1.25rem solid transparent;
   }
 
   /*
-   * Three dots, and they are the entire control — no box, no border, no fill.
+   * The grip: a 24×80 tab flush against the edge, and the whole of what this
+   * control paints at rest.
    *
-   * Measured off docsify.js.org rather than reasoned about: their toggle is a
-   * full-height strip at `rgba(0, 0, 0, 0)` with `border: 0`, `padding: 0` and
-   * no radius, holding three 4px circles 3px apart in a light grey. Two
-   * attempts here wrapped the dots in a bordered white disc, which is the part
-   * that never matched.
+   * ⚠️ 24px IS NOT A ROUND NUMBER, IT IS THE GUTTER. `.wave-docs-layout`
+   * reserves exactly `1.5rem` of `padding-inline` for this at 320px, so a grip
+   * of any other width either floats in dead space or sits under the first
+   * word of every line. The two numbers are one number.
    *
-   * One element and two `box-shadow` copies rather than three spans: it needs
-   * no markup, and it follows `currentcolor` through the hover state for free.
-   * 4 + 3 + 4 + 3 + 4 is 18px tall, so the offset is 7.
+   * 80px tall, because the ratio is what does the work: at 24×80 (1:3.3) it
+   * reads as a handle on an edge, at 24×48 as a stray button, and past ~120 as
+   * a rail. It is also 1.8× the 44px minimum on its own — so the *painted*
+   * mark already satisfies WCAG 2.5.5 without borrowing from the invisible
+   * strip, which is what makes it worth painting at all.
+   *
+   * Rounded on the two corners facing the page and square on the two against
+   * the edge: a tab attached to something, not a pill dropped next to it.
    */
   .wave-docs-layout__nav-trigger::before,
   .wave-docs-layout__drawer-close::before {
     content: '';
     position: absolute;
     inset-block-start: 50%;
+    /*
+     * ⚠️ NO `width`, AND THAT IS THE POINT. `inset-inline: 4px` *is* the
+     * strip's padding, spelled on the only box that can carry it: an
+     * absolutely positioned child resolves its insets against the padding box,
+     * which is the 24px the strip paints — so the tab is 16px and there are
+     * 4px of strip either side of it, whatever that band is ever set to. Given
+     * a `width` instead, the two numbers could disagree and one would be
+     * silently dropped as over-constrained.
+     */
+    inset-inline: 4px;
+    height: 5rem;
+    translate: 0 -50%;
+    /* One radius, all four corners: the tab no longer touches an edge, so
+     * there is no edge for a square corner to sit against. */
+    border-radius: var(--wave-docs-radius-sm);
+    background-color: var(--wave-docs-border);
+  }
+
+  /*
+   * Three dots on the grip, and they are the reason it is a menu rather than a
+   * drag handle.
+   *
+   * Measured off docsify.js.org rather than reasoned about: three 4px circles
+   * 3px apart. One element and two `box-shadow` copies rather than three
+   * spans — no markup, and it follows `currentcolor` through the hover state
+   * for free. 4 + 3 + 4 + 3 + 4 is 18px tall, so the offset is 7.
+   *
+   * ⚠️ `::after`, AND THE ORDER IS LOAD-BEARING. Both pseudo-elements are
+   * positioned and neither carries a `z-index`, so tree order decides which
+   * paints on top. The grip is `::before` because the dots have to be over it.
+   */
+  .wave-docs-layout__nav-trigger::after,
+  .wave-docs-layout__drawer-close::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 50%;
+    /* Half the painted band, on both controls — the containing block is the
+     * padding box, so `50%` is the same 12px on either side of the drawer. */
+    inset-inline-start: 50%;
     width: 4px;
     height: 4px;
     translate: -50% -50%;
@@ -2038,20 +2107,57 @@
       0 7px 0 currentcolor;
   }
 
-  /* Centred in the 24px the page gutter reserves, not in the 44px target. */
-  .wave-docs-layout__nav-trigger::before {
-    inset-inline-start: 0.75rem;
-  }
-
-  /* And just inside the drawer's own inline end, which its padding clears. */
-  .wave-docs-layout__drawer-close::before {
-    inset-inline-end: 0.75rem;
-    translate: 50% -50%;
-  }
-
+  /*
+   * Hover, and it is one gesture lighting three surfaces: the strip washes to
+   * the accent at 30%, the grip goes solid accent, and the dots invert onto it.
+   *
+   * The strip is the part that answers "how big is this thing?" — at rest a
+   * reader can only see the 24px grip, and the 44px they can actually hit is
+   * invisible. Painting the whole target on hover is what tells them.
+   *
+   * Same treatment as a sidebar link, which changes background and colour
+   * together for the same reason: one of the two is the surface moving and the
+   * other is the label keeping up with it.
+   */
   .wave-docs-layout__nav-trigger:hover,
   .wave-docs-layout__drawer-close:hover {
-    color: var(--wave-docs-accent);
+    /*
+     * ⚠️ `background-color`, NOT `background`. The shorthand resets
+     * `background-clip` to `border-box`, which is exactly the declaration
+     * keeping this wash off the 20px transparent border — so spelled as a
+     * shorthand it paints the full 44px and lands on the text. It did, for one
+     * build.
+     */
+    background-color: color-mix(
+      in oklab,
+      var(--wave-docs-accent) 30%,
+      transparent
+    );
+    color: var(--wave-docs-accent-fg);
+  }
+
+  .wave-docs-layout__nav-trigger:hover::before,
+  .wave-docs-layout__drawer-close:hover::before {
+    background-color: var(--wave-docs-accent);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-layout__nav-trigger,
+    .wave-docs-layout__drawer-close,
+    .wave-docs-layout__nav-trigger::before,
+    .wave-docs-layout__drawer-close::before,
+    .wave-docs-layout__nav-trigger::after,
+    .wave-docs-layout__drawer-close::after {
+      /*
+       * ⚠️ ON THE PSEUDO-ELEMENTS TOO, NOT ONLY THE BUTTON. The dots are
+       * `background: currentcolor`, and an inherited colour changing does not
+       * start a transition on a descendant that has not declared one — the
+       * grip would fade and the dots would snap.
+       */
+      transition:
+        background-color 120ms ease-out,
+        color 120ms ease-out;
+    }
   }
 
   /*
@@ -2065,6 +2171,19 @@
   .wave-docs-layout__drawer-close:focus-visible {
     outline: 2px solid var(--wave-docs-accent);
     outline-offset: -2px;
+  }
+
+  /*
+   * ⚠️ FORCED COLOURS DISCARDS THE GRIP, SO GIVE IT AN EDGE INSTEAD. The tab
+   * is a background and nothing else; in a forced-colours palette it is
+   * repainted to `Canvas` and disappears into the page, leaving three dots
+   * floating on an edge. A border is honoured, so the tab keeps its shape.
+   */
+  @media (forced-colors: active) {
+    .wave-docs-layout__nav-trigger::before,
+    .wave-docs-layout__drawer-close::before {
+      border: 1px solid;
+    }
   }
 
   /* -------------------------------------------------------------------------
@@ -2083,21 +2202,54 @@
      * auto` in the UA sheet and only a margin overrides that. */
     margin: 0 auto 0 0;
     box-sizing: border-box;
-    /* Named so the close strip can sit exactly on this edge without restating
-     * the expression — it inherits, and the two cannot drift apart. */
     --wave-docs-drawer-width: min(20rem, 85vw);
     width: var(--wave-docs-drawer-width);
     max-width: none;
     height: 100dvh;
     max-height: none;
-    padding: 1.5rem 1rem;
+    /*
+     * ⚠️ A ROW OF TWO, AND NEITHER ONE IS OVER THE OTHER.
+     *
+     * The close control was `position: fixed`. Out of flow means nothing in
+     * the panel knows it is there, so the last 44px of every link in the tree
+     * sat underneath a button — visually and for hit-testing both. Padding
+     * hides that; it does not remove it.
+     *
+     * In flow the row gives the strip its own track and the tree gets what is
+     * left, so there is nothing to hide. The scroll moves to the body, which
+     * is also what keeps the strip still while the tree scrolls — the one
+     * thing `fixed` was buying.
+     *
+     * Padding moves to the body with it: on the dialog it would inset the
+     * strip too, and the strip is meant to reach all four edges.
+     */
+    padding: 0;
     border: 0;
     border-inline-end: 1px solid var(--wave-docs-border);
     background-color: var(--wave-docs-bg);
     color: var(--wave-docs-fg);
+    overflow: hidden;
+  }
+
+  .wave-docs-layout__drawer-body {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 1.5rem 0 1.5rem 1rem;
     overflow-y: auto;
     /* Reaching the end of the nav must not start scrolling the page behind. */
     overscroll-behavior: contain;
+  }
+
+  /*
+   * ⚠️ `:modal`, NEVER THE BARE ELEMENT. A closed `<dialog>` is hidden by one
+   * UA rule — `display: none` — and any `display` of ours on the bare selector
+   * beats it. Spelled without `:modal` this rendered the whole drawer, and its
+   * close control, on every page at every width: two grips on screen and a
+   * second copy of the nav sitting in the layout. That is exactly the bug it
+   * caused, for one build.
+   */
+  dialog.wave-docs-layout__drawer:modal {
+    display: flex;
   }
 
   dialog.wave-docs-layout__drawer::backdrop {
@@ -2112,6 +2264,17 @@
    */
   html:has(dialog.wave-docs-layout__drawer:modal) {
     overflow: hidden;
+  }
+
+  /*
+   * ⚠️ ONE CONTROL ON SCREEN AT A TIME. The trigger is `fixed`, so an open
+   * drawer left it painted at the viewport edge with its twin at the panel
+   * edge — two identical grips, both for the same drawer. Hidden while the
+   * drawer is modal, the one control simply moves along x as the panel opens.
+   */
+  html:has(dialog.wave-docs-layout__drawer:modal)
+    .wave-docs-layout__nav-trigger {
+    display: none;
   }
 
   /*

@@ -296,7 +296,7 @@ describe('the responsive shell', () => {
       expect(
         box('.wave-docs-prose').width,
         `prose column collapsed at $widthpx`,
-      ).toBeGreaterThan(280);
+      ).toBeGreaterThanOrEqual(280);
     },
   );
 
@@ -496,6 +496,7 @@ describe('the drawer trigger at a phone width', () => {
         <div class="wave-docs-layout__sidebar">
           <button type="button" class="wave-docs-layout__nav-trigger"></button>
           <dialog class="wave-docs-layout__drawer">
+            <div class="wave-docs-layout__drawer-body"></div>
             <button type="button" class="wave-docs-layout__drawer-close"></button>
           </dialog>
         </div>
@@ -529,14 +530,15 @@ describe('the drawer trigger at a phone width', () => {
     expect(getComputedStyle(trigger).borderTopWidth).toBe('0px');
 
     /*
-     * Measured off docsify.js.org rather than reasoned about: their toggle is a
-     * full-height strip at `rgba(0, 0, 0, 0)` with `border: 0`, `padding: 0` and
-     * no radius, holding three small circles. No box — two attempts here wrapped
-     * the dots in a bordered disc, and that is the part that never matched.
+     * Two pseudo-elements and the order is load-bearing: `::before` is the
+     * 16px tab, `::after` the three dots over it. Neither carries a `z-index`,
+     * so tree order is the only thing keeping the dots on top.
      */
-    expect(getComputedStyle(trigger, '::after').content).toBe('none');
+    const tab = getComputedStyle(trigger, '::before');
+    expect(tab.height).toBe('80px');
+    expect(tab.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
 
-    const dots = getComputedStyle(trigger, '::before');
+    const dots = getComputedStyle(trigger, '::after');
     expect(dots.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
     // Three of them: one element and two box-shadow copies, 7px either side.
     // Matched on the offsets rather than on a colour — the computed value comes
@@ -595,11 +597,11 @@ describe('the drawer trigger at a phone width', () => {
      * 44px without a slab down the page — but no text may sit under something
      * a reader can see and press.
      */
-    const dots = getComputedStyle(trigger, '::before');
+    const tab = getComputedStyle(trigger, '::before');
     const edge =
       trigger.getBoundingClientRect().left +
-      Number.parseFloat(dots.insetInlineStart) +
-      Number.parseFloat(dots.width) / 2;
+      Number.parseFloat(tab.insetInlineStart) +
+      Number.parseFloat(tab.width);
     expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(edge);
   });
 
@@ -634,25 +636,34 @@ describe('the drawer trigger at a phone width', () => {
       throw new Error('expected both controls and a drawer');
     }
 
+    // Same glyph and same tab — one rule draws both, so neither can drift.
+    // Read while the trigger is still on screen: it is hidden once the drawer
+    // opens, and a `display: none` pseudo-element has no used width to compare.
+    const paint = (el: Element): string[] =>
+      ['::before', '::after'].flatMap((pseudo) => {
+        const style = getComputedStyle(el, pseudo);
+        return [style.width, style.height, style.borderRadius, style.boxShadow];
+      });
+    const opener = paint(open);
+
     // The close control lives inside the drawer, which is correctly hidden
     // until something opens it — so there is nothing to measure until it is.
     drawer.showModal();
 
-    const a = open.getBoundingClientRect();
+    /*
+     * ⚠️ ONE CONTROL ON SCREEN AT A TIME, AND THAT IS THE ASSERTION. Both were
+     * painted at once for one build — the trigger `fixed` at the viewport edge
+     * and its twin at the panel edge — which is two identical grips for one
+     * drawer. Opening moves the control along x; it does not add a second one.
+     */
+    expect(open.checkVisibility()).toBe(false);
+    expect(close.checkVisibility()).toBe(true);
+
     const b = close.getBoundingClientRect();
-    expect(Math.round(a.width)).toBe(Math.round(b.width));
-    expect(Math.round(a.height)).toBe(Math.round(b.height));
+    expect(Math.round(b.width)).toBe(44);
+    expect(Math.round(b.height)).toBe(Math.round(window.innerHeight));
 
-    // Same glyph — three dots, drawn by one element and two box-shadow copies.
-    const glyph = (el: Element): string[] => {
-      const style = getComputedStyle(el, '::before');
-      return [style.width, style.height, style.borderRadius, style.boxShadow];
-    };
-    expect(glyph(open)).toEqual(glyph(close));
-
-    // And neither wraps them in a box: the dots are the whole control.
-    expect(getComputedStyle(open, '::after').content).toBe('none');
-    expect(getComputedStyle(close, '::after').content).toBe('none');
+    expect(paint(close)).toEqual(opener);
     drawer.close();
   });
 
@@ -685,16 +696,14 @@ describe('the drawer trigger at a phone width', () => {
  * The control that closes the drawer, which is the one that opened it seen from
  * the other side.
  *
- * ⚠️ IT IS `fixed`, AND THAT IS THE WHOLE POINT OF THE TEST. The dialog is the
- * scroll container, so anything positioned inside it travels with the content —
- * on a navigation longer than the viewport, a close button in the flow scrolls
- * out of reach and a reader has to scroll back up to find the way out. Fixed
- * inside a top-layer dialog resolves against the viewport, which is the frame
- * it should hold still in.
+ * ⚠️ IT IS IN FLOW, AND THAT IS THE WHOLE POINT OF THE TEST. It was `fixed`,
+ * to hold still while a long tree scrolled underneath — and out of flow meant
+ * nothing in the panel reserved space for it, so the last 44px of every link
+ * sat under a button, for the eye and for a tap alike.
  *
- * It sits on the *drawer's* inline end rather than the screen's, so it reads as
- * part of the panel. The two edges are kept together by a custom property the
- * dialog declares and this inherits, so neither can be moved without the other.
+ * A row of two solves both at once: the strip gets its own track, and the
+ * scroll moves to the body beside it, so the strip cannot travel because it is
+ * not in the scroller any more.
  */
 describe('the drawer close control', () => {
   function mountDrawer(): HTMLDialogElement {
@@ -706,8 +715,10 @@ describe('the drawer close control', () => {
 
     document.body.innerHTML = `
       <dialog class="wave-docs-layout__drawer">
+        <div class="wave-docs-layout__drawer-body">
+          <nav class="wave-docs-sidebar">${'<a class="wave-docs-sidebar__link" href="#x">Item</a>'.repeat(80)}</nav>
+        </div>
         <button type="button" class="wave-docs-layout__drawer-close"></button>
-        <nav class="wave-docs-sidebar">${'<a href="#x">Item</a>'.repeat(80)}</nav>
       </dialog>`;
 
     const dialog = document.querySelector('dialog.wave-docs-layout__drawer');
@@ -735,40 +746,50 @@ describe('the drawer close control', () => {
     expect(panel.right).toBeLessThan(window.innerWidth);
   });
 
+  /**
+   * The reason the row exists. `fixed` painted the strip over the tree, and a
+   * test that only measured the strip could not see it.
+   */
+  it('never overlaps the tree, because it is beside it', async () => {
+    mountDrawer();
+    await resize(390);
+
+    const close = document.querySelector('.wave-docs-layout__drawer-close');
+    const body = document.querySelector('.wave-docs-layout__drawer-body');
+    if (!(close instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+      throw new Error('expected a close control and a body');
+    }
+
+    expect(body.getBoundingClientRect().right).toBeLessThanOrEqual(
+      close.getBoundingClientRect().left + 1,
+    );
+  });
+
   it('runs the full height and holds it while the tree scrolls', async () => {
     const dialog = mountDrawer();
     await resize(390);
 
     const close = document.querySelector('.wave-docs-layout__drawer-close');
-    if (!(close instanceof HTMLElement)) throw new Error('no close control');
+    const body = document.querySelector('.wave-docs-layout__drawer-body');
+    if (!(close instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+      throw new Error('expected a close control and a body');
+    }
 
     const before = close.getBoundingClientRect();
     expect(Math.round(before.height)).toBe(Math.round(window.innerHeight));
 
-    dialog.scrollTop = 400;
+    /*
+     * ⚠️ SCROLL THE BODY, NOT THE DIALOG. The scroller moved when the strip
+     * came into flow, and that move is what makes this hold still — scrolling
+     * the dialog here would pass whatever the strip did, because the dialog no
+     * longer scrolls at all.
+     */
+    body.scrollTop = 400;
     await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(body.scrollTop).toBeGreaterThan(0);
 
     const after = close.getBoundingClientRect();
     expect(Math.round(after.top)).toBe(Math.round(before.top));
-  });
-
-  it('keeps the tree out from under it', async () => {
-    const dialog = mountDrawer();
-    await resize(390);
-
-    const close = document.querySelector('.wave-docs-layout__drawer-close');
-    const tree = document.querySelector('.wave-docs-sidebar');
-    if (!(close instanceof HTMLElement) || !(tree instanceof HTMLElement)) {
-      throw new Error('expected a close control and a tree');
-    }
-
-    // Clear of the dots, which sit just inside the panel's inline end.
-    const dots = getComputedStyle(close, '::before');
-    const edge =
-      close.getBoundingClientRect().right -
-      Number.parseFloat(dots.insetInlineEnd) -
-      Number.parseFloat(dots.width) / 2;
-    expect(tree.getBoundingClientRect().right).toBeLessThanOrEqual(edge + 1);
     dialog.close();
   });
 });
