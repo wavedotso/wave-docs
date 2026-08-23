@@ -1,5 +1,159 @@
 # @waveso/docs
 
+## 0.7.0
+
+### Minor Changes
+
+- da25315: **A page becomes a landing page by declaring its actions.** `actions` in the
+  frontmatter turns `title` and `description` into a page header with those links
+  beneath them:
+
+  ```yaml
+  ---
+  title: Wave Docs
+  description: Markdown documentation for Next.js.
+  actions:
+    - label: Quick start
+      href: /getting-started
+    - label: GitHub
+      href: https://github.com/waveso/docs
+      variant: secondary
+  ---
+  ```
+
+  Leave it off and the page is exactly what it was: `description` stays a `<meta>`
+  tag and the title is the first thing in the prose. That is the whole of the
+  adaptation for the two shapes this package serves — documentation that is the
+  entire site puts a hero on its index, and documentation mounted at `/docs`
+  inside an application that already has a marketing page leaves `actions` off.
+  There is no mode, no `standalone` flag and nothing to configure.
+
+  Actions are primary-then-secondary by position, so the common case needs no
+  `variant`. Anything that leaves the site gets a plain `<a>` rather than the
+  router link, plus `target`, `rel` and a screen-reader suffix; `mailto:` and
+  `tel:` get none of that, because they open no tab. Unsafe hrefs fail the build
+  rather than reaching an `<a>` — frontmatter was the one door into an `href` that
+  bypassed `isSafeHref`.
+
+  `DocsHero` is exported at `@waveso/docs/react/hero`, and `DocAction` from
+  `@waveso/docs/types`.
+
+  ⚠️ A HERO PAGE MUST NOT ALSO WRITE ITS OWN `# Title`. `render` normally prepends
+  an `<h1>` from `frontmatter.title`; on a hero page the hero renders that heading
+  instead, because the tagline and the actions have to sit beneath it. Writing one
+  in the body as well ships two `h1`s — the same duplication `titleHeading` has
+  always warned about.
+
+  The background is a rotated line grid drawn with `repeating-linear-gradient`
+  rather than an inlined SVG: no data URI in the stylesheet, and the lines are
+  `--wave-docs-hero-grid` and `--wave-docs-hero-grid-strong` — Wave 200 and Wave
+  300 from `@waveso/ui` in the light theme, Wave 900 and Wave 800 in the dark one
+  — so they follow the theme. They are tokens of their own rather than the border
+  colours, because a decorative tint must not be tied to a functional contrast
+  ratio.
+
+- 915729f: **`docs.Layout` renders no header, and the navigation is one sidebar at every
+  width.** A full-width sticky bar is the one element that competes with a host
+  application's own for the viewport's top edge, and two of the sites using this
+  have one — measured against a fixed 64px host bar, ours landed on top of theirs
+  at every width. The chrome it held lives in the sidebar now:
+
+  ```
+  .wave-docs-shell                       the query container
+  └─ .wave-docs-layout                   the grid
+     ├─ .wave-docs-layout__sidebar       paints nothing, and moves
+     │  ├─ …__sidebar-nav                the surface, and the one border
+     │  └─ …__sidebar-trigger            a 44px strip — paints nothing at rest
+     ├─ .wave-docs-layout__sidebar-scrim
+     ├─ .wave-docs-layout__main
+     └─ .wave-docs-layout__toc
+  ```
+
+  Pressing the trigger translates the sidebar by exactly the navigation's width,
+  so it leaves the page entirely and the trigger's outer edge lands on the inline
+  start edge. There is no drawer, no `<dialog>`, no second control and no second
+  copy of the tree.
+
+  **Nothing this package renders is anchored to the viewport.** The sidebar is a
+  grid item, the trigger is a flex child of it, and the scrim is `absolute` inside
+  `.wave-docs-layout` — so every one of them resolves against a box this package
+  owns and _your_ layout placed. `position: fixed` is the thing to avoid, and the
+  reason is specific: a fixed element is anchored to the viewport you share with
+  it, your navbar is in the same viewport, and neither can detect the other. The
+  search dialog is the one exception and always was.
+
+  **There is not one width-based `@media` query left.** Every breakpoint is
+  `@container`. `@media` asks how wide the _screen_ is, which is the wrong
+  question for a package mounted at `/docs` inside an application that owns the
+  rest of the page: put this in a 700px panel on a 1920px monitor and `@media`
+  says "wide", the sidebar takes its 16rem column, and the reading column comes
+  out around 60px. Two shapes fall out of the container width — beside the
+  article, or over it behind a scrim with `inert`, Escape, click-to-dismiss and
+  focus moved in and restored.
+
+  Migration, in full:
+
+  | Was                                                           | Becomes                                                |
+  | ------------------------------------------------------------- | ------------------------------------------------------ |
+  | `<docs.Layout title={<Brand/>}>`                              | Delete it. The index page's title brands the docs      |
+  | `<docs.Layout actions={<ThemeToggle/>}>`                      | Render it in your own layout, around `docs.Layout`     |
+  | `--wave-docs-header-height` set so sticky columns clear a bar | `--wave-docs-chrome-offset`, same value                |
+  | `--wave-docs-header-height` set to size the bar               | Nothing sizes a bar. There is no bar                   |
+  | `--wave-docs-shell-width` set to cap the shell                | Nothing. `--wave-docs-measure` caps the reading column |
+  | `actions` as the client-search escape hatch                   | `search={false}` plus your own `DocsSearch`            |
+  | A `rootMargin` you relied on defaulting to `-80px`            | Pass it explicitly                                     |
+  | `.wave-docs-layout__header` / `__title` / `__actions`         | Not rendered                                           |
+  | `.wave-docs-layout__sidebar > .wave-docs-sidebar`             | The tree is a grandchild now                           |
+
+  ⚠️ `--wave-docs-header-height` DID TWO JOBS AND ONLY ONE SURVIVES. It sized the
+  header, and it was the offset both sticky columns parked below. Nothing of this
+  package's sits above the content any more, so the sizing job is gone; the offset
+  job is `--wave-docs-chrome-offset`, and a host with their own fixed bar still
+  needs to set it or the sidebar and the table of contents park underneath it.
+
+  ⚠️ `--wave-docs-chrome-offset` DEFAULTS TO `0rem`, WITH A UNIT, AND THE UNIT IS
+  LOAD-BEARING. It is read inside `calc(100dvh - …)`, where a unitless `0` is
+  invalid at computed-value time — the height on the sidebar and the `max-height`
+  on the table of contents would die rather than resolve to no change.
+
+  ⚠️ `--wave-docs-shell-width` IS GONE RATHER THAN RENAMED. It capped the whole
+  shell and centred it, which pushed the sidebar's inline start 480px in from the
+  screen on a 2560px display — and left a _closed_ navigation parked in the
+  centring margin instead of off the page. The sidebar owns the page's inline
+  start edge at every width now, which is what makes "closed" mean off the screen
+  by construction, and the reading column is what is capped.
+
+  `DocsToc`'s `rootMargin` default changes from `'-80px 0px -60% 0px'` to
+  `'0px 0px -60% 0px'`. The 80px reserved room for a sticky header that is no
+  longer rendered; a host whose own chrome overlays the content passes the prop.
+
+  `DocsLayoutProps` is three props — `children`, `search` and `labels`.
+
+  Two behaviours are lost with the drawer and are worth knowing: the navigation no
+  longer opens before hydration (it was a server-rendered
+  `<button command="show-modal">`), and the client bundle grows about 500 bytes
+  for the containment work `<dialog>` used to give for free.
+
+### Patch Changes
+
+- 1313e77: The shell no longer depends on the host shipping a CSS reset.
+
+  ⚠️ `box-sizing` WAS THE HOST'S TO SET, AND ALMOST EVERY HOST SETS IT.
+  `.wave-docs-sidebar__link` is `width: 100%` with `0.5rem` of inline padding, so
+  under `content-box` it is a 272px box in a 256px track — and the external-link
+  icon that `justify-content: space-between` pins to the far end renders 8px
+  outside the sidebar, clipped in half. Tailwind's preflight and every
+  normalize-style reset declare `border-box` globally, so this was invisible in
+  every project that has one, and visible on the only site here that ships no CSS
+  at all. `box-sizing: border-box` now applies to elements carrying a
+  `wave-docs-` class, scoped to this package's own namespace rather than to `*`,
+  because the prose renders a consumer's components too.
+
+  Three README claims were wrong and are corrected: `react/*` is ten subpaths and
+  not nine, three modules import from `next/*` and not two, and the twenty-two
+  chrome labels break down into six groups rather than the five that summed to
+  nineteen.
+
 ## 0.6.0
 
 ### Minor Changes
