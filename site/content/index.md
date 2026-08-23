@@ -2,6 +2,11 @@
 title: Wave Docs
 label: Overview
 description: Markdown documentation for Next.js. The parser runs in Node at build time and never reaches the browser.
+actions:
+  - label: Quick start
+    href: /getting-started/quick-start
+  - label: Why hast
+    href: /internals
 ---
 
 Point `@waveso/docs` at a folder of `.md` files and you get a documentation

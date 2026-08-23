@@ -68,6 +68,10 @@
       "types": "./dist/react/callout.d.ts",
       "default": "./dist/react/callout.js"
     },
+    "./react/hero": {
+      "types": "./dist/react/hero.d.ts",
+      "default": "./dist/react/hero.js"
+    },
     "./react/doc-content": {
       "types": "./dist/react/doc-content.d.ts",
       "default": "./dist/react/doc-content.js"

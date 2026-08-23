@@ -29,6 +29,22 @@ import type { Root as HastRoot } from 'hast';
  * `Property 'audience' does not exist on type 'DocFrontmatter'` at every read
  * site, because the inference then collapses to this default.
  */
+/**
+ * One call to action in a page's hero.
+ *
+ * `variant` is optional because the shape every landing page has is
+ * primary-then-secondary: the first action is the primary unless it says
+ * otherwise.
+ */
+export interface DocAction {
+  /** Visible text. */
+  label: string;
+  /** Where it goes. Internal hrefs route; external ones open in a new tab. */
+  href: string;
+  /** Overrides the position-derived default. */
+  variant?: 'primary' | 'secondary' | undefined;
+}
+
 export interface DocFrontmatter {
   /** Page title. Used for `<h1>` fallbacks, `<title>`, and search. */
   title: string;
@@ -58,6 +74,21 @@ export interface DocFrontmatter {
    * Lower sorts first; pages without an order sort last, alphabetically.
    */
   order?: number | undefined;
+  /**
+   * Calls to action, and the opt-in for the page's hero.
+   *
+   * Declaring them turns {@link DocFrontmatter.title} and
+   * {@link DocFrontmatter.description} into a page header with these links
+   * under it, and stops `render` prepending its own `<h1>` — the hero renders
+   * the heading, because the tagline and the actions have to sit beneath it.
+   *
+   * Leave it off and the page is exactly what it was: the description stays a
+   * `<meta>` tag and the title is the first thing in the prose. That is the
+   * whole difference between documentation that is the entire site and
+   * documentation mounted inside an application that already has a landing
+   * page — one field, in the file that wants it.
+   */
+  actions?: DocAction[] | undefined;
 }
 
 /* -------------------------------------------------------------------------

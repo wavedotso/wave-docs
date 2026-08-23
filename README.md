@@ -201,6 +201,7 @@ Every component takes data as props, and every module that imports from `next/*`
 | Component | Subpath | Notes |
 | --- | --- | --- |
 | `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
+| `DocsHero` | `react/hero` | A landing page's header. `title`, `description`, `actions`, `Link`, `externalLabel`. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation` |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
@@ -360,12 +361,30 @@ label: Auth                       # sidebar label, when the title is too long
 draft: true                       # excluded from nav, search and static params
 order: 10                         # sort weight where there is no meta.json
 aliases: [old-auth, legacy/auth]  # former URLs → permanent redirects
+actions:                          # calls to action — and the opt-in for a hero
+  - label: Quick start
+    href: /getting-started
+  - label: GitHub
+    href: https://github.com/waveso/docs
+    variant: secondary
 ---
 ```
 
 `title` is required on every `.md` file in the tree. A file without one fails the build rather than shipping an untitled page.
 
 `draft` is deliberately **not** tied to `NODE_ENV`. Preview deployments are production builds, so branching on it would hide drafts in exactly the place reviewers look — drive `includeDrafts` from your own environment check instead.
+
+### The hero
+
+`actions` is the only thing that turns a page into a landing page. Declare it and `title` and `description` become a page header — a large heading, the description as a tagline under it, and these links beneath that. Leave it off and the page is exactly what it was: `description` stays a `<meta>` tag and the title is the first thing in the prose.
+
+Each action takes a `label`, an `href` and an optional `variant` of `primary` or `secondary`. Omit the variant and the first action is the primary and the rest are secondary, which is the shape every landing page has. An `href` that leaves the site gets `target="_blank"`, `rel="noreferrer"` and a screen-reader suffix; `mailto:` and `tel:` do not, because they open no tab. Unsafe hrefs fail the build rather than reaching an `<a>`.
+
+**That is the whole of the adaptation for the two shapes this package serves.** Documentation that is the entire site puts a hero on its index. Documentation mounted at `/docs` inside an application that already has a marketing page leaves `actions` off and gets an ordinary page. There is no mode, no `standalone` flag and nothing to configure — the opt-in lives in the file that wants it.
+
+⚠️ **A hero page must not also write its own `# Title`.** `render` normally prepends an `<h1>` from `frontmatter.title`; on a hero page the hero renders that heading instead, because the tagline and the actions have to sit beneath it. Writing one in the body as well ships two `h1`s — the same duplication `titleHeading` has always warned about.
+
+The background is a rotated line grid under scrims painted in the page's own colour rather than behind a mask: a soft ellipse over the words, a bottom fade, and a vignette that closes at the corners. The vignette is an inset `box-shadow` rather than a gradient — a `radial-gradient` is only ever a circle or an ellipse, and this one needs a corner radius. `border-radius` is that knob, and `corner-shape: superellipse(3)` makes it a squircle where the browser supports it. Alpha compositing of a solid blends where mask layers multiply, so the falloff is smooth instead of compounding into a shoulder. It is drawn with `repeating-linear-gradient` rather than an inlined SVG — no data URI in the stylesheet. The lines are `--wave-docs-hero-grid` and `--wave-docs-hero-grid-strong`, which are Wave 200 and Wave 300 from `@waveso/ui` in the light theme and Wave 900 and Wave 800 in the dark one. They are tokens of their own rather than the border colours: the grid is decoration behind a mask that leaves it near-invisible where the words are, and a border is a boundary a reader has to be able to see.
 
 ### Your own fields
 

@@ -996,7 +996,15 @@ export function createDocsRenderer(options: DocsRendererOptions): DocsRenderer {
 
       const hast = await processor.run(processor.parse(vfile), vfile);
 
-      if (titleHeading && !hasHeadingOne(hast)) {
+      /*
+       * ⚠️ NOT ON A HERO PAGE. A hero puts the tagline and the actions *under*
+       * the title, and no component can insert itself into the middle of
+       * another's tree — so when the frontmatter declares `actions`, the hero
+       * renders the heading and this stands down. Skip the check and every
+       * landing page ships two `h1`s.
+       */
+      const hasHero = (file.frontmatter.actions?.length ?? 0) > 0;
+      if (titleHeading && !hasHero && !hasHeadingOne(hast)) {
         hast.children.unshift(titleHeadingNode(file.frontmatter.title));
       }
       await resolveImages(hast, file, imageResolver);

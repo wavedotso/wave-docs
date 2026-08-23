@@ -14,6 +14,8 @@
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
+
+import { isSafeHref } from './safe-href.js';
 import type { DocFrontmatter } from './types.js';
 import { docsError } from './docs-error.js';
 
@@ -64,6 +66,25 @@ export const docFrontmatterSchema = z.object({
   draft: z.boolean().exactOptional(),
   aliases: z.array(z.string()).exactOptional(),
   order: z.number().exactOptional(),
+  /*
+   * ⚠️ `isSafeHref` HERE AND NOT IN THE COMPONENT. Every other href this
+   * package renders arrives through markdown and is checked on the way in;
+   * these arrive through frontmatter, which is the one door that bypassed it.
+   * A `javascript:` action would otherwise be rendered verbatim into an
+   * `<a href>`.
+   */
+  actions: z
+    .array(
+      z.object({
+        label: z.string().min(1),
+        href: z
+          .string()
+          .min(1)
+          .refine(isSafeHref, 'must be a safe URL (no javascript: or data:)'),
+        variant: z.enum(['primary', 'secondary']).exactOptional(),
+      }),
+    )
+    .exactOptional(),
 });
 
 /**

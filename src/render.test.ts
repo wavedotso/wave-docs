@@ -8,7 +8,7 @@ import { visit } from 'unist-util-visit';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createDocsRenderer } from './render.js';
 import { createDocsSource } from './source.js';
-import type { DocFile, RenderedDoc, TocEntry } from './types.js';
+import type { DocAction, DocFile, RenderedDoc, TocEntry } from './types.js';
 
 const FIXTURES = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -1515,5 +1515,56 @@ describe('anchors', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+/**
+ * The `<h1>` handoff a hero page makes, and it is the only thing `render` knows
+ * about heroes.
+ */
+describe('the title heading on a hero page', () => {
+  const renderer = createDocsRenderer({
+    config: {
+      basePath: '/docs',
+      onBrokenLinks: 'ignore',
+      onBrokenAnchors: 'ignore',
+      externalRoutes: [],
+    },
+  });
+
+  const withActions = (doc: DocFile, actions: DocAction[]): DocFile => ({
+    ...doc,
+    frontmatter: { ...doc.frontmatter, actions },
+  });
+
+  /**
+   * ⚠️ TWO `h1`s IS THE FAILURE THIS PREVENTS. A hero has to put the tagline
+   * and the actions *under* the title, and no component can insert itself into
+   * the middle of another's tree — so on a page that declares `actions`, the
+   * hero renders the heading and this stands down.
+   */
+  it('does not prepend one when the frontmatter declares actions', async () => {
+    const rendered = await renderer.render(
+      withActions(makeDoc('Point it at a folder.\n'), [
+        { label: 'Quick start', href: '/start' },
+      ]),
+    );
+
+    expect(findAll(rendered.hast, 'h1')).toEqual([]);
+  });
+
+  /** An empty list is not an opt-in, so nothing changes for it. */
+  it('still prepends one for an empty action list', async () => {
+    const rendered = await renderer.render(
+      withActions(makeDoc('Point it at a folder.\n'), []),
+    );
+
+    expect(findAll(rendered.hast, 'h1')).toHaveLength(1);
+  });
+
+  it('still prepends one for an ordinary page', async () => {
+    const rendered = await renderer.render(makeDoc('Point it at a folder.\n'));
+
+    expect(findAll(rendered.hast, 'h1')).toHaveLength(1);
   });
 });

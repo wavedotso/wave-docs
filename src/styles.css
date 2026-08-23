@@ -80,6 +80,25 @@
     --wave-docs-fg-subtle: oklch(0.54 0.015 262);
     --wave-docs-border: oklch(0.91 0.006 262);
     --wave-docs-border-strong: oklch(0.84 0.008 262);
+    /* The hero's grid, and the one place this package paints the brand ramp
+     * rather than a neutral.
+     *
+     * Wave 200 and Wave 300 from `@waveso/ui` verbatim — #AEDDFF and #7BC3FF.
+     *
+     * ⚠️ THE RIGHT STEP ON THE RAMP DEPENDS ON THE MASK, AND THE MASK CHANGED.
+     * It walked up to 300/400 while a radial gradient was holding the middle of
+     * the header at a few per cent — the numbers were chosen against a picture
+     * that was mostly suppressed. The radial is gone, so the same tokens paint
+     * at full strength across the whole header and read far heavier than they
+     * did. One step back is the same apparent weight.
+     *
+     * ⚠️ NOT `--wave-docs-border`. The grid is decoration behind a radial mask
+     * that leaves it near-invisible where the words are; a border is a boundary
+     * a reader has to be able to see. Sharing one token would tie a decorative
+     * tint to a functional contrast ratio, and the next change to either would
+     * be wrong for the other. */
+    --wave-docs-hero-grid: oklch(0.876 0.068 240);
+    --wave-docs-hero-grid-strong: oklch(0.793 0.112 245);
 
     /* Wave Blue #0074DE, darkened to #006EC8: the brand value clears 4.5:1 on
      * white but only 4.26:1 on `accent-subtle`, which is what the active sidebar
@@ -209,6 +228,11 @@
       --wave-docs-fg-subtle: oklch(0.665 0.015 265);
       --wave-docs-border: oklch(0.31 0.014 265);
       --wave-docs-border-strong: oklch(0.4 0.016 265);
+      /* Wave 900 and Wave 800. The light pair would be a white grid on a dark
+       * page — a ramp is not a colour, and the tint has to come from the end
+       * that belongs on this ground. */
+      --wave-docs-hero-grid: oklch(0.284 0.088 255);
+      --wave-docs-hero-grid-strong: oklch(0.351 0.118 255);
 
       --wave-docs-accent: oklch(0.72 0.14 248);
       --wave-docs-accent-hover: oklch(0.8 0.12 248);
@@ -252,6 +276,8 @@
     --wave-docs-fg-subtle: oklch(0.665 0.015 265);
     --wave-docs-border: oklch(0.31 0.014 265);
     --wave-docs-border-strong: oklch(0.4 0.016 265);
+    --wave-docs-hero-grid: oklch(0.284 0.088 255);
+    --wave-docs-hero-grid-strong: oklch(0.351 0.118 255);
 
     --wave-docs-accent: oklch(0.72 0.14 248);
     --wave-docs-accent-hover: oklch(0.8 0.12 248);
@@ -361,6 +387,7 @@
   .wave-docs-sidebar,
   .wave-docs-toc,
   .wave-docs-skip-link,
+  .wave-docs-hero,
   .wave-docs-layout__sidebar,
   .wave-docs-search-trigger,
   .wave-docs-search-dialog {
@@ -1878,6 +1905,288 @@
      * underneath.
      */
     isolation: isolate;
+  }
+
+  /* -------------------------------------------------------------------------
+   * The hero
+   *
+   * A page header a landing page opts into by declaring `actions` in its
+   * frontmatter. Every other page renders none of this.
+   * ---------------------------------------------------------------------- */
+
+  .wave-docs-hero {
+    position: relative;
+    /*
+     * ⚠️ BOTH, AND FOR TWO DIFFERENT REASONS. `isolate` keeps the grid's
+     * `z-index: -1` inside the hero instead of dropping it behind the page;
+     * `clip` holds the 150% rotated layer inside the header rather than letting
+     * it run down the article. `clip` rather than `hidden` so no scroll
+     * container is created and nothing sticky below is affected.
+     */
+    isolation: isolate;
+    overflow: clip;
+    /*
+     * ⚠️ THE NEGATIVE MARGIN CANCELS `.wave-docs-layout__main`'s
+     * `padding-block-start`, AND THE PADDING PUTS IT BACK INSIDE.
+     *
+     * The grid is meant to reach the top of the article column. Left in the
+     * flow the hero starts 2rem down — measured at y=32 against a main at y=0 —
+     * so the pattern began with a band of blank page above it. Full-bleed
+     * upwards, and the space the header wants is its own padding rather than
+     * its parent's.
+     *
+     * Horizontally there is nothing to cancel: `__main` carries no inline
+     * padding, so the hero already spans it exactly.
+     */
+    margin-block-start: -2rem;
+    margin-block-end: 3rem;
+    padding-block: 5rem 3.5rem;
+  }
+
+  /*
+   * ⚠️ FOUR GRADIENTS, NOT AN SVG. The reference for this is a 100px SVG tile
+   * of twenty stroked lines, inlined as a data URI. Drawn as gradients it is
+   * the same picture with three properties that matter more than the fidelity:
+   * not one byte of data URI in the stylesheet, the line colour is a token so
+   * it follows the theme instead of being hardcoded black, and the tile is two
+   * numbers rather than twenty coordinates.
+   *
+   * The grid is 20px with every fifth line emphasised, offset 15px so the
+   * strong lines land at 15, 115, 215 — the tile boundary the SVG drew at 15.5
+   * with a 1px stroke. Strong pairs are listed first because a background image
+   * list paints first-on-top.
+   */
+  .wave-docs-hero::before {
+    content: '';
+    position: absolute;
+    /*
+     * Bigger than the box and offset by a quarter, so a 3° rotation cannot
+     * expose a corner. The overflow is clipped by the header.
+     */
+    inset-block-start: -25%;
+    inset-inline-start: -25%;
+    width: 150%;
+    height: 150%;
+    /* Below the scrims, which are at -1. */
+    z-index: -2;
+    pointer-events: none;
+    rotate: -3deg;
+    background-image:
+      repeating-linear-gradient(
+        to right,
+        transparent 0 15px,
+        var(--wave-docs-hero-grid-strong) 15px 16px,
+        transparent 16px 100px
+      ),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0 15px,
+        var(--wave-docs-hero-grid-strong) 15px 16px,
+        transparent 16px 100px
+      ),
+      repeating-linear-gradient(
+        to right,
+        transparent 0 15px,
+        var(--wave-docs-hero-grid) 15px 16px,
+        transparent 16px 20px
+      ),
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0 15px,
+        var(--wave-docs-hero-grid) 15px 16px,
+        transparent 16px 20px
+      );
+  }
+
+  /*
+   * ⚠️ THREE SCRIMS IN THE PAGE'S OWN COLOUR, PAINTED OVER THE GRID — NOT A
+   * MASK.
+   *
+   * Every earlier version of this masked the grid layer: two or three gradients
+   * multiplied with `mask-composite: intersect`. It worked, and it was never
+   * smooth. Mask layers multiply *alphas*, so the falloffs compound — two
+   * gentle ramps crossing make a hard shoulder, and one arithmetic slip turns
+   * the whole thing into a ring. Painting the page colour on top instead is
+   * ordinary alpha compositing of a solid: the ramps blend rather than
+   * multiply, and each one can be reasoned about on its own.
+   *
+   * It also means the percentages are of the header, not of a layer 150% its
+   * size — which is what three passes went wrong on.
+   *
+   * A separate element from the grid because this one must not rotate. The
+   * grid is at −3°; a scrim tilted with it would put its own edge on a slant.
+   *
+   * Painted first-on-top, so the order below reads outermost-last:
+   *
+   *   1. the reading scrim — a soft ellipse over the words
+   *   2. the bottom fade — nothing at the top, solid before the prose
+   *
+   * The corner vignette is not among them: it is the `box-shadow` below,
+   * because a gradient cannot be given a corner radius and this shape needs
+   * one.
+   */
+  .wave-docs-hero::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      radial-gradient(
+        ellipse 52% 58% at 38% 48%,
+        var(--wave-docs-bg) 0 25%,
+        transparent 80%
+      ),
+      linear-gradient(to bottom, transparent 40%, var(--wave-docs-bg) 90%);
+    /*
+     * ⚠️ THE VIGNETTE IS A SHADOW, NOT A RADIAL — BECAUSE A RADIAL HAS NO
+     * CORNER RADIUS.
+     *
+     * `radial-gradient` is only ever a circle or an ellipse: its shape is two
+     * radii and nothing else, so an elliptical vignette pinches the middle of
+     * every edge and opens the corners. An inset `box-shadow` with blur and
+     * spread fades inward from a *rounded rectangle*, which is the shape this
+     * wants — and `border-radius` is the knob the gradient never had.
+     *
+     * ⚠️ `inset: -4rem`, SO THE BOX'S OWN CORNERS FALL OUTSIDE THE HEADER. One
+     * `border-radius` sets both the shape the shadow fades from and the shape
+     * the box is clipped to; oversizing the box puts the clip out of sight and
+     * leaves only the inner shape doing any work.
+     *
+     * `corner-shape` turns that rounded rectangle into a true squircle. It is
+     * Chrome 139+ and degrades to an ordinary radius everywhere else, which is
+     * the same picture with slightly rounder corners — a progressive
+     * enhancement in the honest sense rather than a fallback nobody checked.
+     */
+    inset: -5rem;
+    border-radius: 14rem;
+    corner-shape: superellipse(3);
+    /*
+     * ⚠️ THE SPREAD HAS TO CLEAR THE OVERHANG BEFORE IT DOES ANY WORK. The box
+     * sits 5rem outside the header on every side, so a spread of 5rem is solid
+     * only as far as the header's rim and the whole fade happens out of sight.
+     * 9rem puts the solid band 4rem inside, and the 10rem blur carries it in
+     * from there.
+     */
+    box-shadow: inset 0 0 10rem 9rem var(--wave-docs-bg);
+
+    /*
+     * ⚠️ EVERY PERCENTAGE ABOVE IS OF THIS LAYER, NOT OF THE HEADER — AND THE
+     * LAYER IS HALF AS BIG AGAIN.
+     *
+     * The header occupies the middle third of it, from 33% to 67% on both axes.
+     * Written as `125% 100%` the radial's edge landed a long way outside the
+     * header, so what showed inside it was all near-centre: 15px of blank along
+     * every edge before the pattern faded up, measured. `83%` and `67%` are
+     * those numbers divided by the 1.5 — the same ellipse, expressed against
+     * the box it is actually seen through.
+     *
+     * The two linear layers are the edge fade, and they are why the pattern
+     * dissolves into the page on all four sides instead of being cut off by
+     * `overflow: clip`. Each one is transparent exactly at the header's edge —
+     * 33% and 67% of the layer — and opaque a few per cent inside it, so the
+     * ramp happens within the header rather than outside where nothing is seen.
+     * The vertical one is asymmetric on purpose: it holds full only to the
+     * midpoint before falling away, so the grid has faded out well before the
+     * prose begins.
+     *
+     * ⚠️ THE RADIAL AND THESE PULL IN OPPOSITE DIRECTIONS, WHICH IS THE POINT.
+     * The radial is transparent at the centre and opaque outward; these are
+     * opaque inside and transparent at the rim. Multiplied, what survives is a
+     * band between the two — a halo around the words that fades at the page
+     * and fades again where the reading starts.
+     */
+  }
+
+  /*
+   * The heading, and it is the page's `<h1>` — `render` stands its own down
+   * when a page declares `actions`. Sized here rather than inherited from
+   * `.wave-docs-prose h1`, because it is outside the prose.
+   */
+  /*
+   * The words, aligned with the prose beneath them. The header itself spans the
+   * whole article track so the grid behind it is full-bleed; this is what keeps
+   * the title from sitting 70px left of the first paragraph.
+   */
+  .wave-docs-hero__body {
+    max-width: var(--wave-docs-measure);
+    margin-inline: auto;
+  }
+
+  .wave-docs-hero__title {
+    margin: 0;
+    color: var(--wave-docs-fg);
+    font-size: clamp(2.25rem, 1.5rem + 3vw, 3.5rem);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* `frontmatter.description`, which is otherwise only a `<meta>` tag. */
+  .wave-docs-hero__tagline {
+    margin: 1rem 0 0;
+    max-width: 34rem;
+    color: var(--wave-docs-fg-muted);
+    font-size: 1.125rem;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .wave-docs-hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-block-start: 2rem;
+  }
+
+  .wave-docs-hero__action {
+    display: inline-flex;
+    align-items: center;
+    /* 44px tall: the same minimum the sidebar's trigger answers to. */
+    min-height: 2.75rem;
+    padding-inline: 1.25rem;
+    border: 1px solid transparent;
+    border-radius: var(--wave-docs-radius);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .wave-docs-hero__action[data-variant='primary'] {
+    background-color: var(--wave-docs-accent);
+    color: var(--wave-docs-accent-fg);
+  }
+
+  .wave-docs-hero__action[data-variant='primary']:hover {
+    background-color: var(--wave-docs-accent-hover);
+  }
+
+  /*
+   * The tinted one. `accent-subtle` is the same surface the active sidebar link
+   * sits on, and its 4.5:1 pair is `accent` — so this is a contrast ratio the
+   * token test already checks rather than a new pairing to argue about.
+   */
+  .wave-docs-hero__action[data-variant='secondary'] {
+    background-color: var(--wave-docs-accent-subtle);
+    color: var(--wave-docs-accent);
+  }
+
+  .wave-docs-hero__action[data-variant='secondary']:hover {
+    border-color: var(--wave-docs-accent);
+  }
+
+  .wave-docs-hero__action:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-hero__action {
+      transition:
+        background-color 120ms ease-out,
+        border-color 120ms ease-out;
+    }
   }
 
   /* -------------------------------------------------------------------------

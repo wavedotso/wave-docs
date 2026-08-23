@@ -63,6 +63,8 @@ import type {
   DocsThemes,
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
+import { DocsHero } from './react/hero.js';
+import type { DocsLinkComponent } from './react/markdown-components.js';
 /*
  * Type-only because only the type is wanted here; the erasure is not doing
  * anything clever.
@@ -296,8 +298,8 @@ function wrapNextImage(NextImage: NextImageComponent): DocsImageComponent {
  */
 function createComponentsMemo(
   labels: MarkdownLabels | undefined,
-): () => Promise<MarkdownComponents> {
-  let memo: Promise<MarkdownComponents> | null = null;
+): () => Promise<NextRenderComponents> {
+  let memo: Promise<NextRenderComponents> | null = null;
   return () => {
     if (memo === null) {
       memo = buildNextComponents(labels).catch((error: unknown) => {
@@ -311,9 +313,24 @@ function createComponentsMemo(
   };
 }
 
+/**
+ * The map the markdown renderer needs, plus the one component something outside
+ * it needs too.
+ *
+ * ⚠️ `link` IS THE SAME IDENTITY THE MAP HOLDS, AND THAT IS THE REASON IT IS
+ * HERE RATHER THAN BUILT AGAIN. `wrapNextLink` returns a fresh function every
+ * call, and a fresh identity remounts what it renders on every pass — which is
+ * exactly the bug this memo exists to prevent for `a`. The hero's actions are
+ * links on the page's most-clicked element; they get the memoised one.
+ */
+interface NextRenderComponents {
+  components: MarkdownComponents;
+  link: DocsLinkComponent;
+}
+
 async function buildNextComponents(
   labels: MarkdownLabels | undefined,
-): Promise<MarkdownComponents> {
+): Promise<NextRenderComponents> {
   const [linkMod, imageMod] = await Promise.all([
     importNext(() => import('next/link'), 'next/link'),
     importNext(() => import('next/image'), 'next/image'),
@@ -325,11 +342,16 @@ async function buildNextComponents(
     'next/image',
   );
 
-  return createMarkdownComponents({
-    Link: wrapNextLink(NextLink),
-    Image: wrapNextImage(NextImage),
-    ...(labels === undefined ? {} : { labels }),
-  });
+  const link = wrapNextLink(NextLink);
+
+  return {
+    components: createMarkdownComponents({
+      Link: link,
+      Image: wrapNextImage(NextImage),
+      ...(labels === undefined ? {} : { labels }),
+    }),
+    link,
+  };
 }
 
 /* -------------------------------------------------------------------------
@@ -1146,7 +1168,7 @@ export function createDocsRoute<
       return notFound();
     }
 
-    const components = await loadComponents();
+    const { components, link } = await loadComponents();
 
     /*
      * TWO CHILDREN, AND THEY MUST STAY DIRECT CHILDREN OF THE GRID.
@@ -1192,6 +1214,26 @@ export function createDocsRoute<
           id: DOCS_CONTENT_ID,
           tabIndex: -1,
         },
+        /*
+         * The hero, when the page asked for one. `null` otherwise, and `null`
+         * renders nothing — so an ordinary page pays no markup for a feature
+         * it did not opt into.
+         */
+        (doc.frontmatter.actions?.length ?? 0) === 0
+          ? null
+          : createElement(DocsHero, {
+              title: doc.frontmatter.title,
+              ...(doc.frontmatter.description === undefined
+                ? {}
+                : { description: doc.frontmatter.description }),
+              ...(doc.frontmatter.actions === undefined
+                ? {}
+                : { actions: doc.frontmatter.actions }),
+              Link: link,
+              ...(routeLabels?.externalLink === undefined
+                ? {}
+                : { externalLabel: routeLabels.externalLink }),
+            }),
         createElement(DocContent, {
           hast: doc.hast,
           components: { ...components, ...options.components },
