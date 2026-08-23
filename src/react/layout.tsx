@@ -1,5 +1,5 @@
 /**
- * The docs shell: skip link, sidebar, search trigger, drawer, grid. There is
+ * The docs shell: skip link, sidebar, search trigger, grid. There is
  * no header: the sidebar is the chrome at every width, and the comment on it
  * below is why.
  *
@@ -30,7 +30,6 @@ import { DocsSearch } from './next-search.js';
 import type { DocsLabels } from './shell-labels.js';
 import { resolveLabels } from './shell-labels.js';
 import { DocsNextNav } from './next-nav.js';
-import { DOCS_NAV_ID } from './nav.js';
 import { SkipLink } from './skip-link.js';
 
 /**
@@ -101,46 +100,22 @@ export function DocsLayoutShell({
     <>
       <SkipLink>{text.skipToContent}</SkipLink>
 
-      <div className="wave-docs-layout">
-        {/*
-         * ⚠️ THIS PACKAGE RENDERS NOTHING ACROSS THE TOP OF THE PAGE.
-         *
-         * It used to render a full-width sticky header holding a brand, the
-         * search trigger and the drawer's trigger. Two of the sites using this
-         * already have a fixed navbar of their own, and a second bar at the same
-         * edge overlaps the first — so the header is gone and nothing replaced
-         * it there.
-         *
-         * Above 64rem this wrapper is the 16rem sidebar column, and the drawer
-         * inside it is `display: contents`, so the search trigger and the tree
-         * become its children directly. Below 64rem it generates no box at all:
-         * the tree and the search live in a closed `<dialog>`, opened by a small
-         * floating button. One nav in the DOM at every width, and nothing of
-         * ours competing for the top edge.
-         */}
-        <div className="wave-docs-layout__sidebar">
-          <button
-            type="button"
-            className="wave-docs-layout__nav-trigger"
-            aria-label={text.openNav}
-            /*
-             * Server-rendered and declarative: `command` opens the dialog with
-             * no JavaScript of ours involved, so the drawer works on the first
-             * tap — before hydration, and with scripts disabled. `commandfor`
-             * binds by id, so the dialog below being a later sibling rather
-             * than a descendant costs nothing. The attributes are not in
-             * `@types/react` yet, and JSX skips excess-property checking on a
-             * spread; React passes both through because they are lowercase.
-             */
-            {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
-          >
-            {/*
-             * No icon. The control is a 24px strip down the edge of the screen,
-             * which is too narrow to hold one legibly — `styles.css` draws a
-             * grip on it instead, decoratively. The button's accessible name is
-             * `aria-label`, so nothing here is load-bearing for a reader.
-             */}
-          </button>
+      <div className="wave-docs-shell">
+        <div className="wave-docs-layout">
+          {/*
+           * ⚠️ THIS PACKAGE RENDERS NOTHING ACROSS THE TOP OF THE PAGE.
+           *
+           * It used to render a full-width sticky header holding a brand, the
+           * search trigger and the sidebar's trigger. Two of the sites using
+           * this already have a fixed navbar of their own, and a second bar at
+           * the same edge overlaps the first — so the header is gone and
+           * nothing replaced it there.
+           *
+           * The sidebar is the chrome instead: one shell at every width,
+           * holding the search trigger, the tree, and the strip that moves
+           * them. It renders its own wrapper and its own scrim, so there is
+           * nothing to place here.
+           */}
 
           {/* The three the tree renders are forwarded only when set: they cross
               into a client component, so an unconfigured site must not pay for
@@ -149,6 +124,7 @@ export function DocsLayoutShell({
             nav={nav}
             label={text.nav}
             closeLabel={text.closeNav}
+            openLabel={text.openNav}
             {...(labels?.expandGroup === undefined
               ? {}
               : { expandGroup: labels.expandGroup })}
@@ -164,8 +140,8 @@ export function DocsLayoutShell({
                 indexUrl={searchIndexUrl}
                 {...(search === true ? {} : search)}
                 /*
-                 * ⚠️ AFTER THE SPREAD, AND JOINED. `className` was before it, so
-                 * a host passing `search={{ className: 'my-search' }}` — the
+                 * ⚠️ AFTER THE SPREAD, AND JOINED. `className` was before it,
+                 * so a host passing `search={{ className: 'my-search' }}` — the
                  * ordinary reason to pass one — replaced
                  * `wave-docs-layout__search` instead of adding to it, and the
                  * trigger lost the placement the shell depends on. Adding a
@@ -180,8 +156,8 @@ export function DocsLayoutShell({
               />
             )}
           </DocsNextNav>
+          {children}
         </div>
-        {children}
       </div>
     </>
   );

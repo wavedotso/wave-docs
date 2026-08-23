@@ -48,9 +48,15 @@ export interface DocsLabels {
 
   /** The navigation landmark's accessible name. Default `'Documentation'`. */
   nav?: string | undefined;
-  /** The strip button that opens the drawer. Default `'Open navigation'`. */
+  /**
+   * The sidebar's trigger, named for what pressing it does next. One button
+   * carries both strings: `openNav` while the sidebar is closed, `closeNav`
+   * while it is open.
+   *
+   * Default `'Open navigation'`.
+   */
   openNav?: string | undefined;
-  /** The button that closes the drawer. Default `'Close navigation'`. */
+  /** The same button, while the sidebar is open. Default `'Close navigation'`. */
   closeNav?: string | undefined;
   /** The skip link's visible text. Default `'Skip to content'`. */
   skipToContent?: string | undefined;

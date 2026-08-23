@@ -129,10 +129,13 @@
      * layout surface; the gutter and the drawer width are literals, because each
      * appears once and an ordinary override is already the cleanest tool for
      * them. */
-    --wave-docs-bar-height: 3.5rem;
     --wave-docs-sidebar-width: 16rem;
+    /* The button the reader sees. The strip around it is `auto` — this plus 4px
+     * of padding on every side — so setting this is the whole of resizing the
+     * control, and the hit area grows with it rather than being a second number
+     * to keep in step. */
+    --wave-docs-trigger-width: 1.25rem;
     --wave-docs-toc-width: 15rem;
-    --wave-docs-shell-width: 100rem;
 
     /*
      * Where our sticky chrome starts, and the one thing only the host knows.
@@ -153,14 +156,16 @@
 
     /* How far below the top of the scrollport an anchored heading parks.
      *
-     * Derived, not set, and breakpoint-dependent: below 64rem a
-     * heading has to clear the host's bar *and* our strip; at and above it
-     * there is no strip, so only the host's bar. Both terms are needed — an
-     * earlier draft made the desktop value a flat `1rem`, which parks a heading
-     * underneath the host bar of the very persona the ADR is for. */
-    --wave-docs-scroll-padding: calc(
-      var(--wave-docs-chrome-offset) + var(--wave-docs-bar-height) + 1rem
-    );
+     * Derived, not set, and one derivation rather than two. It carried a
+     * `--wave-docs-bar-height` term as well, because the sidebar used to take a
+     * strip shape *above* the content below 64rem and a heading had to clear
+     * that too. The sidebar is beside the content at every width now, so
+     * nothing of ours is ever over a heading.
+     *
+     * ⚠️ THE HOST TERM IS NOT OPTIONAL. An earlier draft made the desktop value
+     * a flat `1rem`, which parks a heading underneath the host bar of the very
+     * persona `--wave-docs-chrome-offset` exists for. */
+    --wave-docs-scroll-padding: calc(var(--wave-docs-chrome-offset) + 1rem);
     --wave-docs-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
       Consolas, "Liberation Mono", monospace;
 
@@ -190,23 +195,6 @@
      * shell already constrains the column. One of the six settable layout
      * tokens. */
     --wave-docs-measure: 46rem;
-  }
-
-  /*
-   * The second half of `--wave-docs-scroll-padding`, and it was missing.
-   *
-   * ⚠️ THE COMMENT ABOVE PROMISED TWO DERIVATIONS AND THE SHEET SHIPPED ONE.
-   * Above 64rem the strip is not rendered — the sidebar is a column beside the
-   * content, not a bar above it — so carrying `--wave-docs-bar-height` there
-   * parked every anchored heading 3.5rem lower than it should be. A prose
-   * comment claiming breakpoint-dependence is not a breakpoint, and nothing
-   * failed: the value was legal, plausible, and wrong at exactly one of the two
-   * widths. `styles.test.ts` now asserts both derivations exist.
-   */
-  @media (min-width: 64rem) {
-    :root {
-      --wave-docs-scroll-padding: calc(var(--wave-docs-chrome-offset) + 1rem);
-    }
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -474,6 +462,13 @@
      * shipped, so in practice every consumer's first override was the same
      * container CSS — a default the package should have carried itself. */
     max-width: var(--wave-docs-measure);
+    /* ⚠️ AND CENTRED IN ITS TRACK, WHICH IS WHERE THE SHELL'S OLD CAP WENT.
+     * The shell used to be capped and centred, which pushed the sidebar off the
+     * page's inline start edge and left the closed navigation visible in the
+     * centring margin. The reading column is the thing that should not stretch,
+     * so it is the thing that is capped — and centring it here is what keeps a
+     * 2560px display from pinning the text against the navigation. */
+    margin-inline: auto;
   }
 
   .wave-docs-prose > * + * {
@@ -1755,63 +1750,93 @@
 
 @layer components {
   /*
-   * Mobile first, and single-column by construction: the sidebar and the TOC
-   * are not laid out at all below 64rem, so nothing reserves a track for them.
+   * ONE SIDEBAR, AT EVERY WIDTH, AND IT IS A SHELL OF TWO.
+   *
+   *   .wave-docs-shell                       the query container
+   *   └─ .wave-docs-layout                   the grid
+   *      ├─ .wave-docs-layout__sidebar       paints nothing, and moves
+   *      │  ├─ …__sidebar-nav                the surface, and the one border
+   *      │  └─ …__sidebar-trigger            the strip — paints nothing at rest
+   *      ├─ .wave-docs-layout__sidebar-scrim
+   *      ├─ .wave-docs-layout__main
+   *      └─ .wave-docs-layout__toc
+   *
+   * There is no drawer, no dialog, no second control and no second copy of the
+   * tree. Pressing the trigger translates the sidebar; the trigger rides on the
+   * navigation's outer edge because it is the next flex item, not because a
+   * number says so.
+   *
+   * ⚠️ `@container`, AND EVERY WIDTH-BASED `@media` IS GONE WITH IT.
+   *
+   * This package is mounted at `/docs` inside applications that own the rest of
+   * the page. `@media` asks how wide the *screen* is, which is the wrong
+   * question: a host who puts this in a 700px panel on a 1920px monitor gets
+   * the wide layout and a reading column of about 60px. That is the same
+   * failure as the fixed header — a collision arriving from a direction no
+   * breakpoint can see. `@container` asks how wide the box we were *given* is,
+   * which is the question with an answer.
+   *
+   * ⚠️ AND THAT IS WHY THERE IS AN OUTER ELEMENT. A container query never
+   * matches its own container, so with `container-type` on the grid, no rule
+   * inside a query could touch `grid-template-columns` — which is exactly the
+   * declaration the layout has to change. One wrapper, and every rule below is
+   * addressable.
    */
-  .wave-docs-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0 1.5rem;
-    /* 1rem on a phone, not 1.5rem: 48px of side padding is 15% of a 320px
-     * screen, and it took the reading column to 272px — under the 280px this
-     * package treats as the floor for a usable measure. Measured.
-     *
-     * ⚠️ THE EDGE TRIGGER HAS TO BE PAID FOR, AND AT 320px IT IS PAID IN
-     * GUTTER RATHER THAN IN MEASURE. The trigger is `fixed` and out of flow, so
-     * the inline start has to clear it or the first words of every line sit
-     * under a control. The obvious spelling — the trigger's width *plus* the
-     * usual 1rem — left a 264px column at 320px, under the 280px floor above.
-     * So the inline start is the grip plus the smallest gap that keeps text off
-     * it: 320 − 32 − 8 = 280, which lands exactly on the floor rather than
-     * under it. It was 1.5rem for one commit — the width of the grip and not a
-     * pixel more — and the first word of every line touched the tab.
-     * Reset at 64rem, where the trigger is not rendered. */
-    padding-inline: 2rem 0.5rem;
-    /* Without this, `max-width` at the 100rem cap applies to the *content* box
-     * and the shell renders 48px wider than the token says — measured 1648
-     * against a declared 1600. */
-    box-sizing: border-box;
-  }
-
-  @media (min-width: 30rem) {
-    .wave-docs-layout {
-      /* Still clearing the edge trigger — it is rendered at every width below
-       * 64rem — and with room to spare now that the viewport has some. */
-      padding-inline: calc(1.5rem + 1rem) 1.5rem;
-    }
-  }
-
   /*
-   * ⚠️ `contents`, NOT `none`, AND THAT IS NOT A STYLE PREFERENCE.
+   * ⚠️ NO `max-width` AND NO `margin-inline: auto` HERE, AND THAT IS A FIX
+   * RATHER THAN AN OMISSION.
    *
-   * The drawer `<dialog>` lives inside this wrapper, so that one nav DOM can
-   * serve both breakpoints. An element inside a `display: none` subtree
-   * generates no boxes at all — including a dialog promoted to the top layer —
-   * so `showModal()` would open a drawer that paints nothing, on every viewport
-   * narrower than 64rem. Which is to say: on the phones this drawer exists for.
+   * This box was capped at `--wave-docs-shell-width` and centred. Below the cap
+   * the layout's inline start edge and the viewport's are the same place, so
+   * `translate: calc(var(--wave-docs-trigger-width) - 100%)` put the closed
+   * navigation off the screen. Above it they are not: on a 2000px viewport the
+   * shell starts at 200, and the closed navigation parked at −56…200 — two
+   * hundred pixels of it still on screen, beside a trigger sitting 200px in
+   * from the edge. Measured.
    *
-   * `contents` makes the wrapper generate no box of its own, so it reserves no
-   * grid track, while the closed dialog inside stays hidden by the UA's own
-   * `dialog:not([open]) { display: none }`.
-   *
-   * There is no bar here and there was one twice: first a full-width sticky
-   * header, then a sticky strip that replaced it. Both took the viewport's top
-   * edge, which is the edge a host application's own navbar already has —
-   * measured against a fixed 64px host bar, ours landed on top of it at every
-   * width. Nothing of this package's is at that edge now.
+   * The sidebar owns the page's inline start edge at every width now, so
+   * "closed" means off the screen by construction rather than by coincidence.
+   * What was capped is capped where it belongs: `.wave-docs-prose` holds
+   * `--wave-docs-measure` and centres itself in the track, so a 2560px display
+   * gets a reading column between its navigation and its table of contents
+   * instead of text pinned against one of them.
    */
-  .wave-docs-layout__sidebar {
-    display: contents;
+  .wave-docs-shell {
+    container-type: inline-size;
+    container-name: wave-docs;
+  }
+
+  .wave-docs-layout {
+    /* Absolutely positioned children of ours resolve against this, so nothing
+     * of ours resolves against the viewport and nothing of ours can land on a
+     * host's chrome. */
+    position: relative;
+    display: grid;
+    /*
+     * ⚠️ `auto`, AND THE SIDEBAR DECIDES WHAT IT MEANS. The track takes the
+     * sidebar's *outer* size, and the sidebar sets that with a negative margin:
+     * 44px whenever the navigation is off the page or covering the article,
+     * its full width only when it is meant to sit beside it. So one track
+     * expresses both modes and both states, and the layout never has to know
+     * which it is in.
+     *
+     * A fixed `var(--wave-docs-trigger-width)` here was the first attempt, and
+     * it could not grow — push mode silently behaved exactly like cover mode.
+     * Measured at 1440px: the article started at 68px in both states.
+     *
+     * In cover mode the article's measure is untouched by the toggle, because
+     * the track never changes: 330px at 390px whether the navigation is open or
+     * shut. In push mode it necessarily changes — that is what push means, and
+     * it is why cover exists for the widths where 330px is all there is.
+     */
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0 0.5rem;
+    /* Nothing on the inline start: the trigger's track owns that edge. */
+    padding-inline: 0 0.5rem;
+    /* Without this, `max-width` at the cap applies to the *content* box and the
+     * shell renders 48px wider than the token says — measured 1648 against a
+     * declared 1600. */
+    box-sizing: border-box;
   }
 
   .wave-docs-layout__toc {
@@ -1831,271 +1856,245 @@
    * and removing `min-width: 0` alone passes; only removing both reproduces the
    * overflow. They are kept as a pair because they fail in opposite directions
    * — the track constraint protects a child that does not carry `min-width`,
-   * and `min-width: 0` protects a track someone respells — and because the one
-   * that is left looks arbitrary without the other beside it.
-   *
-   * No unit test can see any of this: the bug needs a wide child and a real
-   * layout engine, and jsdom reports every width as 0.
-   * `src/styles.browser.test.ts` is what stops a "simplification" here from
-   * reintroducing it silently.
+   * and `min-width: 0` protects a track someone respells.
    */
   .wave-docs-layout__main {
     min-width: 0;
     padding-block: 2rem 4rem;
-  }
-
-  /* 16rem sidebar + 46rem measure + two 1.5rem gutters = 65rem, so the sidebar
-   * arrives when there is room for it and not one pixel sooner. A 60rem
-   * breakpoint introduces it exactly where it starts eating the measure. */
-  @media (min-width: 64rem) {
-    .wave-docs-layout {
-      grid-template-columns: var(--wave-docs-sidebar-width) minmax(0, 1fr);
-      /* No edge trigger up here, so no gutter to reserve for it. */
-      padding-inline: 1.5rem;
-    }
-
     /*
-     * ⚠️ THE MOST DELETABLE-LOOKING LINE IN THIS FILE. IT IS NOT DELETABLE.
+     * ⚠️ EVERY `z-index` IN THE ARTICLE IS TRAPPED HERE, AND ONE OF THEM WAS
+     * PUNCHING THROUGH THE SCRIM.
      *
-     * `display: contents` makes the dialog box vanish from layout **and from
-     * the accessibility tree**, so the `<DocsSidebar>` inside it becomes the
-     * sticky column directly. That is what lets one nav serve both breakpoints:
-     * one landmark, one copy of the links in the payload, nothing to keep in
-     * step. Remove it and the desktop sidebar disappears entirely — or, if
-     * someone "fixes" that by rendering a second sidebar outside the dialog,
-     * every page ships its nav twice and a screen-reader user gets two
-     * identical navigation landmarks.
+     * A sticky table header is `z-index: 1`, and so is the scrim. Same stacking
+     * context, equal z-index, and the header comes later in the document — so
+     * with the navigation open over a table on a phone, the header row was the
+     * one thing on the page that stayed bright. Measured on the installation
+     * page.
      *
-     * `:not(:modal)` so the drawer still opens as a real modal at any width;
-     * it is the same element, and a 64rem viewport with a 200% zoom is a
-     * narrow one.
+     * Raising the scrim would have fixed that one element and left the next
+     * one. `isolation: isolate` makes the article its own stacking context, so
+     * nothing inside it — ours or a consumer's own content — can be compared
+     * against the scrim at all. The article resolves as a whole, at one layer,
+     * underneath.
      */
-    dialog.wave-docs-layout__drawer:not(:modal),
-    dialog.wave-docs-layout__drawer:not(:modal)
-      .wave-docs-layout__drawer-body {
-      display: contents;
-    }
-
-    .wave-docs-layout__sidebar {
-      /* Back to a column: `block`, its own track, no strip chrome. */
-      display: block;
-      height: auto;
-      background: none;
-      border-block-end: 0;
-      position: sticky;
-      top: var(--wave-docs-chrome-offset);
-      /* `dvh`, not `vh`: with a mobile URL bar showing, `vh` is taller than the
-       * visible viewport, so the last few nav items sit under the chrome and
-       * cannot be reached. */
-      max-height: calc(100dvh - var(--wave-docs-chrome-offset));
-      overflow-y: auto;
-      /* Without this, reaching the end of the nav keeps scrolling — the article
-       * jumps under the reader's cursor while they are looking at the sidebar. */
-      overscroll-behavior: contain;
-      /* Reserves the scrollbar's width whether or not it is showing, so the
-       * column does not jump when the nav grows past a screen. Costs ~15px on
-       * platforms with classic scrollbars; a jumping column costs more. */
-      scrollbar-gutter: stable;
-      padding-block: 2rem;
-    }
-
-    /* First child of the column, above the tree. */
-    .wave-docs-layout__search {
-      margin-block-end: 1rem;
-    }
+    isolation: isolate;
   }
 
-  @media (min-width: 80rem) {
+  /* -------------------------------------------------------------------------
+   * The sidebar
+   * ---------------------------------------------------------------------- */
+
+  /*
+   * It paints nothing. The navigation carries the surface and the border, the
+   * trigger carries neither — so there is no third surface to keep in step with
+   * the other two, which is what made the strip read as filled every previous
+   * time this was drawn.
+   */
+  .wave-docs-layout__sidebar {
+    display: flex;
+    /* No gap: the trigger sits directly against the navigation's border. */
+    gap: 0;
+    width: max-content;
+    justify-self: start;
     /*
-     * Inside the query on purpose. As a top-level rule this `:has()` reserves
-     * `--wave-docs-toc-width` of nothing at every width — measured at 390px it
-     * squeezed the article to 94px — because the TOC element is in the DOM at
-     * all sizes and only its `display` changes.
+     * ⚠️ THE COLUMN IN THE PAGE, NOT THE PANEL THAT FOLLOWS THE VIEWPORT, AND
+     * KEEPING THOSE TWO APART IS THE POINT.
+     *
+     * This box was `position: sticky` with `height: 100dvh` — sized against the
+     * viewport while positioned against the layout, which is two reference
+     * frames in one element. The moment a host put anything above it, the two
+     * disagreed by exactly that much: with the UA's 8px of `body` margin the
+     * divider stopped 8px short of the top and ran 8px past the bottom, and it
+     * snapped into place as soon as the page scrolled and sticky engaged.
+     * Measured.
+     *
+     * Stretched to the grid row, it is exactly as tall as the docs region —
+     * starting where the host put it and ending where it ends, symmetric at any
+     * offset, with no token to set and nothing to keep in sync. The scrolling
+     * half is `position: sticky` on the two children, which is where a viewport
+     * measurement belongs.
      */
-    .wave-docs-layout:has(.wave-docs-layout__toc) {
-      grid-template-columns:
-        var(--wave-docs-sidebar-width)
-        minmax(0, 1fr)
-        var(--wave-docs-toc-width);
-    }
-
-    .wave-docs-layout__toc {
-      display: block;
-      position: sticky;
-      /* `align-self: start`, or the sticky box stretches to the row height and
-       * has nothing left to travel within. */
-      align-self: start;
-      top: var(--wave-docs-chrome-offset);
-      max-height: calc(100dvh - var(--wave-docs-chrome-offset));
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      padding-block: 2rem;
-    }
+    align-self: stretch;
+    /* So a page shorter than a screen does not leave the sticky panel hanging
+     * below the column that draws its edge. */
+    min-height: calc(100dvh - var(--wave-docs-chrome-offset));
+    position: relative;
+    /* Above the scrim, which is above the article. */
+    z-index: 2;
+    background: none;
+    border: 0;
+    /*
+     * ⚠️ THE BOX IS ALWAYS `max-content`; ONLY ITS CONTRIBUTION MOVES.
+     *
+     * This one declaration is the whole of "the article does not get out of the
+     * way" — closed at any width, and open in cover mode. The box still paints
+     * its full width, so in cover mode it overlays; it just does not ask the
+     * grid for the room. Push mode drops it, and the same box takes its own
+     * space with nothing else changing.
+     */
+    margin-inline-end: calc(-1 * var(--wave-docs-sidebar-width));
+    /*
+     * Exactly the navigation's width, so it goes entirely off the page and the
+     * trigger's outer edge lands on the inline start edge — whatever the strip
+     * happens to be.
+     *
+     * ⚠️ THE SAME TOKEN AS THE MARGIN ABOVE, AND DELIBERATELY. It was
+     * `calc(var(--wave-docs-trigger-width) - 100%)` — "minus all of me, plus the
+     * trigger back" — which avoided naming the navigation but only worked while
+     * the strip had a width to name. The strip is `auto` now, so this is both
+     * shorter and the only spelling that cannot drift: the two declarations
+     * that move the sidebar read the same token.
+     */
+    translate: calc(-1 * var(--wave-docs-sidebar-width));
   }
 
-  /* One declaration, for the only screenshot anyone takes on a 2560px display:
-   * uncapped, the sidebar pins to the far-left bezel and the TOC to the
-   * far-right, about 1500px apart, with the text floating between them. */
-  @media (min-width: 100rem) {
-    .wave-docs-layout {
-      max-width: var(--wave-docs-shell-width);
-      margin-inline: auto;
+  /*
+   * ⚠️ THREE STATES, NOT TWO, AND THE THIRD ONE IS WHY THERE IS NO FLASH.
+   *
+   * `data-state` absent means "nobody has chosen yet" — the server renders
+   * that, and CSS decides per mode: closed where the navigation would cover the
+   * article, open where it would sit beside it. So the first paint is already
+   * right at both shapes, with no JavaScript and nothing to correct. Once the
+   * reader presses the trigger their choice is explicit and wins at every
+   * width.
+   */
+  .wave-docs-layout__sidebar[data-state='open'] {
+    translate: 0;
+  }
+
+  /*
+   * ⚠️ NOT UNTIL THE SECOND FRAME. A transition declared at first paint
+   * animates the resolved state *in* from wherever the initial one was — the
+   * navigation visibly slides across on every page load. `data-ready` is set
+   * after mount, so the first paint is a jump nobody sees and every later
+   * change is animated.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-layout__sidebar[data-ready] {
+      transition:
+        translate 200ms ease,
+        margin-inline-end 200ms ease;
     }
   }
 
   /* -------------------------------------------------------------------------
-   * The strip's own controls
-   *
-   * The header is gone. Two of its four children survive it — the
-   * drawer trigger and the search trigger — and are children of
-   * `.wave-docs-layout__sidebar` now. `__title` and `__actions` do not: a brand
-   * belongs to the index page's own title, and a theme toggle or a repository
-   * link belongs to the host's layout, which wraps this one.
+   * The navigation
    * ---------------------------------------------------------------------- */
 
   /*
-   * ⚠️ THE TWO FIXED ELEMENTS THIS PACKAGE RENDERS, AND THEY ARE ONE CONTROL.
-   *
-   * Everything else is in flow: two elements in flow push each other and both
-   * stay visible, while a fixed one overlaps whatever is beneath it with
-   * neither side able to detect the collision. That argument is why there is no
-   * bar across the top any more.
-   *
-   * It still applies here, and these are 24px strips down an edge rather than
-   * bands across the top — so what they can collide with is a host's own edge
-   * affordance, not their navigation, which is the thing that was actually
-   * breaking. A host who has one moves ours with
-   * `.wave-docs-layout__nav-trigger { inset-inline-start: … }`, or renders
-   * their own trigger against `commandfor="wave-docs-nav"`, which is plain HTML
-   * and needs nothing from us.
-   *
-   * ⚠️ ONE RULE, BECAUSE THEY ARE THE SAME AFFORDANCE SEEN FROM EITHER SIDE.
-   * They were two: 24px against 44px, a grip against an `<svg>` cross, a filled
-   * strip against a transparent one. Opening and closing the same drawer should
-   * not look like two different controls.
-   *
-   * Transparent until hovered, then the accent — the strip is the target and
-   * the grip is what says so.
+   * The only painted surface in the sidebar, and it has to be opaque: in cover
+   * mode it sits on top of the article, and a translucent one would put two
+   * columns of text through each other.
    */
-  .wave-docs-layout__nav-trigger,
-  .wave-docs-layout__drawer-close {
-    /*
-     * ⚠️ 44px OF TARGET, 24px OF PAINT, AND THE DIFFERENCE IS DELIBERATE.
-     * The strip is the hit area — full height, wider than the grip it holds —
-     * and it paints nothing until a pointer is on it. WCAG 2.5.8 asks for 24
-     * and iOS and WCAG 2.5.5 ask for 44; painting the whole 44 puts a slab
-     * down the edge of every page, which is what two earlier attempts did.
-     *
-     * ⚠️ THE EXTRA 20px IS A TRANSPARENT BORDER, AND THAT IS THE WHOLE TRICK.
-     * A transparent border is inside the border box, so it is hit-tested; with
-     * `background-clip: padding-box` it is not painted. So the target is 44px
-     * and every background this control ever draws is 24px — including the
-     * hover wash, which is the state that made the difference visible. Painted
-     * across the full 44 it washed the first two characters of every line,
-     * because the gutter it overhangs into is only 24px wide. Measured at
-     * 390px.
-     */
+  .wave-docs-layout__sidebar-nav {
+    flex: none;
     box-sizing: border-box;
+    width: var(--wave-docs-sidebar-width);
+    padding: 2rem 1rem;
+    border: 0;
     /*
-     * ⚠️ `relative` IS LOAD-BEARING, NOT DECORATION. Both the tab and the dots
-     * are `position: absolute`, and an absolutely positioned box resolves
-     * against the nearest *positioned* ancestor. The trigger is `fixed` so it
-     * qualifies; the close control is a flex item and did not — its tab
-     * escaped to the viewport and painted a 300px slab across the drawer with
-     * the dots stranded in the middle of it. Measured at 390px.
+     * Cover mode only, and it is a different thing from the divider in push
+     * mode: there the line divides the page, here it is the edge of a panel
+     * lying on top of one. A panel's edge is the panel's height, so this one
+     * belongs on the panel.
      */
-    position: relative;
-    width: 2.75rem;
-    padding: 0;
+    border-inline-end: 1px solid var(--wave-docs-border);
+    background-color: var(--wave-docs-bg);
+    /* The panel that follows the viewport: sticky, one screen tall, and its own
+     * scroller. `dvh`, not `vh` — with a mobile URL bar showing, `vh` is taller
+     * than the visible viewport and the last few nav items cannot be reached. */
+    position: sticky;
+    top: var(--wave-docs-chrome-offset);
+    height: calc(100dvh - var(--wave-docs-chrome-offset));
+    overflow-y: auto;
+    /* Without this, reaching the end of the nav keeps scrolling — the article
+     * jumps under the reader's cursor while they are looking at the sidebar. */
+    overscroll-behavior: contain;
+    /* Reserves the scrollbar's width whether or not it is showing, so the
+     * column does not jump when the nav grows past a screen. */
+    scrollbar-gutter: stable;
+  }
+
+  /* First child of the navigation, above the tree. */
+  .wave-docs-layout__search {
+    margin-block-end: 1rem;
+  }
+
+  /* -------------------------------------------------------------------------
+   * The trigger
+   * ---------------------------------------------------------------------- */
+
+  /*
+   * ⚠️ NO BACKGROUND AND NO BORDER, IN ANY STATE. 44px wide because that is
+   * Apple's minimum tap target and the strip *is* the target — it carried a
+   * 20px transparent border for a while to answer to 44 while painting 24, and
+   * a box the eye cannot see is a box the next person deletes.
+   */
+  .wave-docs-layout__sidebar-trigger {
+    flex: none;
+    /*
+     * Sticky for the same reason the navigation is: the column around it is the
+     * page's height now, and a control centred in *that* would sit halfway down
+     * a long document instead of halfway down the screen.
+     *
+     * ⚠️ AND IT IS ALSO WHAT POSITIONS THE BUTTON. The button and the dots are
+     * `position: absolute`, and an absolutely positioned box resolves against
+     * the nearest *positioned* ancestor — `sticky` qualifies, `static` does not.
+     * Without a positioned ancestor here they escape to the layout and paint a
+     * slab across the page. Measured.
+     */
+    position: sticky;
+    top: var(--wave-docs-chrome-offset);
+    height: calc(100dvh - var(--wave-docs-chrome-offset));
+    /*
+     * ⚠️ `auto`, SO THE TARGET GROWS WITH THE BUTTON. The strip was a fixed
+     * 2.75rem and the button was positioned inside it, which made the gap
+     * between them a third number nobody set: 24px of button left 10px a side,
+     * 16px left 14px. Sized by its content it is always the button plus 4px,
+     * and `--wave-docs-trigger-width` is the only thing to change.
+     */
+    display: grid;
+    place-items: center;
+    width: auto;
+    padding: 4px;
     border: 0;
     background: none;
-    background-clip: padding-box;
     color: var(--wave-docs-fg-muted);
     cursor: pointer;
   }
 
   /*
-   * ⚠️ THE ONE THAT OPENS THE DRAWER IS THE ONLY ONE STILL OUT OF FLOW, AND
-   * IT HAS TO BE. It sits over the article, which is a grid track and not a
-   * row it can join; the grid pays for it in `padding-inline` instead. Its
-   * twin inside the drawer has a row to sit in, so it sits in one.
+   * The button: `--wave-docs-trigger-width` × 80, and grey until hovered.
+   *
+   * ⚠️ IN FLOW, WHICH IS WHAT MAKES THE STRIP SIZE ITSELF. Absolutely
+   * positioned it contributed nothing, so the strip needed its own width and
+   * the gap between the two was whatever the subtraction happened to be. This
+   * is the only in-flow child, so the strip is exactly this plus its 4px of
+   * padding — one number, and the target follows the paint.
+   *
+   * `place-items: center` on the strip does the centring the insets used to.
    */
-  .wave-docs-layout__nav-trigger {
-    position: fixed;
-    inset-block: 0;
-    inset-inline-start: 0;
-    z-index: 30;
-    border-inline-end: 1.25rem solid transparent;
-  }
-
-  /* In flow, at the panel's inline end, and full height by `align-self`. */
-  .wave-docs-layout__drawer-close {
-    flex: none;
-    align-self: stretch;
-    border-inline-start: 1.25rem solid transparent;
-  }
-
-  /*
-   * The grip: a 24×80 tab flush against the edge, and the whole of what this
-   * control paints at rest.
-   *
-   * ⚠️ 24px IS NOT A ROUND NUMBER, IT IS THE GUTTER. `.wave-docs-layout`
-   * reserves exactly `1.5rem` of `padding-inline` for this at 320px, so a grip
-   * of any other width either floats in dead space or sits under the first
-   * word of every line. The two numbers are one number.
-   *
-   * 80px tall, because the ratio is what does the work: at 24×80 (1:3.3) it
-   * reads as a handle on an edge, at 24×48 as a stray button, and past ~120 as
-   * a rail. It is also 1.8× the 44px minimum on its own — so the *painted*
-   * mark already satisfies WCAG 2.5.5 without borrowing from the invisible
-   * strip, which is what makes it worth painting at all.
-   *
-   * Rounded on the two corners facing the page and square on the two against
-   * the edge: a tab attached to something, not a pill dropped next to it.
-   */
-  .wave-docs-layout__nav-trigger::before,
-  .wave-docs-layout__drawer-close::before {
+  .wave-docs-layout__sidebar-trigger::before {
     content: '';
-    position: absolute;
-    inset-block-start: 50%;
-    /*
-     * ⚠️ NO `width`, AND THAT IS THE POINT. `inset-inline: 4px` *is* the
-     * strip's padding, spelled on the only box that can carry it: an
-     * absolutely positioned child resolves its insets against the padding box,
-     * which is the 24px the strip paints — so the tab is 16px and there are
-     * 4px of strip either side of it, whatever that band is ever set to. Given
-     * a `width` instead, the two numbers could disagree and one would be
-     * silently dropped as over-constrained.
-     */
-    inset-inline: 4px;
+    width: var(--wave-docs-trigger-width);
     height: 5rem;
-    translate: 0 -50%;
-    /* One radius, all four corners: the tab no longer touches an edge, so
-     * there is no edge for a square corner to sit against. */
     border-radius: var(--wave-docs-radius-sm);
-    background-color: var(--wave-docs-border);
+    background-color: var(--wave-docs-border-strong);
   }
 
   /*
-   * Three dots on the grip, and they are the reason it is a menu rather than a
-   * drag handle.
+   * Three dots. Measured off docsify.js.org rather than reasoned about: three
+   * 4px circles 3px apart. One element and two `box-shadow` copies rather than
+   * three spans — no markup, and it follows `currentcolor` through the hover
+   * state for free. 4 + 3 + 4 + 3 + 4 is 18px tall, so the offset is 7.
    *
-   * Measured off docsify.js.org rather than reasoned about: three 4px circles
-   * 3px apart. One element and two `box-shadow` copies rather than three
-   * spans — no markup, and it follows `currentcolor` through the hover state
-   * for free. 4 + 3 + 4 + 3 + 4 is 18px tall, so the offset is 7.
-   *
-   * ⚠️ `::after`, AND THE ORDER IS LOAD-BEARING. Both pseudo-elements are
-   * positioned and neither carries a `z-index`, so tree order decides which
-   * paints on top. The grip is `::before` because the dots have to be over it.
+   * ⚠️ `::after`, AND THE ORDER IS LOAD-BEARING. Neither pseudo-element carries
+   * a `z-index`, so tree order decides which paints on top.
    */
-  .wave-docs-layout__nav-trigger::after,
-  .wave-docs-layout__drawer-close::after {
+  .wave-docs-layout__sidebar-trigger::after {
     content: '';
     position: absolute;
     inset-block-start: 50%;
-    /* Half the painted band, on both controls — the containing block is the
-     * padding box, so `50%` is the same 12px on either side of the drawer. */
     inset-inline-start: 50%;
     width: 4px;
     height: 4px;
@@ -2108,26 +2107,12 @@
   }
 
   /*
-   * Hover, and it is one gesture lighting three surfaces: the strip washes to
-   * the accent at 30%, the grip goes solid accent, and the dots invert onto it.
-   *
-   * The strip is the part that answers "how big is this thing?" — at rest a
-   * reader can only see the 24px grip, and the 44px they can actually hit is
-   * invisible. Painting the whole target on hover is what tells them.
-   *
-   * Same treatment as a sidebar link, which changes background and colour
-   * together for the same reason: one of the two is the surface moving and the
-   * other is the label keeping up with it.
+   * ⚠️ THE STRIP'S HOVER LIGHTS THE BUTTON TOO, AND THAT IS WHAT MAKES IT ONE
+   * CONTROL. Hovering 44px of strip while the button inside it stays grey reads
+   * as a dead zone around a small target; Docsify pairs them for the same
+   * reason.
    */
-  .wave-docs-layout__nav-trigger:hover,
-  .wave-docs-layout__drawer-close:hover {
-    /*
-     * ⚠️ `background-color`, NOT `background`. The shorthand resets
-     * `background-clip` to `border-box`, which is exactly the declaration
-     * keeping this wash off the 20px transparent border — so spelled as a
-     * shorthand it paints the full 44px and lands on the text. It did, for one
-     * build.
-     */
+  .wave-docs-layout__sidebar-trigger:hover {
     background-color: color-mix(
       in oklab,
       var(--wave-docs-accent) 30%,
@@ -2136,23 +2121,19 @@
     color: var(--wave-docs-accent-fg);
   }
 
-  .wave-docs-layout__nav-trigger:hover::before,
-  .wave-docs-layout__drawer-close:hover::before {
+  .wave-docs-layout__sidebar-trigger:hover::before {
     background-color: var(--wave-docs-accent);
   }
 
   @media (prefers-reduced-motion: no-preference) {
-    .wave-docs-layout__nav-trigger,
-    .wave-docs-layout__drawer-close,
-    .wave-docs-layout__nav-trigger::before,
-    .wave-docs-layout__drawer-close::before,
-    .wave-docs-layout__nav-trigger::after,
-    .wave-docs-layout__drawer-close::after {
+    .wave-docs-layout__sidebar-trigger,
+    .wave-docs-layout__sidebar-trigger::before,
+    .wave-docs-layout__sidebar-trigger::after {
       /*
        * ⚠️ ON THE PSEUDO-ELEMENTS TOO, NOT ONLY THE BUTTON. The dots are
        * `background: currentcolor`, and an inherited colour changing does not
        * start a transition on a descendant that has not declared one — the
-       * grip would fade and the dots would snap.
+       * button would fade and the dots would snap.
        */
       transition:
         background-color 120ms ease-out,
@@ -2164,132 +2145,141 @@
    * ⚠️ AN OUTLINE, NOT THE FILL. These shared the hover rule for one commit,
    * and `focus-indicators` caught it: a background change is the one thing
    * forced-colours mode discards, so a keyboard reader there would have had no
-   * indicator at all. The fill is a pointer affordance; the outline is the
-   * accessible one, and they are different states.
+   * indicator at all.
    */
-  .wave-docs-layout__nav-trigger:focus-visible,
-  .wave-docs-layout__drawer-close:focus-visible {
+  .wave-docs-layout__sidebar-trigger:focus-visible {
     outline: 2px solid var(--wave-docs-accent);
     outline-offset: -2px;
   }
 
-  /*
-   * ⚠️ FORCED COLOURS DISCARDS THE GRIP, SO GIVE IT AN EDGE INSTEAD. The tab
-   * is a background and nothing else; in a forced-colours palette it is
-   * repainted to `Canvas` and disappears into the page, leaving three dots
-   * floating on an edge. A border is honoured, so the tab keeps its shape.
-   */
-  @media (forced-colors: active) {
-    .wave-docs-layout__nav-trigger::before,
-    .wave-docs-layout__drawer-close::before {
-      border: 1px solid;
+  /* -------------------------------------------------------------------------
+   * The scrim
+   *
+   * Cover mode only. `inert` keeps the keyboard out of what is underneath; this
+   * is what tells everyone else.
+   * ---------------------------------------------------------------------- */
+
+  .wave-docs-layout__sidebar-scrim {
+    /* Absolute inside the layout rather than fixed to the viewport: a fixed
+     * scrim would darken a host's own chrome along with our article. */
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border: 0;
+    padding: 0;
+    background-color: oklch(0.2 0.02 262 / 0.55);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .wave-docs-layout__sidebar[data-state='open']
+    ~ .wave-docs-layout__sidebar-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-layout__sidebar-scrim {
+      transition: opacity 200ms ease;
     }
   }
 
   /* -------------------------------------------------------------------------
-   * Drawer
+   * Cover and push
+   *
+   * The whole of what differs between a narrow container and a wide one. Same
+   * markup, same classes, same control, same translate — only whether the
+   * article gets out of the way.
    * ---------------------------------------------------------------------- */
 
-  /* Inside the drawer it is the first thing above the tree, at every width the
-   * drawer opens at. */
-  .wave-docs-layout__drawer .wave-docs-layout__search {
-    margin-block-end: 1rem;
+  /*
+   * ⚠️ A CUSTOM PROPERTY, BECAUSE JAVASCRIPT CANNOT ASK A CONTAINER QUERY.
+   * `matchMedia` answers about the viewport, which is the question this file
+   * deliberately stopped asking — so the mode is declared here and read back
+   * with `getComputedStyle`. One source of truth, and the breakpoint appears
+   * nowhere in the component.
+   */
+  .wave-docs-layout__sidebar {
+    --wave-docs-sidebar-mode: cover;
   }
 
-  dialog.wave-docs-layout__drawer {
-    /* A full-height panel against the inline start edge, not a centred box.
-     * `margin` rather than `inset`, because a dialog is centred by `margin:
-     * auto` in the UA sheet and only a margin overrides that. */
-    margin: 0 auto 0 0;
-    box-sizing: border-box;
-    --wave-docs-drawer-width: min(20rem, 85vw);
-    width: var(--wave-docs-drawer-width);
-    max-width: none;
-    height: 100dvh;
-    max-height: none;
+  @container wave-docs (min-width: 64rem) {
+    .wave-docs-layout__sidebar {
+      --wave-docs-sidebar-mode: push;
+    }
+
     /*
-     * ⚠️ A ROW OF TWO, AND NEITHER ONE IS OVER THE OTHER.
+     * ⚠️ THE DIVISION IS THE PAGE'S, SO IT IS DRAWN BY THE PAGE'S COLUMN.
      *
-     * The close control was `position: fixed`. Out of flow means nothing in
-     * the panel knows it is there, so the last 44px of every link in the tree
-     * sat underneath a button — visually and for hit-testing both. Padding
-     * hides that; it does not remove it.
+     * In push mode the sidebar is part of the layout and this line is what
+     * separates navigation from article — so it runs the full height of the
+     * docs region, top to bottom, wherever the host placed it. Drawn on the
+     * navigation instead it would be one screen tall, which is only the same
+     * thing when the layout happens to start at the viewport's top edge.
      *
-     * In flow the row gives the strip its own track and the tree gets what is
-     * left, so there is nothing to hide. The scroll moves to the body, which
-     * is also what keeps the strip still while the tree scrolls — the one
-     * thing `fixed` was buying.
-     *
-     * Padding moves to the body with it: on the dialog it would inset the
-     * strip too, and the strip is meant to reach all four edges.
+     * `inset-inline-start` at the navigation's width rather than a border on
+     * the shell: the shell's own inline end is past the trigger, and the
+     * division belongs between the navigation and the article.
      */
-    padding: 0;
-    border: 0;
-    border-inline-end: 1px solid var(--wave-docs-border);
-    background-color: var(--wave-docs-bg);
-    color: var(--wave-docs-fg);
-    overflow: hidden;
-  }
+    .wave-docs-layout__sidebar::after {
+      content: '';
+      position: absolute;
+      inset-block: 0;
+      inset-inline-start: var(--wave-docs-sidebar-width);
+      width: 1px;
+      background-color: var(--wave-docs-border);
+    }
 
-  .wave-docs-layout__drawer-body {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 1.5rem 0 1.5rem 1rem;
-    overflow-y: auto;
-    /* Reaching the end of the nav must not start scrolling the page behind. */
-    overscroll-behavior: contain;
-  }
+    /*
+     * Unchosen means open up here, where there is room for the navigation
+     * beside the article rather than on top of it — and open in push mode is
+     * the one combination that asks the grid for its own space.
+     *
+     * ⚠️ KEYED ON THE STATE, NOT THE MODE. Dropping the margin for the whole of
+     * push mode leaves a 300px hole in the grid whenever the sidebar is closed:
+     * the box is translated off the page and the track is still holding room
+     * for it.
+     */
+    .wave-docs-layout__sidebar:not([data-state='closed']) {
+      translate: 0;
+      margin-inline-end: 0;
+    }
 
-  /*
-   * ⚠️ `:modal`, NEVER THE BARE ELEMENT. A closed `<dialog>` is hidden by one
-   * UA rule — `display: none` — and any `display` of ours on the bare selector
-   * beats it. Spelled without `:modal` this rendered the whole drawer, and its
-   * close control, on every page at every width: two grips on screen and a
-   * second copy of the nav sitting in the layout. That is exactly the bug it
-   * caused, for one build.
-   */
-  dialog.wave-docs-layout__drawer:modal {
-    display: flex;
-  }
-
-  dialog.wave-docs-layout__drawer::backdrop {
-    background-color: oklch(0.2 0.02 262 / 0.55);
-  }
-
-
-  /*
-   * ⚠️ SCOPED TO OUR DRAWER, DELIBERATELY. `html:has(dialog:modal)` would lock
-   * the page for a consumer's own modal too — and unlock it again the moment
-   * ours closed underneath theirs.
-   */
-  html:has(dialog.wave-docs-layout__drawer:modal) {
-    overflow: hidden;
-  }
-
-  /*
-   * ⚠️ ONE CONTROL ON SCREEN AT A TIME. The trigger is `fixed`, so an open
-   * drawer left it painted at the viewport edge with its twin at the panel
-   * edge — two identical grips, both for the same drawer. Hidden while the
-   * drawer is modal, the one control simply moves along x as the panel opens.
-   */
-  html:has(dialog.wave-docs-layout__drawer:modal)
-    .wave-docs-layout__nav-trigger {
-    display: none;
-  }
-
-  /*
-   * Drawer furniture, hidden once the drawer is a column.
-   *
-   * ⚠️ AFTER the rules it overrides, not up with the other 64rem block. Same
-   * specificity means source order decides, and declared earlier this lost to
-   * the `display: inline-flex` above at every width — leaving a menu button
-   * and a close button sitting in a desktop layout that has nothing to open or
-   * close. Measured at 1280px: `flex`, not `none`.
-   */
-  @media (min-width: 64rem) {
-    .wave-docs-layout__nav-trigger,
-    .wave-docs-layout__drawer-close {
+    /* Nothing is covered, so nothing is scrimmed. */
+    .wave-docs-layout__sidebar-scrim {
       display: none;
+    }
+
+    /* And the panel's edge gives way to the page's division above. */
+    .wave-docs-layout__sidebar-nav {
+      border-inline-end: 0;
+    }
+
+    .wave-docs-layout {
+      gap: 0 1.5rem;
+      padding-inline: 0 1.5rem;
+    }
+  }
+
+  @container wave-docs (min-width: 80rem) {
+    .wave-docs-layout:has(.wave-docs-layout__toc) {
+      grid-template-columns: auto minmax(0, 1fr) var(--wave-docs-toc-width);
+    }
+
+    .wave-docs-layout__toc {
+      display: block;
+      /* Same reason as the article: its contents cannot be weighed against the
+       * scrim, only the column as a whole. */
+      isolation: isolate;
+      position: sticky;
+      /* `align-self: start`, or the sticky box stretches to the row height and
+       * has nothing left to travel within. */
+      align-self: start;
+      top: var(--wave-docs-chrome-offset);
+      max-height: calc(100dvh - var(--wave-docs-chrome-offset));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-block: 2rem;
     }
   }
 }

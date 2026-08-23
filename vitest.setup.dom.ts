@@ -127,69 +127,31 @@ afterEach(() => {
 });
 
 /* -------------------------------------------------------------------------
- * `<dialog>`
+ * `ResizeObserver`
  * ---------------------------------------------------------------------- */
 
 /**
- * Attribute bookkeeping only — deliberately, and this is the important part.
+ * jsdom implements none, and the sidebar uses one to re-read the mode its
+ * stylesheet resolved — because `matchMedia` cannot answer a `@container`
+ * query. Without a stand-in the component throws on mount and every test that
+ * renders the shell fails at the same line.
  *
- * jsdom 30 ships no `showModal`, no `close`, and no `:modal`, so the drawer's
- * close-on-navigate effect throws `TypeError` and takes down every test that
- * mounts a layout. This makes those tests runnable. It does **not** make them
- * meaningful about behaviour.
+ * A stub that never fires is the honest shape. jsdom has no layout, so a
+ * faithful one could only ever report zeros; the component reads the mode once
+ * directly on mount and that path is real. What the observer adds — the mode
+ * changing when the container is resized — needs a layout engine, and is
+ * asserted in `styles.browser.test.ts` instead.
  *
- * ⚠️ IT MOVES NO FOCUS, HANDLES NO ESCAPE KEY, AND INERTS NOTHING. Those are
- * exactly the four behaviours that justify `<dialog>` over `popover="auto"`, so
- * a test asserting any of them here would be asserting that this file works.
- * Anything about focus, Escape, inertness or scroll locking belongs in
- * `*.browser.test.ts`, where a real engine answers.
- *
- * What it is good for: wiring. That a trigger's `commandfor` matches the
- * dialog's `id`, that a pathname change calls `close()`, that exactly one
- * dialog is rendered.
+ * ⚠️ THIS REPLACED A `<dialog>` SHIM. The navigation used to be a modal drawer,
+ * and jsdom ships no `showModal`, no `close` and no `:modal` — so the four
+ * behaviours that justified `<dialog>` were faked here and asserted for real in
+ * the browser project. There is no drawer now: one sidebar at every width, and
+ * the focus containment it needs is `inert`, which jsdom does implement.
  */
-if (typeof HTMLDialogElement !== 'undefined') {
-  const proto = HTMLDialogElement.prototype as HTMLDialogElement & {
-    showModal?: () => void;
-    show?: () => void;
-    close?: (returnValue?: string) => void;
-  };
-
-  if (typeof proto.showModal !== 'function') {
-    proto.showModal = function showModal(this: HTMLDialogElement): void {
-      this.setAttribute('open', '');
-      this.dataset.modal = 'true';
-    };
-    proto.show = function show(this: HTMLDialogElement): void {
-      this.setAttribute('open', '');
-    };
-    proto.close = function close(
-      this: HTMLDialogElement,
-      returnValue?: string,
-    ): void {
-      this.removeAttribute('open');
-      delete this.dataset.modal;
-      if (returnValue !== undefined) {
-        this.returnValue = returnValue;
-      }
-      this.dispatchEvent(new Event('close'));
-    };
-  }
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
 }
-
-/**
- * A dialog left open leaks into the next test, and the shim has no light
- * dismiss to close it. Mirrors `resetIntersectionObservers` above.
- */
-afterEach(() => {
-  const open = document.querySelectorAll('dialog[open]');
-  if (open.length > 0) {
-    for (const dialog of open) {
-      dialog.removeAttribute('open');
-    }
-    throw new Error(
-      `${open.length} dialog(s) left open. Close the drawer in the test, or ` +
-        'assert the behaviour in the browser project instead.',
-    );
-  }
-});

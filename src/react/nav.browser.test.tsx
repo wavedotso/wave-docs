@@ -1,49 +1,32 @@
 /**
- * The four behaviours that justify `<dialog>` over `popover="auto"`, plus the
- * one CSS line the desktop sidebar depends on.
+ * The sidebar's behaviour, in a real layout engine.
  *
- * All five are invisible to jsdom, which has no `showModal`, no `:modal`, no
- * focus management, no inertness and no layout — the shim in
- * `vitest.setup.dom.ts` moves attributes and says so in its own docstring. So
- * without this file, "focus is trapped" and "the page does not scroll
- * underneath" are claims verified by reading a specification, which is the
- * practice that let a `<div>` inside a `<p>` ship in the YouTube mapping.
+ * ⚠️ THIS FILE USED TO TEST A `<dialog>`. It pinned the four things that
+ * justified one over `popover="auto"` — focus trapping, Escape, the scroll
+ * lock, inertness — and the `display: contents` line that turned the same DOM
+ * into a desktop column. None of that exists any more: there is one sidebar at
+ * every width and the trigger moves it.
  *
- * ## Why the shell is written out here rather than imported
+ * What replaces it is the pair of things only a layout engine can answer:
  *
- * `DocsLayoutShell` reaches `next/link` and `next/navigation` through its
- * client components, and vitest's browser module mocker wraps a factory's
- * result one level deeper than the jsdom one does — so a stubbed default
- * import arrives as `{ default: Component }` and React throws
- * "Element type is invalid". Rather than encode that quirk, the split is:
- *
- * - **`layout.test.tsx` (jsdom)** pins the *wiring* — that the real drawer
- *   trigger, the one `docs.Layout` renders inside
- *   `.wave-docs-layout__sidebar`, carries `command="show-modal"` and a
- *   `commandfor` equal to the real dialog's `id`. That is the assertion a
- *   hand-written fixture could drift from, and it is made against the real
- *   component.
- * - **this file** pins the *behaviour* those attributes buy, against a fixture
- *   built from the same frozen class names, with the real `DocsNav` inside it.
- *
- * ⚠️ THE FIXTURE IS THE SHELL AS IT RENDERS TODAY, AND THAT IS NOT COSMETIC.
- * It used to mount the trigger inside a `.wave-docs-layout__header`, and the
- * stylesheet has no rule for that class any more — so the fixture would have
- * been unstyled markup that no shell renders, with every assertion below still
- * passing against nothing. The class names it does use are public API and
- * change only in a release that carries the migration, which is what makes
- * writing them out here safe — `styles.browser.test.ts` does the same.
+ * - **which mode the stylesheet resolved.** The component reads it from a
+ *   custom property because `matchMedia` cannot answer a `@container` query,
+ *   and that read is the seam where a rename would silently leave every
+ *   sidebar in cover mode for ever.
+ * - **that the container decides it, not the viewport.** The same viewport with
+ *   a narrow container has to behave like a phone, because that is the whole
+ *   reason the media queries were dropped.
  *
  * Runs only under `pnpm test:browser`.
  */
 
 import { render } from '@testing-library/react';
 import { page, userEvent } from 'vitest/browser';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import styles from '../styles.css?inline';
 import type { DocNavNode } from '../types.js';
-import { DOCS_NAV_ID, DocsNav } from './nav.js';
+import { DocsNav } from './nav.js';
 
 const NAV: DocNavNode[] = [
   { type: 'page', title: 'Guide', href: '/docs/guide', slug: 'guide' },
@@ -57,12 +40,15 @@ const NAV: DocNavNode[] = [
 ];
 
 interface Mounted {
+  shell: HTMLElement;
+  nav: HTMLElement;
   trigger: HTMLButtonElement;
-  dialog: HTMLDialogElement;
-  search: HTMLButtonElement;
+  scrim: HTMLElement;
+  main: HTMLElement;
 }
 
-function mount(): Mounted {
+/** `width` constrains the query container, which is what decides the mode. */
+function mount(width?: string): Mounted {
   document.head.querySelector('#wave-docs-styles')?.remove();
   const style = document.createElement('style');
   style.id = 'wave-docs-styles';
@@ -70,179 +56,436 @@ function mount(): Mounted {
   document.head.append(style);
 
   render(
-    <div className="wave-docs-layout">
-      {/* The chrome strip: the trigger, the search trigger and the drawer, all
-          three children of one wrapper, in the order `docs.Layout` renders
-          them. The trigger opens the dialog by `id`, so the search trigger
-          sitting between the two costs nothing. */}
-      <div className="wave-docs-layout__sidebar">
-        <button
-          type="button"
-          className="wave-docs-layout__nav-trigger"
-          aria-label="Open navigation"
-          {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
-        >
-          ☰
-        </button>
-        {/* Stands in for the search trigger: something focusable after the menu
-            button and outside the drawer, so a leaking focus trap has somewhere
-            to leak to. Both class names, because `docs.Layout` gives it both,
-            and its placement inside the sidebar is the half that matters
-            here. */}
-        <button
-          type="button"
-          className="wave-docs-search-trigger wave-docs-layout__search"
-        >
-          Search
-        </button>
-        <DocsNav nav={NAV} pathname="/docs/guide" />
+    <div
+      className="wave-docs-shell"
+      {...(width === undefined ? {} : { style: { width } })}
+    >
+      <div className="wave-docs-layout">
+        {/*
+         * `DocsNav` renders the whole sidebar — shell, navigation, trigger and
+         * scrim — so there is nothing to write out around it. That is the point
+         * of the shape: `docs.Layout` places one element.
+         */}
+        <DocsNav nav={NAV} pathname="/docs/guide">
+          <button
+            type="button"
+            className="wave-docs-search-trigger wave-docs-layout__search"
+          >
+            Search
+          </button>
+        </DocsNav>
+        <main className="wave-docs-layout__main">
+          <a href="/elsewhere">A link in the article</a>
+          {/*
+           * A sticky table header, because it is `z-index: 1` — the same layer
+           * the scrim is on — and it is what punched through it.
+           */}
+          <section className="wave-docs-table-scroll">
+            <table className="wave-docs-table">
+              <thead>
+                <tr>
+                  <th>Package</th>
+                  <th>Why</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 40 }, (_, row) => `row ${row}`).map(
+                  (label) => (
+                    <tr key={label}>
+                      <td>{label}</td>
+                      <td>Required</td>
+                    </tr>
+                  ),
+                )}
+              </tbody>
+            </table>
+          </section>
+          {/* Tall, so the page has something to scroll. */}
+          <p style={{ height: '4000px' }}>Body</p>
+        </main>
       </div>
-      <article className="wave-docs-prose wave-docs-layout__main">
-        {/* Tall, so the scroll lock has something to lock. */}
-        <p style={{ height: '4000px' }}>Body</p>
-      </article>
     </div>,
   );
 
-  const trigger = document.querySelector<HTMLButtonElement>(
-    '.wave-docs-layout__nav-trigger',
-  );
-  const search = document.querySelector<HTMLButtonElement>(
-    '.wave-docs-search-trigger',
-  );
-  const dialog = document.querySelector('dialog');
-  if (trigger === null || dialog === null || search === null) {
-    throw new Error('failed to mount the shell fixture');
-  }
-  return { trigger, dialog, search };
+  const q = <T extends HTMLElement>(selector: string): T => {
+    const element = document.querySelector<T>(selector);
+    if (element === null) throw new Error(`no ${selector}`);
+    return element;
+  };
+  return {
+    shell: q('.wave-docs-layout__sidebar'),
+    nav: q('.wave-docs-layout__sidebar-nav'),
+    trigger: q<HTMLButtonElement>('.wave-docs-layout__sidebar-trigger'),
+    scrim: q('.wave-docs-layout__sidebar-scrim'),
+    main: q('.wave-docs-layout__main'),
+  };
 }
 
-beforeEach(() => {
+/**
+ * Two frames for layout and the effect that resolves the mode, then every
+ * running transition.
+ *
+ * ⚠️ THE TRANSITIONS ARE NOT OPTIONAL TO WAIT FOR. The sidebar animates its
+ * translate over 200ms, so two frames after a click the navigation is a third
+ * of the way across and the scrim is at 0.07 opacity — measured. Asserting
+ * there is asserting the easing curve.
+ */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resolve(null);
+      });
+    });
+  });
+  /*
+   * ⚠️ TRANSITIONS ONLY, AND `getAnimations()` IS NOT THAT.
+   *
+   * It returns every running animation, and the table scroll shadow is driven
+   * by `animation-timeline: scroll(nearest inline)` — a scroll-driven animation
+   * whose `finished` promise resolves when the *scroll position* reaches the
+   * end, which is to say never on an unscrolled table. Awaiting the whole list
+   * hung every test in this file for the full 15s timeout the moment a table
+   * appeared in the fixture.
+   */
+  await Promise.all(
+    document
+      .getAnimations()
+      .filter((animation) => animation instanceof CSSTransition)
+      .map((animation) => animation.finished.catch(() => undefined)),
+  );
+}
+
+const mode = (shell: HTMLElement): string =>
+  getComputedStyle(shell).getPropertyValue('--wave-docs-sidebar-mode').trim();
+
+beforeEach(async () => {
   document.body.innerHTML = '';
   window.scrollTo(0, 0);
+  await page.viewport(1280, 800);
 });
 
-afterEach(() => {
-  for (const dialog of document.querySelectorAll('dialog')) {
-    if (dialog.open) dialog.close();
-  }
-});
+describe('the sidebar, in a wide container', () => {
+  it('resolves push mode and opens itself', async () => {
+    const { shell, trigger, main } = mount();
+    await settle();
 
-describe('the drawer, below 64rem', () => {
-  beforeEach(async () => {
-    await page.viewport(390, 800);
+    expect(mode(shell)).toBe('push');
+    expect(shell.getAttribute('data-state')).toBe('open');
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    // Beside the article, not on top of it.
+    expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(
+      shell.getBoundingClientRect().right,
+    );
   });
 
-  it('opens modally from a server-rendered command button', async () => {
-    const { trigger, dialog } = mount();
+  /**
+   * ⚠️ THE ARTICLE HAS TO TAKE THE ROOM BACK, AND THAT IS THE ASSERTION. Every
+   * version of this driven by `translate` alone left a sidebar-shaped hole in
+   * the grid — the sidebar looked closed and the text stayed exactly as narrow
+   * as it had been. The negative margin is what makes the track follow.
+   */
+  it('gives the article the room when it closes, and takes it back', async () => {
+    const { shell, nav, trigger, main } = mount();
+    await settle();
 
-    // Declarative: none of our JavaScript runs to open it, which is what makes
-    // the drawer work on the first tap, before hydration.
+    const openWidth = main.getBoundingClientRect().width;
+    const navWidth = nav.getBoundingClientRect().width;
+
     await userEvent.click(trigger);
+    await settle();
+    const closedWidth = main.getBoundingClientRect().width;
 
-    expect(dialog.matches(':modal')).toBe(true);
-  });
-
-  it('moves focus inside, and never lets Tab back out to the strip', async () => {
-    const { trigger, dialog, search } = mount();
-    await userEvent.click(trigger);
-
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(closedWidth).toBeGreaterThan(openWidth);
+    // The navigation is off the page rather than merely invisible.
+    expect(nav.getBoundingClientRect().right).toBeLessThanOrEqual(0);
 
     /*
-     * MEASURED, AND NOT WHAT THE FIRST VERSION OF THIS TEST ASSERTED. The
-     * cycle is: close button → each nav link → `<body>` → close button. That
-     * middle step is the browser's own focus ring passing through the
-     * document between wraps; it is not an escape, and asserting
-     * `dialog.contains(activeElement)` on every step failed against a drawer
-     * that was behaving perfectly.
+     * And the article gained exactly the navigation's width — no more, which
+     * would mean the trigger stopped being reserved, and no less, which is the
+     * sidebar-shaped hole every `translate`-only version of this left behind.
      *
-     * What matters is the thing the trap exists for: no focusable element
-     * *outside* the drawer is ever reached — and both of them, the drawer's
-     * own trigger and the search trigger, sit in the strip the drawer opens
-     * over. Twelve presses is three full cycles, so a trap with a gap in it
-     * has ample opportunity to leak.
+     * ⚠️ NOT MEASURED AGAINST THE SHELL'S OWN WIDTH. The shell is `max-content`
+     * in both states; what changes is its negative margin, so its border box
+     * says 300px either way.
      */
-    const outside = [trigger, search];
-    for (let index = 0; index < 12; index += 1) {
-      await userEvent.keyboard('{Tab}');
-
-      expect(outside).not.toContain(document.activeElement);
-      expect(
-        dialog.contains(document.activeElement) ||
-          document.activeElement === document.body,
-      ).toBe(true);
-    }
+    expect(closedWidth - openWidth).toBeCloseTo(navWidth, 0);
+    // The shell's own box does not change: it is `max-content` in both states,
+    // and what moves is its negative margin.
+    expect(Math.round(shell.getBoundingClientRect().width)).toBe(
+      Math.round(navWidth + trigger.getBoundingClientRect().width),
+    );
   });
 
-  it('closes on Escape and gives focus back to the trigger', async () => {
-    const { trigger, dialog } = mount();
+  it('never covers the article, so nothing is scrimmed or inert', async () => {
+    const { trigger, scrim, main } = mount();
+    await settle();
+
+    expect(getComputedStyle(scrim).display).toBe('none');
+    expect(main.hasAttribute('inert')).toBe(false);
+
     await userEvent.click(trigger);
+    await userEvent.click(trigger);
+    await settle();
+    expect(main.hasAttribute('inert')).toBe(false);
+  });
+});
+
+/**
+ * ⚠️ SAME VIEWPORT, NARROW CONTAINER — AND THIS IS THE WHOLE REASON THE MEDIA
+ * QUERIES WENT.
+ *
+ * A host who mounts this in a 700px panel on a 1280px screen gets a 1280px
+ * answer from `matchMedia` and a reading column of about 60px. `@container`
+ * asks about the box we were given, which is the question with an answer.
+ */
+describe('the sidebar, in a narrow container on a wide screen', () => {
+  it('resolves cover mode from the container, not the viewport', async () => {
+    const { shell } = mount('520px');
+    await settle();
+
+    expect(window.innerWidth).toBeGreaterThan(1000);
+    expect(mode(shell)).toBe('cover');
+    expect(shell.getAttribute('data-state')).toBe('closed');
+  });
+
+  it('covers the article rather than squeezing it', async () => {
+    const { shell, trigger, main } = mount('520px');
+    await settle();
+
+    const closed = main.getBoundingClientRect();
+    await userEvent.click(trigger);
+    await settle();
+    const open = main.getBoundingClientRect();
+
+    // The article does not move and does not re-wrap …
+    expect(open.width).toBe(closed.width);
+    expect(open.left).toBe(closed.left);
+    // … because the sidebar is on top of it.
+    expect(shell.getBoundingClientRect().right).toBeGreaterThan(open.left);
+  });
+
+  /**
+   * The five things `<dialog>` was giving us for free, and the reason an
+   * overlay without them is worse than the drawer it replaced: `inert` is what
+   * stops Tab walking out of the navigation into text behind a scrim.
+   */
+  it('scrims and inerts what it covers, and undoes both on close', async () => {
+    const { trigger, scrim, main } = mount('520px');
+    await settle();
+
+    expect(getComputedStyle(scrim).display).not.toBe('none');
+    expect(getComputedStyle(scrim).opacity).toBe('0');
+    expect(main.hasAttribute('inert')).toBe(false);
+
+    await userEvent.click(trigger);
+    await settle();
+    expect(getComputedStyle(scrim).opacity).toBe('1');
+    expect(main.hasAttribute('inert')).toBe(true);
+
+    await userEvent.click(trigger);
+    await settle();
+    expect(getComputedStyle(scrim).opacity).toBe('0');
+    expect(main.hasAttribute('inert')).toBe(false);
+  });
+
+  /**
+   * ⚠️ THE SCRIM COVERS THE ARTICLE, NOT MOST OF IT.
+   *
+   * `.wave-docs-table thead th` is `position: sticky; z-index: 1`, and so is the
+   * scrim. Same stacking context, equal z-index, and the header comes later in
+   * the document — so with the navigation open over a table on a phone, the
+   * header row was the one bright thing on a dimmed page.
+   *
+   * Raising the scrim would have fixed that element and left the next one, so
+   * the article is `isolation: isolate` instead: nothing inside it can be
+   * weighed against the scrim at all, ours or a consumer's own content. This
+   * hit-tests rather than reading `z-index`, because the defect was never in
+   * the value — it was in which stacking context the value was compared in.
+   */
+  it('covers everything in the article, including a sticky table header', async () => {
+    const { shell, trigger, main } = mount('520px');
+    await settle();
+
+    const header = main.querySelector('.wave-docs-table thead th');
+    if (!(header instanceof HTMLElement)) throw new Error('no table header');
+
+    await userEvent.click(trigger);
+    await settle();
+
+    const box = header.getBoundingClientRect();
+    expect(box.width).toBeGreaterThan(0);
+
+    /*
+     * ⚠️ PROBE CLEAR OF THE NAVIGATION. The header's own centre is behind the
+     * open panel, so hit-testing there returns the navigation and the test
+     * passes for the wrong reason — it would pass with no scrim at all.
+     */
+    const x = Math.round(
+      Math.max(box.left + 2, shell.getBoundingClientRect().right + 8),
+    );
+    const top = document.elementFromPoint(
+      x,
+      Math.round(box.top + box.height / 2),
+    );
+
+    expect(x).toBeLessThan(box.right);
+    expect(top).toHaveClass('wave-docs-layout__sidebar-scrim');
+  });
+
+  it('moves focus into the navigation and gives it back', async () => {
+    const { nav, trigger } = mount('520px');
+    await settle();
+
+    trigger.focus();
+    await userEvent.click(trigger);
+    await settle();
+    expect(document.activeElement).toBe(nav);
 
     await userEvent.keyboard('{Escape}');
-
-    expect(dialog.open).toBe(false);
-    // Without focus restoration a keyboard reader is returned to the top of
-    // the document and tabs all the way back to where they were.
+    await settle();
     expect(document.activeElement).toBe(trigger);
   });
-
-  it('locks the page behind it, and unlocks it after', async () => {
-    const { trigger } = mount();
-    await userEvent.click(trigger);
-
-    expect(getComputedStyle(document.documentElement).overflow).toBe('hidden');
-
-    await userEvent.keyboard('{Escape}');
-    expect(getComputedStyle(document.documentElement).overflow).not.toBe(
-      'hidden',
-    );
-  });
-
-  it('keeps the nav out of the page until it is asked for', () => {
-    const { dialog } = mount();
-    const nav = document.querySelector('nav');
-
-    expect(dialog.open).toBe(false);
-    expect(nav?.getBoundingClientRect().height).toBe(0);
-  });
 });
 
-describe('the drawer, at 64rem and above', () => {
-  beforeEach(async () => {
-    await page.viewport(1280, 900);
-  });
+describe('the sidebar, at every container width', () => {
+  it('puts the trigger directly against the navigation, with nothing between', async () => {
+    const { nav, trigger } = mount();
+    await settle();
 
-  it('becomes the sidebar column instead of a second copy of it', () => {
-    const { dialog } = mount();
-
-    /*
-     * `display: contents` — the dialog generates no box of its own, so the nav
-     * inside it is laid out as the sticky column directly. One nav in the DOM
-     * serves both breakpoints: one landmark, one copy of the links.
-     */
-    expect(getComputedStyle(dialog).display).toBe('contents');
-
-    const rect = document.querySelector('nav')?.getBoundingClientRect();
-    expect(rect?.width).toBeGreaterThan(0);
-    // In the first grid track, not floating over the page as a dialog would.
-    expect(rect?.left).toBeLessThan(200);
-    expect(dialog.matches(':modal')).toBe(false);
-  });
-
-  it('hides the drawer furniture that has nothing left to open', () => {
-    const { trigger } = mount();
-    const close = document.querySelector('.wave-docs-layout__drawer-close');
-
-    expect(getComputedStyle(trigger).display).toBe('none');
-    expect(getComputedStyle(close as Element).display).toBe('none');
-  });
-
-  it('leaves the page scrollable', () => {
-    mount();
-
-    expect(getComputedStyle(document.documentElement).overflow).not.toBe(
-      'hidden',
+    expect(trigger.getBoundingClientRect().left).toBeCloseTo(
+      nav.getBoundingClientRect().right,
+      0,
     );
+  });
+
+  it('paints nothing on the shell and nothing on the trigger', async () => {
+    const { shell, nav, trigger, main } = mount();
+    // The pointer is wherever the last test left it, and `:hover` on this
+    // control is the one state that *does* paint. Park it on the article.
+    await userEvent.hover(main);
+    await settle();
+
+    const transparent = 'rgba(0, 0, 0, 0)';
+    expect(getComputedStyle(shell).backgroundColor).toBe(transparent);
+    expect(getComputedStyle(trigger).backgroundColor).toBe(transparent);
+
+    for (const side of ['Top', 'Right', 'Bottom', 'Left'] as const) {
+      expect(getComputedStyle(shell)[`border${side}Width`]).toBe('0px');
+      expect(getComputedStyle(trigger)[`border${side}Width`]).toBe('0px');
+    }
+
+    // Opaque, because in cover mode it sits on the article and a translucent
+    // surface puts two columns of text through each other.
+    expect(getComputedStyle(nav).backgroundColor).not.toBe(transparent);
+  });
+
+  /**
+   * ⚠️ THE DIVISION IS THE PAGE'S HEIGHT IN PUSH MODE AND THE PANEL'S IN COVER
+   * MODE, AND CONFLATING THEM IS THE BUG THIS REPLACED.
+   *
+   * One box was `sticky` with `height: 100dvh` — sized against the viewport
+   * while positioned against the layout — so with the UA's 8px of `body` margin
+   * the line stopped 8px short of the top and ran 8px past the bottom, and
+   * snapped into place the moment the page scrolled. Measured on the site.
+   *
+   * They are two different things: in push mode the line divides the page, so
+   * it is the page's height; in cover mode it is the edge of a panel lying on
+   * top of the page, so it is the panel's.
+   */
+  it('draws the division against the page, not against the viewport', async () => {
+    const { shell, nav } = mount();
+    await settle();
+
+    // Push: the shell's, spanning the whole docs region — top to bottom, and
+    // wherever the host placed it.
+    expect(getComputedStyle(nav).borderInlineEndWidth).toBe('0px');
+    const divider = getComputedStyle(shell, '::after');
+    expect(divider.content).not.toBe('none');
+    expect(divider.width).toBe('1px');
+
+    const layout = shell.parentElement;
+    if (layout === null) throw new Error('no layout');
+    expect(Math.round(shell.getBoundingClientRect().height)).toBe(
+      Math.round(layout.getBoundingClientRect().height),
+    );
+    expect(Math.round(shell.getBoundingClientRect().top)).toBe(
+      Math.round(layout.getBoundingClientRect().top),
+    );
+
+    document.body.innerHTML = '';
+    // Cover: the panel's own edge, because it is a panel and not a column.
+    const narrow = mount('520px');
+    await settle();
+    expect(
+      Number.parseFloat(getComputedStyle(narrow.nav).borderInlineEndWidth),
+    ).toBeGreaterThan(0);
+    expect(getComputedStyle(narrow.shell, '::after').content).toBe('none');
+  });
+
+  /**
+   * Apple's minimum tap target, and the strip *is* the target — there is no
+   * transparent border buying hit area behind it, so what the layout reserves
+   * and what a thumb gets are the same number.
+   */
+  /**
+   * ⚠️ THE STRIP IS SIZED BY THE BUTTON, NOT BESIDE IT. Both were fixed for a
+   * while and the gap between them was a third number nobody set — 24px of
+   * button left 10px a side, 16px left 14px. The strip is `auto` with 4px of
+   * padding now, so `--wave-docs-trigger-width` is the only thing to change and
+   * the hit area follows the paint.
+   */
+  it('sizes the trigger from the button plus its padding', async () => {
+    const { trigger } = mount();
+    await settle();
+
+    const button = getComputedStyle(trigger, '::before');
+    expect(button.height).toBe('80px');
+
+    const strip = trigger.getBoundingClientRect().width;
+    const paint = Number.parseFloat(button.width);
+    expect(Math.round(paint)).toBe(20);
+    expect(Math.round(strip - paint)).toBe(8);
+    expect(getComputedStyle(trigger).padding).toBe('4px');
+  });
+
+  it('toggles from the keyboard, not only the pointer', async () => {
+    const { shell, trigger } = mount();
+    await settle();
+    trigger.focus();
+
+    const before = shell.getAttribute('data-state');
+    await userEvent.keyboard('{Enter}');
+    await settle();
+    expect(shell.getAttribute('data-state')).not.toBe(before);
+
+    await userEvent.keyboard(' ');
+    await settle();
+    expect(shell.getAttribute('data-state')).toBe(before);
+  });
+
+  /**
+   * The trigger is in the sticky shell and the tree is in the scroller beside
+   * it, so reaching the end of a long navigation cannot carry the control away
+   * with it. It was `position: fixed` for exactly this, which is what put it on
+   * top of the tree.
+   */
+  it('holds the trigger still while the navigation scrolls', async () => {
+    const { nav, trigger } = mount();
+    await settle();
+
+    const before = trigger.getBoundingClientRect().top;
+    nav.scrollTop = 400;
+    await settle();
+
+    expect(trigger.getBoundingClientRect().top).toBe(before);
+  });
+
+  it('renders one tree and no dialog', async () => {
+    mount();
+    await settle();
+
+    expect(document.querySelectorAll('nav[aria-label]')).toHaveLength(1);
+    expect(document.querySelectorAll('dialog')).toHaveLength(0);
   });
 });

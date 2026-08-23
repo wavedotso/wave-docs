@@ -952,22 +952,35 @@ describe('tables', () => {
 
 describe('the responsive shell', () => {
   const widthQueries = RULES.filter((rule) =>
-    /^@media \(min-width/.test(rule.prelude),
+    /^@container wave-docs \(min-width/.test(rule.prelude),
   ).map((rule) => rule.prelude);
 
   /**
-   * There were **zero** width-based media queries in this file before the
-   * shell: every `@media` was `prefers-color-scheme`, `prefers-reduced-motion`
-   * or `forced-colors`. So there was no mobile layout, and nothing for a layout
-   * component to use.
+   * ⚠️ `@container`, AND NOT ONE WIDTH-BASED `@media` ANYWHERE.
+   *
+   * This package is mounted at `/docs` inside applications that own the rest of
+   * the page. `@media` asks how wide the *screen* is, which is the wrong
+   * question: a host who puts this in a 700px panel on a 1920px monitor gets
+   * the wide layout and a reading column of about 60px — the same class of
+   * failure as the fixed header, arriving from a direction no breakpoint can
+   * see.
+   *
+   * The other half of the assertion is that no width `@media` sneaks back in
+   * beside them, because one that disagrees with a container query is a layout
+   * nobody can reproduce.
    */
-  it('has breakpoints at all', () => {
-    expect(widthQueries.length).toBeGreaterThanOrEqual(3);
+  it('adapts to its container, never to the viewport', () => {
+    expect(widthQueries.length).toBeGreaterThanOrEqual(2);
     for (const prelude of widthQueries) {
       // `rem`, so a reader who raises their base font size gets the
-      // single-column layout at a proportionally larger viewport.
+      // single-column layout at a proportionally larger container.
       expect(prelude, `${prelude} is not in rem`).toMatch(/\d+rem/);
     }
+
+    const media = RULES.filter((rule) =>
+      /^@media[^{]*\((min|max)-width/.test(rule.prelude),
+    ).map((rule) => rule.prelude);
+    expect(media).toEqual([]);
   });
 
   /**
@@ -1039,7 +1052,7 @@ describe('the responsive shell', () => {
     const at = sheet.indexOf('.wave-docs-layout:has(');
     expect(at, ':has() rule missing').toBeGreaterThan(-1);
 
-    const query = sheet.lastIndexOf('@media (min-width', at);
+    const query = sheet.lastIndexOf('@container wave-docs (min-width', at);
     expect(query, ':has() is not inside a width query').toBeGreaterThan(-1);
     expect(sheet.slice(query, sheet.indexOf('{', query))).toContain('80rem');
   });
@@ -1073,22 +1086,50 @@ describe('the responsive shell', () => {
       return (
         !rule.prelude.startsWith('@') &&
         block.includes('overflow-y: auto') &&
-        // The drawer and the results list scroll too, and neither is a column:
-        // both are inside a modal, which has no page behind it to leak into.
-        block.includes('position: sticky')
+        /*
+         * ⚠️ NOT `position: sticky`, AND THAT IS THE CHANGE. The sidebar's
+         * scroller used to be the sticky box itself; it is the navigation
+         * *inside* the sticky shell now, so a `sticky` predicate stopped seeing
+         * it and this test went quietly down to one column.
+         *
+         * The subject is every rule that makes a *column* scroll. The search
+         * results list scrolls too and is not one: it is inside a modal, which
+         * has no page behind it to leak into — which is exactly what the
+         * absence of `overscroll-behavior` on it says.
+         */
+        block.includes('overscroll-behavior: contain')
       );
     });
 
     const selectors = scrolling.flatMap((rule) => splitSelectors(rule.prelude));
-    expect(selectors).toContain('.wave-docs-layout__sidebar');
+    expect(selectors).toContain('.wave-docs-layout__sidebar-nav');
     expect(selectors).toContain('.wave-docs-layout__toc');
 
-    for (const rule of scrolling) {
-      const block = readBlock(sheet, rule.at);
-      expect(block, rule.prelude).toContain('position: sticky');
-      expect(block, rule.prelude).toContain('overscroll-behavior: contain');
+    /*
+     * ⚠️ THE SCROLLER AND THE STICKY BOX ARE THE SAME ELEMENT AGAIN — AND THAT
+     * IS THE SECOND TIME THIS MOVED, SO CHECK IT RATHER THAN ASSUMING.
+     * The sidebar shell is the page's column and is not sticky at all; the
+     * navigation inside it is sticky, one screen tall, and its own scroller.
+     */
+    for (const selector of [
+      '.wave-docs-layout__sidebar-nav',
+      '.wave-docs-layout__toc',
+    ]) {
+      // By predicate, not by first occurrence: `__toc` has two rules, and the
+      // first is the `display: none` default with nothing in it to assert.
+      const sticky = RULES.filter((rule) => {
+        const block = readBlock(sheet, rule.at);
+        return (
+          splitSelectors(rule.prelude).includes(selector) &&
+          block.includes('position: sticky')
+        );
+      });
+
+      expect(sticky, selector).toHaveLength(1);
+      const block = readBlock(sheet, sticky[0]?.at ?? -1);
       // `dvh`, so the last nav items are not under a mobile URL bar.
-      expect(block, rule.prelude).toContain('dvh');
+      expect(block, selector).toContain('dvh');
+      expect(block, selector).toContain('--wave-docs-chrome-offset');
     }
   });
 
@@ -1222,62 +1263,84 @@ describe('the chrome', () => {
   });
 
   /**
-   * The wrapper that replaced it. It is a grid item at every width — a column
-   * above 64rem, a strip below — so it paints its own ground and carries its
-   * own typeface, exactly as the header had to.
-   */
-  /**
-   * ⚠️ THE WRAPPER GENERATES NO BOX BELOW 64rem, AND `contents` IS WHY THE
-   * DRAWER WORKS.
+   * ⚠️ THE SHELL PAINTS NOTHING, AND THAT IS THE WHOLE STRUCTURE.
    *
-   * `display: none` would be the obvious way to hide a sidebar on a phone, and
-   * it is wrong: an element inside a `display: none` subtree generates no boxes
-   * at all — including a dialog promoted to the top layer — so `showModal()`
-   * would open a drawer that paints nothing, on exactly the viewports the
-   * drawer exists for.
+   * Three boxes, one job each: the shell places, the navigation carries the
+   * surface and the one border, the trigger carries neither. A background or a
+   * border creeping onto the shell is a third surface to keep in step with the
+   * other two, and it is what made the strip read as filled every previous time
+   * this was drawn.
+   *
+   * It was `display: contents` below 64rem — no box at all — so the modal
+   * drawer inside it could still paint. There is no drawer now, and no width at
+   * which this is not a real box.
    */
-  it('reserves no track below 64rem, without hiding the drawer', () => {
+  it('is a shell: it places its two children and paints nothing', () => {
     const block = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-layout__sidebar {'),
     );
-    expect(block).toContain('display: contents');
+    expect(block).toContain('display: flex');
+    expect(block).toContain('background: none');
+    expect(block).toContain('border: 0');
+    expect(block).not.toContain('display: contents');
     expect(block).not.toContain('display: none');
-    // Nothing of this package's takes the viewport's top edge any more.
-    expect(block).not.toContain('position: sticky');
-    expect(block).not.toContain('position: fixed');
-  });
-
-  it('carries the typeface, since the trigger inside it inherits', () => {
-    const face =
-      /([^{}]*)\{\s*font-family: var\(--wave-docs-font-sans\);\s*\}/.exec(
-        sheet,
-      );
-    expect(face?.[1]).toContain('.wave-docs-layout__sidebar');
   });
 
   /**
-   * ⚠️ THE UNIT IS LOAD-BEARING AND A UNITLESS ZERO IS NOT EQUIVALENT.
-   * `--wave-docs-chrome-offset` is read inside `calc(100dvh - …)` on both
-   * sticky columns. `calc(100dvh - 0)` is invalid at computed-value time, so a
-   * bare `0` would not mean "no offset" — it would drop the `max-height` from
-   * the sidebar and the table of contents entirely.
+   * ⚠️ ZERO SPACE BETWEEN THE NAVIGATION AND THE TRIGGER. The trigger sits
+   * directly against the navigation's border — a gap there reads as the strip
+   * being detached from the panel it moves.
    */
-  it('defaults the host offset with a unit on it', () => {
-    const tokens = readTokens(sheet, ':root {');
-    expect(sheet).toContain('--wave-docs-chrome-offset: 0rem');
-    expect(sheet).not.toMatch(/--wave-docs-chrome-offset:\s*0;/);
-    expect(tokens).toBeDefined();
+  it('leaves no gap between the navigation and the trigger', () => {
+    const shell = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-layout__sidebar {'),
+    );
+    expect(shell).toContain('gap: 0');
+
+    const trigger = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-layout__sidebar-trigger {'),
+    );
+    expect(trigger).not.toMatch(/margin/);
+    // And no border on it, in any state — the navigation owns the only one.
+    expect(trigger).toContain('border: 0');
+    expect(trigger).toContain('background: none');
   });
 
   /**
-   * The old name is gone rather than repurposed. It sized a header *and* was
-   * the offset both sticky columns parked below, so keeping the name for either
-   * half would have been a lie about the other.
+   * ⚠️ THE TWO DECLARATIONS THAT MOVE THE SIDEBAR READ THE SAME TOKEN.
+   *
+   * The negative margin takes the navigation's room out of the grid and the
+   * translate takes the navigation off the page, and they have to agree to the
+   * pixel — disagree and the sidebar is either visible when closed or leaves a
+   * hole when open. Docsify has this exact fragility: `--sidebar-width` appears
+   * in the panel's width, the toggle's translate and the content's `left`, and
+   * missing one detaches the button from the panel.
+   *
+   * This was `calc(var(--wave-docs-trigger-width) - 100%)` for a while — "minus
+   * all of me, plus the trigger back" — which named only the strip. That held
+   * while the strip had a width to name; it is `auto` now, sized by the button
+   * inside it, so there is nothing to subtract and one token does both.
    */
-  it('has no header-height token left', () => {
+  it('moves the sidebar and its track by the same token', () => {
+    const block = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-layout__sidebar {'),
+    );
+    const translate = /translate:\s*([^;]+);/.exec(block)?.[1] ?? '';
+    const margin = /margin-inline-end:\s*([^;]+);/.exec(block)?.[1] ?? '';
+
+    expect(translate).toContain('--wave-docs-sidebar-width');
+    expect(margin).toContain('--wave-docs-sidebar-width');
+    expect(translate.replace(/\s+/g, '')).toBe(margin.replace(/\s+/g, ''));
+  });
+
+  it('has no header-height and no bar-height token left', () => {
     expect(sheet).not.toContain('--wave-docs-header-height');
-    expect(sheet).toContain('--wave-docs-bar-height');
+    expect(sheet).not.toContain('--wave-docs-bar-height');
+    expect(sheet).toContain('--wave-docs-chrome-offset');
   });
 
   /**
@@ -1294,16 +1357,12 @@ describe('the chrome', () => {
    * rendered while a modal is open and the modal is in the top layer: the
    * search backdrop, and the drawer's close control.
    *
-   * **The drawer's trigger**, which is the real exception. It is a 24px strip
-   * down the inline start edge rather than a band across the top, so what it
-   * can reach is a host's own edge affordance and not their navigation — which
-   * was the thing that actually broke. A host moves it with one declaration or
-   * renders their own against `commandfor`.
-   *
-   * ⚠️ ITS TWIN INSIDE THE DRAWER USED TO BE ON THIS LIST AND IS NOT ANY MORE.
-   * `fixed` put the close control on top of the tree: out of flow, so nothing
-   * in the panel reserved space for it, and the last 44px of every link sat
-   * underneath a button. It is a flex item beside the tree now.
+   * ⚠️ THE DRAWER'S TRIGGER USED TO BE ON THIS LIST AND IS NOT ANY MORE. It was
+   * a `fixed` strip down the inline start edge, because the drawer it opened
+   * was a modal over the page. There is no drawer: the sidebar is a grid item,
+   * the trigger is a flex child of it, and the scrim is `absolute` inside the
+   * layout — so every one of them resolves against a box this package owns and
+   * a host placed, not against the viewport they share with it.
    *
    * **Anything else appearing in this list is a regression.**
    */
@@ -1314,36 +1373,42 @@ describe('the chrome', () => {
         /position:\s*fixed/.test(readBlock(sheet, rule.at)),
     ).flatMap((rule) => splitSelectors(rule.prelude));
 
-    expect(fixed.sort()).toEqual([
-      '.wave-docs-layout__nav-trigger',
-      '.wave-docs-search-backdrop',
-    ]);
+    expect(fixed.sort()).toEqual(['.wave-docs-search-backdrop']);
   });
 
   /**
-   * Both sticky columns start at the host's offset rather than at a height of
-   * ours, and both subtract the same token from `100dvh`. Getting one and not
-   * the other leaves a column whose bottom is unreachable.
+   * Every sticky box starts at the host's offset rather than at a height of
+   * ours, and every one subtracts the same token from `100dvh`. Getting one and
+   * not the other leaves a box whose bottom is unreachable.
+   *
+   * ⚠️ THE SIDEBAR IS NOT ON THIS LIST, AND ITS ABSENCE IS THE FIX. It was
+   * `sticky` with `height: 100dvh` — sized against the viewport while
+   * positioned against the layout — so with the UA's 8px of `body` margin its
+   * divider stopped 8px short of the top and ran 8px past the bottom, and
+   * snapped into place the moment sticky engaged. It is the column in the page
+   * now, stretched to the grid row; the two boxes *inside* it are what follow
+   * the viewport, and they are what this covers.
    */
-  it.each(['.wave-docs-layout__sidebar', '.wave-docs-layout__toc'])(
-    'starts %s at the host offset, wherever it is sticky',
-    (selector) => {
-      const sticky = RULES.filter((rule) => {
-        const block = readBlock(sheet, rule.at);
-        return (
-          splitSelectors(rule.prelude).includes(selector) &&
-          block.includes('position: sticky')
-        );
-      });
+  it.each([
+    '.wave-docs-layout__sidebar-nav',
+    '.wave-docs-layout__sidebar-trigger',
+    '.wave-docs-layout__toc',
+  ])('starts %s at the host offset, wherever it is sticky', (selector) => {
+    const sticky = RULES.filter((rule) => {
+      const block = readBlock(sheet, rule.at);
+      return (
+        splitSelectors(rule.prelude).includes(selector) &&
+        block.includes('position: sticky')
+      );
+    });
 
-      expect(sticky.length).toBeGreaterThan(0);
-      for (const rule of sticky) {
-        expect(readBlock(sheet, rule.at)).toContain(
-          'top: var(--wave-docs-chrome-offset)',
-        );
-      }
-    },
-  );
+    expect(sticky.length).toBeGreaterThan(0);
+    for (const rule of sticky) {
+      expect(readBlock(sheet, rule.at)).toContain(
+        'top: var(--wave-docs-chrome-offset)',
+      );
+    }
+  });
 
   /**
    * And every column that subtracts the viewport subtracts the same token.
@@ -1351,38 +1416,39 @@ describe('the chrome', () => {
    * nav items cannot be scrolled to — the failure `dvh` was chosen against.
    */
   /**
-   * ⚠️ THE SHEET PROMISED TWO DERIVATIONS IN A COMMENT AND SHIPPED ONE.
+   * ⚠️ ONE DERIVATION NOW, AND IT USED TO BE TWO — WITH ONE OF THEM MISSING.
    *
-   * Below 64rem an anchored heading has to clear the host's bar *and* our
-   * strip; at and above it there is no strip, so only the host's bar. The
-   * desktop override was described in the comment above the token and never
-   * declared — so every heading on a wide screen parked 3.5rem too low. Legal
-   * CSS, plausible value, wrong at one of two widths, and no test could see
-   * it. This is that test.
+   * The sheet carried a `--wave-docs-bar-height` term below 64rem, because the
+   * sidebar took a strip shape *above* the content there and a heading had to
+   * clear it. The desktop override that dropped the term was described in a
+   * comment and never declared, so every heading on a wide screen parked 3.5rem
+   * too low: legal CSS, a plausible value, wrong at one of two widths, and no
+   * test could see it.
+   *
+   * The sidebar is beside the content at every width now, so there is one value
+   * and nothing of ours in it. What survives is the assertion that broke it:
+   * exactly as many derivations as there are shapes, and the host's offset in
+   * every one.
    */
-  it('derives the scroll padding once per breakpoint', () => {
+  it('derives the scroll padding once, and never without the host offset', () => {
     const derivations = [
       ...sheet.matchAll(/--wave-docs-scroll-padding:\s*calc\(([^;]+)\);/g),
     ].map(([, value]) => (value ?? '').replace(/\s+/g, ' ').trim());
 
-    expect(derivations).toEqual([
-      'var(--wave-docs-chrome-offset) + var(--wave-docs-bar-height) + 1rem',
-      'var(--wave-docs-chrome-offset) + 1rem',
-    ]);
-
-    // And the second one is inside the query that makes it true.
-    const desktop = sheet.indexOf(
-      '--wave-docs-scroll-padding: calc(var(--wave-docs-chrome-offset) + 1rem)',
-    );
-    expect(
-      sheet.lastIndexOf('@media (min-width: 64rem)', desktop),
-    ).toBeGreaterThan(sheet.lastIndexOf('@media (min-width: 30rem)', desktop));
+    expect(derivations).toEqual(['var(--wave-docs-chrome-offset) + 1rem']);
   });
 
   it('subtracts the host offset from every scrolling column', () => {
-    // `[^)]+` stops at the `)` inside `var(…)`; match the whole function.
+    /*
+     * `height` or `max-height`: the sticky shell needs a definite height for
+     * the scroller inside it, the TOC only needs a ceiling. Both subtract the
+     * same token, and getting one and not the other leaves a column whose
+     * bottom is unreachable.
+     *
+     * `[^)]+` stops at the `)` inside `var(…)`; match the whole function.
+     */
     const subtractions = [
-      ...sheet.matchAll(/max-height: calc\(100dvh - (var\([^)]+\))\)/g),
+      ...sheet.matchAll(/(?:max-)?height: calc\(100dvh - (var\([^)]+\))\)/g),
     ];
 
     expect(subtractions.length).toBeGreaterThanOrEqual(2);

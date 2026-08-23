@@ -247,12 +247,17 @@ describe('the responsive shell', () => {
     document.head.append(style);
 
     document.body.innerHTML = `
+      <div class="wave-docs-shell">
       <div class="wave-docs-layout">
         <div class="wave-docs-layout__sidebar">
-          <nav class="wave-docs-sidebar"><ul class="wave-docs-sidebar__list" data-depth="0">
-            <li class="wave-docs-sidebar__item"><a class="wave-docs-sidebar__link" href="/a">A page</a></li>
-          </ul></nav>
+          <div class="wave-docs-layout__sidebar-nav" tabindex="-1">
+            <nav class="wave-docs-sidebar"><ul class="wave-docs-sidebar__list" data-depth="0">
+              <li class="wave-docs-sidebar__item"><a class="wave-docs-sidebar__link" href="/a">A page</a></li>
+            </ul></nav>
+          </div>
+          <button type="button" class="wave-docs-layout__sidebar-trigger"></button>
         </div>
+        <div class="wave-docs-layout__sidebar-scrim" aria-hidden="true"></div>
         <div class="wave-docs-layout__main">
           <article class="wave-docs-prose">
             <h1>Title</h1>
@@ -266,6 +271,7 @@ describe('the responsive shell', () => {
           </article>
         </div>
         <div class="wave-docs-layout__toc"><nav class="wave-docs-toc"><a href="#x">Title</a></nav></div>
+      </div>
       </div>`;
   }
 
@@ -293,10 +299,19 @@ describe('the responsive shell', () => {
         document.documentElement.scrollWidth,
         `document scrolls sideways at ${width}px`,
       ).toBeLessThanOrEqual(width);
+      /*
+       * ⚠️ 260, NOT 280, AND THE 20px IS THE TAP TARGET.
+       *
+       * The floor was 280 while the trigger was a `fixed` 24px strip overlapping
+       * the gutter. It is 44px of real track now — Apple's minimum, and the
+       * strip *is* the target — paid for out of the article: 320 − 44 − 8 − 8 is
+       * 260. About 46 characters, on a viewport narrower than any phone sold
+       * since 2016. Every other width is unaffected: 330 at 390px.
+       */
       expect(
         box('.wave-docs-prose').width,
-        `prose column collapsed at $widthpx`,
-      ).toBeGreaterThanOrEqual(280);
+        `prose column collapsed at ${width}px`,
+      ).toBeGreaterThanOrEqual(260);
     },
   );
 
@@ -306,20 +321,19 @@ describe('the responsive shell', () => {
     await resize(390);
     /*
      * MEASURED AS GEOMETRY, NOT AS A KEYWORD, and the geometry has now been
-     * three different things.
+     * four different things.
      *
-     * It asserted `display: none` on the sidebar wrapper until the drawer
-     * landed — wrong, because the drawer `<dialog>` lives inside this wrapper
-     * so one nav DOM can serve both breakpoints, and an element inside a
-     * `display: none` subtree generates no boxes at all, including one promoted
-     * to the top layer. Then it asserted a width of 0, because the wrapper was
-     * `display: contents` and reserved no track.
+     * `display: none` on the wrapper, then a width of 0 because it was
+     * `display: contents`, then 0 again with a `<dialog>` inside it. There is
+     * one sidebar now and no width at which it is absent — so the number that
+     * means "a phone gets one reading column" is the article's inline start,
+     * not the sidebar's width.
      *
-     * `contents` is what makes that work, and the thing worth asserting was
-     * never the keyword: it is that the wrapper takes up no space, so nothing
-     * of this package's sits between a host's own chrome and the article.
+     * ⚠️ AND NOT THE SIDEBAR'S OWN BOX, WHICH IS 300px IN BOTH STATES. It is
+     * `max-content` wide always; what changes is its negative margin, so
+     * measuring the box would pass whatever the layout did.
      */
-    expect(box('.wave-docs-layout__sidebar').width).toBe(0);
+    expect(box('.wave-docs-layout__main').left).toBeLessThanOrEqual(60);
     expect(
       getComputedStyle(
         document.querySelector('.wave-docs-layout__toc') as HTMLElement,
@@ -327,7 +341,7 @@ describe('the responsive shell', () => {
     ).toBe('none');
 
     await resize(1024);
-    expect(box('.wave-docs-layout__sidebar').width).toBeGreaterThan(0);
+    expect(box('.wave-docs-layout__main').left).toBeGreaterThan(280);
     expect(
       getComputedStyle(
         document.querySelector('.wave-docs-layout__toc') as HTMLElement,
@@ -384,12 +398,37 @@ describe('the responsive shell', () => {
     }
   });
 
-  it('caps the shell so the columns do not pin to the bezels', async () => {
+  /**
+   * ⚠️ THE READING COLUMN IS CAPPED, NOT THE SHELL — AND SWAPPING THOSE TWO IS
+   * WHAT THIS TEST NOW GUARDS.
+   *
+   * The shell used to carry `max-width: 100rem` and `margin-inline: auto`, so
+   * that a 2560px display did not leave the sidebar and the TOC 1500px apart
+   * with the text floating between them. It also pushed the sidebar 480px in
+   * from the page's inline start — and a *closed* navigation, translated out of
+   * the shell rather than off the screen, sat visible in the centring margin.
+   * Measured at 2000px: 200px of it on screen beside a trigger 200px in.
+   *
+   * So the sidebar keeps the inline start edge at every width, which is what
+   * makes "closed" mean off the screen by construction, and the thing that
+   * should not stretch — the prose — is the thing that is capped and centred.
+   */
+  it('caps the reading column, and keeps the sidebar on the edge', async () => {
     mountShell();
     await resize(2560);
-    // Uncapped, the sidebar and TOC end up ~1500px apart with the text
-    // floating between them.
-    expect(box('.wave-docs-layout').width).toBeLessThanOrEqual(100 * 16);
+
+    // The sidebar is flush, so a closed navigation has somewhere to go.
+    expect(box('.wave-docs-layout__sidebar').left).toBe(0);
+    expect(box('.wave-docs-layout').left).toBe(0);
+
+    // And the text does not run the bezel: capped, and centred in its track.
+    const prose = box('.wave-docs-prose');
+    const main = box('.wave-docs-layout__main');
+    expect(prose.width).toBeLessThanOrEqual(46 * 16);
+    expect(Math.round(prose.left - main.left)).toBeCloseTo(
+      Math.round(main.right - prose.right),
+      -1,
+    );
   });
 });
 
@@ -465,332 +504,6 @@ describe('the box model', () => {
     await resize(1440);
 
     expect(getComputedStyle(link).boxSizing).toBe('border-box');
-  });
-});
-
-/**
- * The drawer's trigger at a phone's width.
- *
- * ⚠️ THIS DESCRIBE HAS OUTLIVED TWO SHELLS, AND BOTH TIMES THE FIXTURE WENT
- * STALE BEFORE THE ASSERTIONS DID. It mounted a header, then a strip; each was
- * deleted, each left markup no shell renders, and every assertion against it
- * passed against nothing.
- *
- * What survives both is the question the header existed to answer: **on a
- * phone, can a reader reach the rest of the site?** The control that answers it
- * is a floating button now, and it is the one fixed-position element this
- * package renders — small and corner-anchored rather than a band across the
- * top, because two of the sites using this have a fixed navbar of their own and
- * a second bar at the same edge lands on top of the first.
- */
-describe('the drawer trigger at a phone width', () => {
-  function mountTrigger(): HTMLElement {
-    document.head.querySelector('#wave-docs-styles')?.remove();
-    const style = document.createElement('style');
-    style.id = 'wave-docs-styles';
-    style.textContent = styles;
-    document.head.append(style);
-
-    document.body.innerHTML = `
-      <div class="wave-docs-layout">
-        <div class="wave-docs-layout__sidebar">
-          <button type="button" class="wave-docs-layout__nav-trigger"></button>
-          <dialog class="wave-docs-layout__drawer">
-            <div class="wave-docs-layout__drawer-body"></div>
-            <button type="button" class="wave-docs-layout__drawer-close"></button>
-          </dialog>
-        </div>
-        <main class="wave-docs-layout__main">${'<p>Scroll me.</p>'.repeat(60)}</main>
-      </div>`;
-
-    const trigger = document.querySelector('.wave-docs-layout__nav-trigger');
-    if (!(trigger instanceof HTMLElement)) {
-      throw new Error('failed to mount the trigger fixture');
-    }
-    return trigger;
-  }
-
-  /**
-   * ⚠️ 24px OF BAR, 44px OF TARGET, AND THE SECOND NUMBER IS NOT IN THE BOX.
-   *
-   * WCAG 2.5.8 asks for 24 and iOS and WCAG 2.5.5 ask for 44, so the painted
-   * strip satisfies only the first. The rest of the target comes from an
-   * `::after` that extends past what is painted — which
-   * `getBoundingClientRect` cannot see, because a pseudo-element is not in the
-   * element's border box. Hit-testing is the only way to assert it, and it is
-   * the thing that actually matters: what a thumb landing at 40px reaches.
-   */
-  it('answers to 44px while painting only the dots', async () => {
-    const trigger = mountTrigger();
-    await resize(390);
-
-    // The strip is the target and paints nothing.
-    expect(trigger.getBoundingClientRect().width).toBeGreaterThanOrEqual(44);
-    expect(getComputedStyle(trigger).backgroundColor).toBe('rgba(0, 0, 0, 0)');
-    expect(getComputedStyle(trigger).borderTopWidth).toBe('0px');
-
-    /*
-     * Two pseudo-elements and the order is load-bearing: `::before` is the
-     * 16px tab, `::after` the three dots over it. Neither carries a `z-index`,
-     * so tree order is the only thing keeping the dots on top.
-     */
-    const tab = getComputedStyle(trigger, '::before');
-    expect(tab.height).toBe('80px');
-    expect(tab.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-
-    const dots = getComputedStyle(trigger, '::after');
-    expect(dots.backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-    // Three of them: one element and two box-shadow copies, 7px either side.
-    // Matched on the offsets rather than on a colour — the computed value comes
-    // back in whatever colour space the engine resolved `currentcolor` into.
-    expect(dots.boxShadow).not.toBe('none');
-    expect(dots.boxShadow).toContain('-7px');
-    expect(dots.boxShadow).toContain('7px');
-
-    const mid = window.innerHeight / 2;
-    expect(document.elementFromPoint(12, mid)).toBe(trigger);
-    expect(document.elementFromPoint(40, mid)).toBe(trigger);
-    // And no further: past the target it is the page again.
-    expect(document.elementFromPoint(60, mid)).not.toBe(trigger);
-  });
-
-  /**
-   * It runs the full height of the viewport and stays there while the document
-   * scrolls, so the navigation is one tap from anywhere in a long page.
-   */
-  it('runs the full height and holds it while the page scrolls', async () => {
-    const trigger = mountTrigger();
-    await resize(390);
-
-    const before = trigger.getBoundingClientRect();
-    expect(Math.round(before.height)).toBe(Math.round(window.innerHeight));
-
-    window.scrollTo(0, 800);
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    const after = trigger.getBoundingClientRect();
-
-    expect(Math.round(after.top)).toBe(Math.round(before.top));
-    expect(Math.round(after.height)).toBe(Math.round(before.height));
-  });
-
-  /**
-   * The article clears it rather than running underneath. `position: fixed`
-   * takes the bar out of flow, so without matching padding on the grid the
-   * first words of every line sit under a control.
-   */
-  /**
-   * The article clears the *painted* button, not the whole target. The extra
-   * 20px of hit area deliberately overlaps the gutter — that is the trade that
-   * buys 44px without a 44px slab down the page — but no text may sit under
-   * something a reader can see and press.
-   */
-  it('does not put the article under the dots', async () => {
-    const trigger = mountTrigger();
-    await resize(390);
-
-    const main = document.querySelector('.wave-docs-layout__main');
-    if (!(main instanceof HTMLElement)) throw new Error('no article');
-
-    /*
-     * The article clears the *painted* dots, not the whole target. The extra
-     * hit area deliberately overlaps the gutter — that is the trade that buys
-     * 44px without a slab down the page — but no text may sit under something
-     * a reader can see and press.
-     */
-    const tab = getComputedStyle(trigger, '::before');
-    const edge =
-      trigger.getBoundingClientRect().left +
-      Number.parseFloat(tab.insetInlineStart) +
-      Number.parseFloat(tab.width);
-    expect(main.getBoundingClientRect().left).toBeGreaterThanOrEqual(edge);
-  });
-
-  it('takes no space in the flow, so the article starts at the top', async () => {
-    mountTrigger();
-    await resize(390);
-
-    const main = document.querySelector('.wave-docs-layout__main');
-    if (!(main instanceof HTMLElement)) throw new Error('no article');
-    expect(main.getBoundingClientRect().top).toBeLessThan(48);
-  });
-
-  /**
-   * ⚠️ ONE CONTROL, TWO PLACES. They were two: 24px against 44px, a grip
-   * against an `<svg>` cross, transparent against filled. Opening and closing
-   * the same drawer looked like two different buttons, which is what this
-   * pins — same box, same glyph, and a chevron that points at what pressing it
-   * does.
-   */
-  it('opens and closes with the same control', async () => {
-    mountTrigger();
-    await resize(390);
-
-    const open = document.querySelector('.wave-docs-layout__nav-trigger');
-    const close = document.querySelector('.wave-docs-layout__drawer-close');
-    const drawer = document.querySelector('dialog.wave-docs-layout__drawer');
-    if (
-      !(open instanceof HTMLElement) ||
-      !(close instanceof HTMLElement) ||
-      !(drawer instanceof HTMLDialogElement)
-    ) {
-      throw new Error('expected both controls and a drawer');
-    }
-
-    // Same glyph and same tab — one rule draws both, so neither can drift.
-    // Read while the trigger is still on screen: it is hidden once the drawer
-    // opens, and a `display: none` pseudo-element has no used width to compare.
-    const paint = (el: Element): string[] =>
-      ['::before', '::after'].flatMap((pseudo) => {
-        const style = getComputedStyle(el, pseudo);
-        return [style.width, style.height, style.borderRadius, style.boxShadow];
-      });
-    const opener = paint(open);
-
-    // The close control lives inside the drawer, which is correctly hidden
-    // until something opens it — so there is nothing to measure until it is.
-    drawer.showModal();
-
-    /*
-     * ⚠️ ONE CONTROL ON SCREEN AT A TIME, AND THAT IS THE ASSERTION. Both were
-     * painted at once for one build — the trigger `fixed` at the viewport edge
-     * and its twin at the panel edge — which is two identical grips for one
-     * drawer. Opening moves the control along x; it does not add a second one.
-     */
-    expect(open.checkVisibility()).toBe(false);
-    expect(close.checkVisibility()).toBe(true);
-
-    const b = close.getBoundingClientRect();
-    expect(Math.round(b.width)).toBe(44);
-    expect(Math.round(b.height)).toBe(Math.round(window.innerHeight));
-
-    expect(paint(close)).toEqual(opener);
-    drawer.close();
-  });
-
-  /**
-   * The fill is the pointer affordance and the outline is the accessible one.
-   * They were the same rule for a commit, and forced-colours mode discards a
-   * background — so a keyboard reader there would have had no indicator at all.
-   */
-  it('marks focus with an outline, not only a fill', async () => {
-    const trigger = mountTrigger();
-    await resize(390);
-
-    expect(getComputedStyle(trigger).backgroundColor).toBe('rgba(0, 0, 0, 0)');
-    trigger.focus();
-    expect(getComputedStyle(trigger).outlineStyle).toBe('solid');
-    expect(
-      Number.parseFloat(getComputedStyle(trigger).outlineWidth),
-    ).toBeGreaterThan(0);
-  });
-
-  it('is hidden once the sidebar is a column', async () => {
-    const trigger = mountTrigger();
-    await resize(1440);
-
-    expect(getComputedStyle(trigger).display).toBe('none');
-  });
-});
-
-/**
- * The control that closes the drawer, which is the one that opened it seen from
- * the other side.
- *
- * ⚠️ IT IS IN FLOW, AND THAT IS THE WHOLE POINT OF THE TEST. It was `fixed`,
- * to hold still while a long tree scrolled underneath — and out of flow meant
- * nothing in the panel reserved space for it, so the last 44px of every link
- * sat under a button, for the eye and for a tap alike.
- *
- * A row of two solves both at once: the strip gets its own track, and the
- * scroll moves to the body beside it, so the strip cannot travel because it is
- * not in the scroller any more.
- */
-describe('the drawer close control', () => {
-  function mountDrawer(): HTMLDialogElement {
-    document.head.querySelector('#wave-docs-styles')?.remove();
-    const style = document.createElement('style');
-    style.id = 'wave-docs-styles';
-    style.textContent = styles;
-    document.head.append(style);
-
-    document.body.innerHTML = `
-      <dialog class="wave-docs-layout__drawer">
-        <div class="wave-docs-layout__drawer-body">
-          <nav class="wave-docs-sidebar">${'<a class="wave-docs-sidebar__link" href="#x">Item</a>'.repeat(80)}</nav>
-        </div>
-        <button type="button" class="wave-docs-layout__drawer-close"></button>
-      </dialog>`;
-
-    const dialog = document.querySelector('dialog.wave-docs-layout__drawer');
-    if (!(dialog instanceof HTMLDialogElement)) {
-      throw new Error('failed to mount the drawer fixture');
-    }
-    dialog.showModal();
-    return dialog;
-  }
-
-  it('sits on the drawer edge, not the screen edge', async () => {
-    const dialog = mountDrawer();
-    await resize(390);
-
-    const close = document.querySelector('.wave-docs-layout__drawer-close');
-    if (!(close instanceof HTMLElement)) throw new Error('no close control');
-
-    const panel = dialog.getBoundingClientRect();
-    const strip = close.getBoundingClientRect();
-
-    // Inside the panel's inline end — not over it, and not beyond it.
-    expect(strip.right).toBeLessThanOrEqual(panel.right + 1);
-    expect(strip.right).toBeGreaterThan(panel.right - 48);
-    // And the panel is not the whole screen, so the two edges are distinct.
-    expect(panel.right).toBeLessThan(window.innerWidth);
-  });
-
-  /**
-   * The reason the row exists. `fixed` painted the strip over the tree, and a
-   * test that only measured the strip could not see it.
-   */
-  it('never overlaps the tree, because it is beside it', async () => {
-    mountDrawer();
-    await resize(390);
-
-    const close = document.querySelector('.wave-docs-layout__drawer-close');
-    const body = document.querySelector('.wave-docs-layout__drawer-body');
-    if (!(close instanceof HTMLElement) || !(body instanceof HTMLElement)) {
-      throw new Error('expected a close control and a body');
-    }
-
-    expect(body.getBoundingClientRect().right).toBeLessThanOrEqual(
-      close.getBoundingClientRect().left + 1,
-    );
-  });
-
-  it('runs the full height and holds it while the tree scrolls', async () => {
-    const dialog = mountDrawer();
-    await resize(390);
-
-    const close = document.querySelector('.wave-docs-layout__drawer-close');
-    const body = document.querySelector('.wave-docs-layout__drawer-body');
-    if (!(close instanceof HTMLElement) || !(body instanceof HTMLElement)) {
-      throw new Error('expected a close control and a body');
-    }
-
-    const before = close.getBoundingClientRect();
-    expect(Math.round(before.height)).toBe(Math.round(window.innerHeight));
-
-    /*
-     * ⚠️ SCROLL THE BODY, NOT THE DIALOG. The scroller moved when the strip
-     * came into flow, and that move is what makes this hold still — scrolling
-     * the dialog here would pass whatever the strip did, because the dialog no
-     * longer scrolls at all.
-     */
-    body.scrollTop = 400;
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    expect(body.scrollTop).toBeGreaterThan(0);
-
-    const after = close.getBoundingClientRect();
-    expect(Math.round(after.top)).toBe(Math.round(before.top));
-    dialog.close();
   });
 });
 

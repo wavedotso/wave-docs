@@ -320,7 +320,7 @@ const README_CLAIMS: ReadmeClaim[] = [
     unit: 'kb',
   },
   {
-    label: 'Navigation: sidebar and mobile drawer',
+    label: 'Navigation: one sidebar, open and closed',
     axis: 'client',
     names: ['next-nav'],
     unit: 'kb',

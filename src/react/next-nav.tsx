@@ -29,7 +29,9 @@ export interface DocsNextNavProps {
   nav: DocNavNode[];
   label?: string | undefined;
   closeLabel?: string | undefined;
-  /** Rendered inside the drawer, above the tree. See `DocsNavProps.children`. */
+  /** Accessible name for the trigger while the sidebar is closed. */
+  openLabel?: string | undefined;
+  /** Rendered above the tree. See `DocsNavProps.children`. */
   children?: ReactNode;
   /** Passed through to the tree. See `DocsSidebarProps.expandGroup`. */
   expandGroup?: string | undefined;
@@ -41,6 +43,7 @@ export function DocsNextNav({
   nav,
   label,
   closeLabel,
+  openLabel,
   children,
   expandGroup,
   collapseGroup,
@@ -53,6 +56,7 @@ export function DocsNextNav({
       Link={Link}
       {...(label === undefined ? {} : { label })}
       {...(closeLabel === undefined ? {} : { closeLabel })}
+      {...(openLabel === undefined ? {} : { openLabel })}
       {...(expandGroup === undefined ? {} : { expandGroup })}
       {...(collapseGroup === undefined ? {} : { collapseGroup })}
       {...(externalLink === undefined ? {} : { externalLink })}

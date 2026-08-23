@@ -679,8 +679,9 @@ export interface DocsRoute<
    * If that header of yours is sticky, say how tall it is once —
    * `--wave-docs-chrome-offset: 4rem` — and our sticky columns start below it.
    *
-   * It owns the skip link, the sidebar — a 16rem column above 64rem, an in-flow
-   * sticky strip below it — the search trigger, the mobile drawer and the grid.
+   * It owns the skip link, the sidebar — one shell at every width, holding the
+   * navigation and the 44px strip that moves it — the search trigger and the
+   * grid.
    * It reads `source.nav()` and `searchIndexUrl` itself, so there is no nav to
    * fetch and no URL to pass. It does **not** own the table of contents: a Next
    * layout receives `{children, params}` and cannot know which page is
@@ -1309,7 +1310,7 @@ export function createDocsRoute<
 
       /*
        * `requestScopedSource`, not `source`: outside a production build this
-       * rescans, so adding a page in `next dev` shows up in the drawer. Next
+       * rescans, so adding a page in `next dev` shows up in the sidebar. Next
        * does not re-run a layout on every client navigation, so a stale read
        * here survives longer than a stale read anywhere else on the route.
        */

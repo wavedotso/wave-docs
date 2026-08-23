@@ -10,7 +10,7 @@
  * carries opens nothing, and says nothing while doing it.
  */
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -31,7 +31,6 @@ vi.mock('next/link', () => ({
 }));
 
 const { DocsLayoutShell } = await import('./layout.js');
-const { DOCS_NAV_ID } = await import('./nav.js');
 
 const NAV: DocNavNode[] = [
   { type: 'page', title: 'Guide', href: '/docs/guide', slug: 'guide' },
@@ -73,39 +72,58 @@ describe('DocsLayoutShell', () => {
     const container = renderShell();
 
     /*
-     * The mobile drawer and the desktop sidebar are the same DOM — at 64rem
-     * the dialog goes `display: contents` and the nav inside it becomes the
-     * column. A second copy would double every link in the payload and give a
-     * screen-reader user two identical landmarks to choose between.
+     * ⚠️ ONE SIDEBAR, AND NO DIALOG BESIDE IT. There were two shapes of the
+     * same DOM — a modal drawer below 64rem, `display: contents` above it — and
+     * every attempt to simplify that ended in a second copy of the tree: double
+     * the links in the payload, and two identical landmarks for a
+     * screen-reader user to choose between.
      */
     expect(container.querySelectorAll('nav[aria-label]')).toHaveLength(1);
-    expect(container.querySelectorAll('dialog')).toHaveLength(1);
-  });
-
-  it('binds the nav trigger to the drawer it opens', () => {
-    const container = renderShell();
-
-    const trigger = screen.getByRole('button', { name: 'Open navigation' });
-    const dialog = container.querySelector('dialog');
-
-    // The trigger is server-rendered outside the dialog's subtree, so
-    // `commandfor` is the only thing connecting them — and a mismatch is
-    // silent, a button that does nothing at all when tapped.
-    expect(trigger.getAttribute('commandfor')).toBe(DOCS_NAV_ID);
-    expect(trigger.getAttribute('command')).toBe('show-modal');
-    expect(dialog?.id).toBe(DOCS_NAV_ID);
-  });
-
-  it('lets the drawer be dismissed by the two routes a reader reaches for', () => {
-    const container = renderShell();
-    const dialog = container.querySelector('dialog');
-
-    // Light dismiss and Escape, both native, both free — and both absent from
-    // the `popover="auto"` and `<details>` alternatives this replaced.
-    expect(dialog?.getAttribute('closedby')).toBe('any');
+    expect(container.querySelectorAll('dialog')).toHaveLength(0);
     expect(
-      container.querySelector('button.wave-docs-layout__drawer-close'),
-    ).not.toBeNull();
+      container.querySelectorAll('.wave-docs-layout__sidebar'),
+    ).toHaveLength(1);
+  });
+
+  /**
+   * ⚠️ ONE CONTROL, AND IT IS THE ONLY ONE. The drawer had two — a trigger
+   * outside it and a close button inside — which is two buttons for one piece
+   * of navigation, and they drifted apart every time either was touched.
+   */
+  it('renders exactly one control for the sidebar', () => {
+    const container = renderShell();
+
+    expect(
+      container.querySelectorAll('.wave-docs-layout__sidebar-trigger'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('.wave-docs-layout__nav-trigger'),
+    ).toBeNull();
+    expect(
+      container.querySelector('.wave-docs-layout__drawer-close'),
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Open navigation' })).toHaveClass(
+      'wave-docs-layout__sidebar-trigger',
+    );
+  });
+
+  /**
+   * ⚠️ THE QUERY CONTAINER IS AN ELEMENT, AND IT HAS TO BE OUTSIDE THE GRID.
+   *
+   * A container query never matches its own container, so with `container-type`
+   * on `.wave-docs-layout` no rule inside a query could touch
+   * `grid-template-columns` — which is the one declaration the layout has to
+   * change between cover and push. One wrapper buys every rule.
+   */
+  it('wraps the grid in the query container', () => {
+    const container = renderShell();
+
+    const shell = container.querySelector('.wave-docs-shell');
+    const grid = container.querySelector('.wave-docs-layout');
+    if (shell === null || grid === null) {
+      throw new Error('expected a query container around the grid');
+    }
+    expect(grid.parentElement).toBe(shell);
   });
 
   it('puts children directly in the grid, with no wrapper', () => {
@@ -152,8 +170,7 @@ describe('DocsLayoutShell', () => {
    *
    * A header is the one element that competes with a host application's own for
    * the viewport's top edge. The chrome it held is inside
-   * `.wave-docs-layout__sidebar` now, which is a grid item at every width — a
-   * column above 64rem and an in-flow sticky strip below it.
+   * `.wave-docs-layout__sidebar` now, which is a grid item at every width.
    */
   it('renders no header, and puts the chrome in the sidebar', () => {
     const container = renderShell();
@@ -165,14 +182,32 @@ describe('DocsLayoutShell', () => {
     const sidebar = container.querySelector('.wave-docs-layout__sidebar');
     if (sidebar === null) throw new Error('expected the chrome wrapper');
 
-    // Both survivors of the header, and the drawer they open onto.
+    // Both survivors of the header, and the control that moves them.
     expect(
-      sidebar.querySelector('.wave-docs-layout__nav-trigger'),
+      sidebar.querySelector('.wave-docs-layout__sidebar-trigger'),
     ).not.toBeNull();
     expect(sidebar.querySelector('.wave-docs-layout__search')).not.toBeNull();
-    expect(
-      sidebar.querySelector('dialog.wave-docs-layout__drawer'),
-    ).not.toBeNull();
+  });
+
+  /**
+   * ⚠️ THE SCRIM IS THE SIDEBAR'S SIBLING, NOT ITS CHILD. It has to cover the
+   * article, and the article is the sidebar's sibling — inside, it could only
+   * ever cover the navigation itself.
+   */
+  it('renders the scrim beside the sidebar, inside the grid', () => {
+    const container = renderShell();
+
+    const sidebar = container.querySelector('.wave-docs-layout__sidebar');
+    const scrim = container.querySelector('.wave-docs-layout__sidebar-scrim');
+    const grid = container.querySelector('.wave-docs-layout');
+    if (sidebar === null || scrim === null || grid === null) {
+      throw new Error('expected a sidebar, a scrim and a grid');
+    }
+
+    expect(scrim.parentElement).toBe(grid);
+    expect(sidebar.nextElementSibling).toBe(scrim);
+    // Decoration, and never a tab stop or an announced element.
+    expect(scrim).toHaveAttribute('aria-hidden', 'true');
   });
 
   /**
@@ -184,39 +219,25 @@ describe('DocsLayoutShell', () => {
    * container around it moved, not because anyone decided the search should
    * live somewhere new — which is exactly how it would drift a third time.
    *
-   * The containment is what makes it structural rather than incidental. The
-   * trigger is inside the drawer `<dialog>`, and the dialog is inside the
-   * sidebar wrapper, so:
-   *
-   * - below 64rem the wrapper is `display: contents` and the dialog is a
-   *   modal — the search is the first thing in the drawer, above the tree;
-   * - at and above 64rem the dialog is `display: contents` — the search is the
-   *   first thing in the sidebar column, above the tree.
-   *
-   * One element, one position relative to the navigation, both shapes. A
-   * refactor that lifts it out of the dialog to "simplify" the tree breaks this
-   * test, and should.
+   * The containment is what makes it structural: it is inside the sidebar's
+   * *navigation*, which is the box the trigger moves. So it travels with the
+   * tree, at every width, and there is no second placement to get wrong.
    */
   it('puts the search inside the sidebar, above the tree, at every width', () => {
     const container = renderShell();
 
     const sidebar = container.querySelector('.wave-docs-layout__sidebar');
-    const drawer = container.querySelector('dialog.wave-docs-layout__drawer');
+    const nav = container.querySelector('.wave-docs-layout__sidebar-nav');
     const search = container.querySelector('button.wave-docs-search-trigger');
     const tree = container.querySelector('.wave-docs-sidebar');
-    if (
-      sidebar === null ||
-      drawer === null ||
-      search === null ||
-      tree === null
-    ) {
+    if (sidebar === null || nav === null || search === null || tree === null) {
       throw new Error(
-        'expected a sidebar, a drawer, a search trigger and a tree',
+        'expected a sidebar, its nav, a search trigger and a tree',
       );
     }
 
     expect(sidebar.contains(search)).toBe(true);
-    expect(drawer.contains(search)).toBe(true);
+    expect(nav.contains(search)).toBe(true);
 
     // Above the tree, and by document order rather than by index arithmetic, so
     // this survives a change to how many wrappers sit between them.
@@ -226,21 +247,22 @@ describe('DocsLayoutShell', () => {
   });
 
   /**
-   * The trigger opens the drawer by `id`, so it does not have to be a sibling
-   * of it — which is what lets the search trigger sit between the two.
+   * The trigger names the box it moves, so a screen reader announces the
+   * relationship the sighted reader can see.
    */
-  it('keeps the trigger bound to the drawer across the search trigger', () => {
+  it('binds the trigger to the navigation it moves', () => {
     const container = renderShell();
 
-    const trigger = container.querySelector('.wave-docs-layout__nav-trigger');
-    const dialog = container.querySelector('dialog.wave-docs-layout__drawer');
-    if (trigger === null || dialog === null) {
-      throw new Error('expected a trigger and a drawer');
+    const trigger = container.querySelector(
+      '.wave-docs-layout__sidebar-trigger',
+    );
+    const nav = container.querySelector('.wave-docs-layout__sidebar-nav');
+    if (trigger === null || nav === null) {
+      throw new Error('expected a trigger and the navigation it controls');
     }
 
-    expect(trigger.getAttribute('commandfor')).toBe(dialog.id);
-    expect(trigger.getAttribute('command')).toBe('show-modal');
-    expect(trigger.contains(dialog)).toBe(false);
+    expect(trigger.getAttribute('aria-controls')).toBe(nav.id);
+    expect(trigger.contains(nav)).toBe(false);
   });
 });
 
@@ -270,17 +292,15 @@ describe('the shell in another language', () => {
     expect(
       screen.getByRole('link', { name: LABELS.skipToContent }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: LABELS.openNav })).toBeTruthy();
+    const trigger = screen.getByRole('button', { name: LABELS.openNav });
+    expect(trigger).toBeTruthy();
     /*
-     * `hidden: true` for everything inside the drawer. A closed `<dialog>` is
-     * out of the accessibility tree — correct, and it means the default query
-     * cannot see the close button in *either* direction, so asserting the
-     * English default's absence without this flag would be an assertion that
-     * could not fail.
+     * ⚠️ THE OTHER NAME ONLY EXISTS IN THE OTHER STATE, SO PRESS IT. One
+     * control carries both strings — it is named for what pressing it does
+     * next — so a test that never toggles can only ever see one of the two.
      */
-    expect(
-      screen.getByRole('button', { name: LABELS.closeNav, hidden: true }),
-    ).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('button', { name: LABELS.closeNav })).toBeTruthy();
     expect(
       screen.getAllByRole('navigation', { name: LABELS.nav, hidden: true })
         .length,
@@ -404,14 +424,14 @@ describe('the shell in another language', () => {
   it('falls back per string, so a partial map is not a half-English shell', () => {
     renderShell({ labels: { openNav: 'Abrir navegação' } });
 
-    expect(
-      screen.getByRole('button', { name: 'Abrir navegação' }),
-    ).toBeTruthy();
+    const trigger = screen.getByRole('button', { name: 'Abrir navegação' });
+    expect(trigger).toBeTruthy();
     // The rest keep their defaults rather than becoming `undefined`, which
     // would leave a button with no accessible name at all.
     expect(screen.getByRole('link', { name: 'Skip to content' })).toBeTruthy();
+    fireEvent.click(trigger);
     expect(
-      screen.getByRole('button', { name: 'Close navigation', hidden: true }),
+      screen.getByRole('button', { name: 'Close navigation' }),
     ).toBeTruthy();
   });
 });

@@ -217,9 +217,18 @@ async function checkShell(): Promise<void> {
     ['a skip link, before anything else', /class="wave-docs-skip-link"/],
     ['the grid', /class="wave-docs-layout"/],
     ['the chrome, in the sidebar', /class="wave-docs-layout__sidebar"/],
-    ['the drawer', /<dialog[^>]*id="wave-docs-nav"/],
-    ['light dismiss on the drawer', /closedby="any"/],
-    ['a declarative trigger', /command="show-modal"/],
+    /*
+     * The three boxes the sidebar is made of, and the control bound to the one
+     * it moves. There was a `<dialog id="wave-docs-nav">` here with
+     * `closedby="any"` and a `command="show-modal"` button; one sidebar
+     * replaced all of it, and a dialog reappearing means the mobile/desktop
+     * split came back with it.
+     */
+    ['the query container around the grid', /class="wave-docs-shell"/],
+    ['the navigation', /class="wave-docs-layout__sidebar-nav"/],
+    ['the trigger', /class="wave-docs-layout__sidebar-trigger"/],
+    ['the trigger bound to it', /aria-controls="wave-docs-nav"/],
+    ['the scrim', /class="wave-docs-layout__sidebar-scrim"/],
     // The element, not only the class: this is the page's `main` landmark, and
     // it shipped as an `<article>` — a shell with a banner, a navigation and a
     // complementary and nothing for a screen-reader user to jump to.
@@ -249,9 +258,8 @@ async function checkShell(): Promise<void> {
    * Two landmarks, and they must not be two of the same thing. The sidebar
    * and the TOC are both `<nav>`, which is right — a screen-reader user picks
    * between them by name. What would be wrong is a second copy of the sidebar
-   * for the mobile breakpoint, which is what `display: contents` on the
-   * drawer exists to avoid, and which would show up here as two navs with the
-   * same label.
+   * for a mobile breakpoint, which is what one sidebar at every width exists to
+   * avoid, and which would show up here as two navs with the same label.
    */
   const labels = [...html.matchAll(/<nav [^>]*aria-label="([^"]+)"/g)].map(
     (match) => match[1],
@@ -262,7 +270,7 @@ async function checkShell(): Promise<void> {
     `duplicate landmark names: ${labels.join(', ')}`,
   );
   check(
-    'the drawer is not a second copy of the sidebar',
+    'nothing renders a second copy of the sidebar',
     (html.match(/class="wave-docs-sidebar"/g) ?? []).length === 1,
     'the nav is in the payload twice',
   );

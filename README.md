@@ -69,16 +69,16 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 13.5 KB |
+| Everything the quick start ships, gzipped | 13.9 KB |
 | Search dialog and router wiring | 9.3 KB |
-| Navigation: sidebar and mobile drawer | 2.4 KB |
+| Navigation: one sidebar, open and closed | 2.9 KB |
 | Table of contents | 0.9 KB |
 | Copy-button runtime | 1.1 KB |
 | hast over the wire vs HTML, prose page | 1.20× |
 | hast over the wire vs HTML, code and tables | 1.12× |
 | Highlighting vs no highlighting | 2.00× |
 
-The first row is the honest total: a reader who lands on a page of your documentation downloads under 13.5 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 13.9 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
 The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
 
@@ -140,7 +140,7 @@ content/docs/
     authentication.md
 ```
 
-That is a working documentation site: routing, a navigation sidebar, a table of contents, syntax highlighting, search, a mobile drawer and a skip link.
+That is a working documentation site: routing, a navigation sidebar that opens and closes, a table of contents, syntax highlighting, search and a skip link.
 
 The search route is in the quick start rather than in a section further down because `docs.Layout` renders the search trigger by default — leave the route out and a reader gets a control that opens onto "Search is unavailable". If you genuinely do not want search, `export default function Layout(props) { return docs.Layout({ ...props, search: false }) }` drops both the trigger and this file. See [Search](#search) for tuning.
 
@@ -172,18 +172,19 @@ That is about **weight, not about `node:fs`** — and the distinction matters, b
 
 ### Layout tokens
 
-Six custom properties size the shell, all layered so an unlayered `:root` of your own still wins. All six are public API: a name changes only in a release that carries the migration.
+Five custom properties size the shell, all layered so an unlayered `:root` of your own still wins. All six are public API: a name changes only in a release that carries the migration.
 
 | Token | Default | Controls |
 | --- | --- | --- |
 | `--wave-docs-measure` | `46rem` | Prose column width. `none` opts out |
-| `--wave-docs-bar-height` | `3.5rem` | The sidebar's strip shape, below 64rem |
-| `--wave-docs-sidebar-width` | `16rem` | Sidebar track |
+| `--wave-docs-sidebar-width` | `16rem` | The navigation's width |
+| `--wave-docs-trigger-width` | `1.25rem` | The trigger's button. The strip around it is this plus 4px a side |
 | `--wave-docs-toc-width` | `15rem` | Table-of-contents track |
-| `--wave-docs-shell-width` | `100rem` | Maximum shell width |
 | `--wave-docs-chrome-offset` | `0rem` | Where our sticky chrome starts, below a bar of yours |
 
-**`--wave-docs-header-height` split into `--wave-docs-bar-height` and `--wave-docs-chrome-offset` in 0.7.0, and renaming it to either one loses half of what it did.** It sized the header *and* it was the offset both sticky columns parked below. The sizing half is `--wave-docs-bar-height`; the offset half is `--wave-docs-chrome-offset` — `--wave-docs-chrome-offset: 4rem` starts our sticky strip, our sidebar column and our table of contents 4rem down, and feeds the scroll padding that keeps an anchored heading clear of them. Rename and stop there and the desktop offset is gone with no error.
+**`--wave-docs-shell-width` was removed in 0.8.0, and it is the sidebar's edge that replaced it.** It capped the whole shell and centred it, which put the sidebar's inline start 480px in from the screen on a 2560px display — and, worse, left a *closed* navigation parked in the centring margin instead of off the page. The reading column is the thing that should not stretch, so `--wave-docs-measure` caps it and it centres itself in its track; the sidebar keeps the page's inline start edge at every width, which is what makes "closed" mean off the screen by construction.
+
+**`--wave-docs-header-height` split into `--wave-docs-bar-height` and `--wave-docs-chrome-offset` in 0.7.0, and `--wave-docs-bar-height` was removed again in 0.8.0.** The original sized the header *and* was the offset both sticky columns parked below, so renaming it to either one would have lost half of what it did. The sizing half went with the strip shape it sized — the sidebar is beside the article at every width now, so nothing of this package's is ever above a heading. The offset half is the one that matters: `--wave-docs-chrome-offset: 4rem` starts our sidebar and our table of contents 4rem down, and feeds the scroll padding that keeps an anchored heading clear of your bar.
 
 The default is `0rem` rather than `0`, and the unit is load-bearing: it is read inside `calc(100dvh - …)` on both sticky columns, and `calc(100dvh - 0)` is invalid at computed-value time — a unitless zero kills the `max-height` instead of resolving to no change.
 
@@ -216,11 +217,13 @@ The two components the adapter injects take a little more than an `<a>` and an `
 
 ### Layout
 
-`export default docs.Layout` — the one line from the [quick start](#quick-start) — is a Server Component that renders the whole shell: skip link, sidebar, search trigger, mobile drawer, and the grid that arranges them. It reads the navigation tree and the search index URL itself, so there is nothing to fetch and nothing to pass.
+`export default docs.Layout` — the one line from the [quick start](#quick-start) — is a Server Component that renders the whole shell: skip link, sidebar, search trigger, and the grid that arranges them. It reads the navigation tree and the search index URL itself, so there is nothing to fetch and nothing to pass.
 
 **It renders no header, and that is deliberate.** Two kinds of site use this package: documentation mounted inside an application that already has a header, a navbar and its own search, and documentation that is the whole site. A full-width sticky bar of ours serves the second and fights the first — two stacked bars competing for the viewport's top edge, and two search boxes on one page, one of which knows nothing about the documentation.
 
-So the sidebar is the chrome. It is a real grid item at every width — a 16rem column above 64rem, an in-flow sticky strip below it — and it holds the same three children at both shapes: the drawer trigger, which is `display: none` above 64rem, the search trigger, and the navigation drawer itself. **Every persistent element this package renders is in normal flow, inside the grid, and offsettable; nothing is `position: fixed`.** Two elements in flow push each other and both stay visible, while a fixed one overlaps whatever is beneath it with neither side able to detect the collision — and a host cannot work around a collision it cannot see. Modals are the exception and always were: the search dialog and the drawer are top-layer, present only while open, and nothing collides with something that is not there.
+So the sidebar is the chrome. It is a real grid item at every width, and it is the same shell on a phone and on a desktop.
+
+**Nothing this package renders is anchored to the viewport.** The sidebar is a grid item, the trigger is a flex child of it, and the scrim is `position: absolute` inside `.wave-docs-layout` — so every one of them resolves against a box this package owns and *your* layout placed. `position: fixed` is the thing to avoid, and the reason is specific: a fixed element is anchored to the viewport you share with it, your navbar is in the same viewport, and neither can detect the other. The search dialog is the one exception and always was — top-layer, present only while open, and nothing collides with something that is not there.
 
 Your layout stays a Server Component. The two pieces that need a client — the navigation's `usePathname`, the search dialog — carry their own `'use client'` boundaries inside the package.
 
@@ -268,11 +271,47 @@ Three props, and one of them is `children`. That is deliberate, and it is the di
 
 `labels` belongs on `createDocsRoute` — see [Translating the chrome](#translating-the-chrome) — and this prop overrides it key by key, for a site with two shells or a section in another language.
 
-#### The mobile drawer
+#### One sidebar, open and closed
 
-Below 64rem the sidebar takes its strip shape: a sticky row `--wave-docs-bar-height` tall, spanning the grid, holding the drawer trigger and the search trigger. The navigation itself is a `<dialog>` opened by a server-rendered `<button command="show-modal">` — so it works on the first tap, before hydration, and with JavaScript disabled. Focus moves inside and Tab stays there, Escape closes it and returns focus to the trigger, a click on the backdrop dismisses it, and the page behind does not scroll. All of that is the browser's, not ours.
+There is no mobile version. The sidebar is a shell holding two things in a row:
 
-At 64rem and above the strip becomes the 16rem column, the drawer trigger is `display: none`, and the same `<dialog>` becomes that column's contents via `display: contents`. One navigation in the DOM at every width: one landmark, one copy of the links in the payload, nothing to keep in step.
+```
+.wave-docs-shell                         the query container
+└─ .wave-docs-layout                     the grid
+   ├─ .wave-docs-layout__sidebar         paints nothing, and moves
+   │  ├─ …__sidebar-nav                  the surface, and the one border
+   │  └─ …__sidebar-trigger              the strip — paints nothing at rest
+   ├─ .wave-docs-layout__sidebar-scrim
+   ├─ .wave-docs-layout__main
+   └─ .wave-docs-layout__toc
+```
+
+Pressing the trigger translates the shell by `calc(var(--wave-docs-trigger-width) - 100%)` — "minus all of me, plus the trigger back" — so the navigation goes entirely off the page and the trigger's outer edge lands exactly on the inline start edge. **The navigation's width appears nowhere in that expression**, so the two cannot drift apart. The trigger rides on the navigation's outer edge because it is the next flex item, not because a number says so.
+
+One navigation in the DOM at every width: one landmark, one copy of the links in the payload, nothing to keep in step.
+
+#### It adapts to its container, not to your screen
+
+**There is not one width-based `@media` query in this package.** Every breakpoint is `@container`, and that is not a stylistic preference — it is the difference between a docs theme and a component you can mount inside something else.
+
+`@media` asks how wide the *screen* is. If you put this in a 700px panel on a 1920px monitor, `@media` says "wide", the sidebar takes its 16rem column, and the reading column comes out around 60px. `@container` asks how wide the box you *gave* it is, which is the question with an answer.
+
+Two shapes fall out of that:
+
+- **Push**, in a container 64rem or wider: the navigation sits beside the article, and opening or closing it changes the article's width.
+- **Cover**, below that: the navigation sits on top of the article behind a scrim, and the article's measure never changes when you toggle.
+
+Same markup, same classes, same control, same translate. The only thing that differs is whether the article gets out of the way.
+
+Cover mode is a real overlay, so it ships what an overlay owes a reader: `inert` on everything the navigation covers, Escape to close, click-the-scrim to dismiss, and focus moving into the navigation and back out again. Those five were the browser's while this was a `<dialog>`; they are hand-written now, and skipping them is how an overlay becomes a keyboard trap in the wrong direction.
+
+`--wave-docs-sidebar-mode` is how the component knows which shape it is in: the stylesheet declares it, the component reads it back with `getComputedStyle`. `matchMedia` cannot answer a container query, and duplicating the breakpoint in JavaScript is how the two drift.
+
+#### Three states, and no flash
+
+The server renders no `data-state` at all. That absence means "nobody has chosen yet", and CSS resolves it per mode — closed where the navigation would cover the article, open where it would sit beside it. So the first paint is already right at both shapes, with no JavaScript and nothing to correct. Once a reader presses the trigger their choice is explicit and wins at every width.
+
+**This replaced a `<dialog>` drawer in 0.8.0.** Below 64rem the navigation used to be a modal opened by a second control, with `display: contents` above it so the same DOM could serve as the desktop column. It bought focus trapping, Escape and a scroll lock from the browser, and it worked before hydration. It cost two controls for one piece of navigation, a drawer that painted over the tree it contained, and a scroll-into-view that could never run on a phone — a closed `<dialog>` has no layout, so the current page was always below the fold. A closed sidebar is *moved*, not hidden, so that last one is structurally impossible now.
 
 #### Composing it yourself
 

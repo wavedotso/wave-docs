@@ -185,27 +185,29 @@ export function DocsSidebar({
   }, [pathname]);
 
   /*
-   * ⚠️ AND AGAIN WHEN A DIALOG AROUND THIS OPENS, BECAUSE ON A PHONE THE EFFECT
-   * ABOVE CANNOT WORK. Below 64rem the sidebar lives inside
-   * `<dialog class="wave-docs-layout__drawer">`, which the UA stylesheet keeps
-   * at `display: none` until `showModal()`, wrapped in a
-   * `.wave-docs-layout__sidebar` that is `display: contents`. An element in a
-   * `display: none` subtree generates no boxes, so both report
-   * `scrollHeight === clientHeight === 0` and `scrollableAncestor` walks past
-   * the drawer, past the grid, and returns `null`.
+   * ⚠️ AND AGAIN WHEN A DIALOG AROUND THIS OPENS — FOR A CONSUMER'S DIALOG, NOT
+   * FOR OURS.
    *
-   * The timing made it unreachable rather than merely unreliable: the effect is
-   * keyed on `pathname`, and `DocsNav` closes the drawer on every `pathname`
-   * change — so at the only moment it could fire, the drawer is always shut, and
-   * nothing re-ran when the reader opened it. On every phone render, on every
-   * navigation, the reader opened a 60-item list scrolled to the top with their
-   * page somewhere below the fold.
+   * This shell had one. The sidebar lived inside `<dialog
+   * class="wave-docs-layout__drawer">` below 64rem, which the UA sheet keeps at
+   * `display: none` until `showModal()`, and an element in a `display: none`
+   * subtree generates no boxes — so it reported `scrollHeight === clientHeight
+   * === 0` and `scrollableAncestor` walked past the drawer, past the grid, and
+   * returned `null`. The timing made it unreachable rather than merely
+   * unreliable: the effect above is keyed on `pathname`, and the drawer closed
+   * on every `pathname` change, so at the only moment it could fire the drawer
+   * was always shut. Every phone reader, every navigation, opened a 60-item
+   * list scrolled to the top with their page below the fold.
    *
-   * `closest('dialog')` rather than a prop threaded down from `DocsNav`: this
-   * component is public API, the condition is "I am inside something that can be
-   * hidden and revealed" rather than "I am inside the drawer", and a consumer
-   * who puts `DocsSidebar` in a dialog of their own gets it working for the same
-   * reason. Nothing here knows what the drawer is.
+   * There is no drawer now: one sidebar at every width, and a closed one is
+   * translated out past the inline start edge rather than hidden — so it has a
+   * scrollport the whole time and the effect above is enough.
+   *
+   * This stays because `DocsSidebar` is public API and the condition it tests
+   * was never "I am inside *our* drawer" — it is "I am inside something that
+   * can be hidden and revealed". A consumer who puts this in a dialog of their
+   * own gets it working for the same reason, and `closest('dialog')` is what
+   * keeps that true without a prop threaded down from a component of ours.
    */
   useEffect(() => {
     const dialog = navRef.current?.closest('dialog');

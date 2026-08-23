@@ -35,12 +35,11 @@
  */
 
 import { render } from '@testing-library/react';
-import { page, userEvent } from 'vitest/browser';
+import { page } from 'vitest/browser';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import styles from '../styles.css?inline';
 import type { DocNavNode } from '../types.js';
-import { DOCS_NAV_ID, DocsNav } from './nav.js';
 import { DocsSidebar } from './sidebar.js';
 
 /** Long enough that the column must scroll at any plausible viewport height. */
@@ -59,24 +58,15 @@ afterEach(() => {
  * The frozen shell, written out rather than imported: `DocsLayoutShell` reaches
  * `next/navigation` through its client components, and the class names are
  * public API that changes only in a release carrying the migration.
- * `nav.browser.test.tsx` and `styles.browser.test.ts` do the same, for the
- * same reason.
+ * `nav.browser.test.tsx` and `styles.browser.test.ts` do the same, for the same
+ * reason.
  *
- * ⚠️ THE CHROME IS INSIDE THE COLUMN, NOT ABOVE IT, AND THE FIXTURE HAS TO SAY
- * SO. `docs.Layout` renders the drawer trigger and the search trigger as the
- * first two children of `.wave-docs-layout__sidebar`, and at this width that
- * wrapper is the scrollport — so the search trigger is inside the scrolling
- * content, ahead of every nav item, and the arithmetic below is done
- * against a column that has it. (The drawer trigger is `display: none` at
- * 64rem and up; it is here because the fixture is the shell, not a subset of
- * it that happens to be enough.) A fixture that puts either of them in a
- * `.wave-docs-layout__header` is markup the stylesheet no longer has one rule
- * for — unstyled, unrendered, and every assertion against it passing.
- *
- * `DocsSidebar` is rendered into that same wrapper because at 64rem and above
- * the drawer holding it is `display: contents` — no box of its own, so the
- * sidebar is laid out as the column directly. `nav.browser.test.tsx` pins that
- * line; here it is why one fewer element is faithful rather than sloppy.
+ * ⚠️ THE SCROLLPORT IS THE SIDEBAR'S *NAVIGATION*, NOT THE SHELL AROUND IT. The
+ * shell is the sticky box and paints nothing; the navigation is what scrolls,
+ * and it holds the search trigger ahead of every item — so the arithmetic below
+ * is done against a column that has one. A fixture that scrolls the shell is
+ * measuring a box with no `overflow-y`, which is not a scrollport at all, and
+ * every assertion against it would pass.
  */
 function mountShell(): HTMLElement {
   document.head.querySelector('#wave-docs-styles')?.remove();
@@ -86,28 +76,33 @@ function mountShell(): HTMLElement {
   document.head.append(style);
 
   document.body.innerHTML = `
-    <div class="wave-docs-layout">
-      <div class="wave-docs-layout__sidebar">
-        <button
-          type="button"
-          class="wave-docs-layout__nav-trigger"
-          aria-label="Open navigation"
-        ></button>
-        <button
-          type="button"
-          class="wave-docs-search-trigger wave-docs-layout__search"
-        >
-          <span class="wave-docs-search-trigger-label">Search</span>
-        </button>
+    <div class="wave-docs-shell">
+      <div class="wave-docs-layout">
+        <div class="wave-docs-layout__sidebar">
+          <div class="wave-docs-layout__sidebar-nav" tabindex="-1">
+            <button
+              type="button"
+              class="wave-docs-search-trigger wave-docs-layout__search"
+            >
+              <span class="wave-docs-search-trigger-label">Search</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            class="wave-docs-layout__sidebar-trigger"
+            aria-label="Open navigation"
+          ></button>
+        </div>
+        <div class="wave-docs-layout__sidebar-scrim" aria-hidden="true"></div>
+        <main class="wave-docs-layout__main"><p>Prose</p></main>
       </div>
-      <main class="wave-docs-layout__main"><p>Prose</p></main>
     </div>
   `;
 
   const port = document.querySelector<HTMLElement>(
-    '.wave-docs-layout__sidebar',
+    '.wave-docs-layout__sidebar-nav',
   );
-  if (port === null) throw new Error('the shell has no sidebar column');
+  if (port === null) throw new Error('the shell has no sidebar navigation');
   return port;
 }
 
@@ -148,102 +143,67 @@ it('does not move a column whose current page is already in view', async () => {
   expect(port.scrollTop).toBe(0);
 });
 
-describe('the mobile drawer, below 64rem', () => {
+describe('the sidebar while it is closed', () => {
   /*
-   * ⚠️ THE SCROLL-INTO-VIEW HAD NEVER RUN ON A PHONE, NOT ONCE. Below 64rem the
-   * sidebar is inside `<dialog class="wave-docs-layout__drawer">`, which the UA
-   * stylesheet keeps at `display: none` until `showModal()`. An element in a
-   * `display: none` subtree generates no boxes at all, so it reports
-   * `scrollHeight === clientHeight === 0` and `scrollableAncestor` walks past
-   * the drawer, past the strip that holds it, past the grid, and returns
-   * `null`. The strip changed from `display: contents` to a 3.5rem sticky box
-   * and that changed nothing here: a box with no `overflow-y` is not a
-   * scrollport either, so the walk still ends at `null`.
+   * ⚠️ THE SCROLL-INTO-VIEW HAD NEVER RUN ON A PHONE, NOT ONCE, AND THIS IS
+   * WHAT FIXED IT.
    *
-   * And the timing made it unreachable rather than flaky: the effect was keyed
-   * on `pathname` alone, and `DocsNav` closes the drawer on every `pathname`
-   * change — so at the one moment it could fire, the drawer was always shut, and
-   * nothing re-ran when the reader opened it. Every phone reader, every
-   * navigation, opened a long list scrolled to the top with their own page below
-   * the fold.
+   * The tree used to live inside `<dialog class="wave-docs-layout__drawer">`,
+   * which the UA sheet keeps at `display: none` until `showModal()`. An element
+   * in a `display: none` subtree generates no boxes at all, so it reported
+   * `scrollHeight === clientHeight === 0` and the search for a scrollable
+   * ancestor walked past the drawer, past the strip, past the grid, and
+   * returned `null`. Every phone reader, every navigation, opened a long list
+   * scrolled to the top with their own page below the fold.
    *
-   * Invisible to every other tier: jsdom has no layout and no `showModal`, and
-   * the stylesheet read as text says nothing about what `display: contents`
-   * does to a scrollport.
+   * A closed sidebar is not hidden — its navigation is translated out past the
+   * inline start edge and is laid out the whole time. So there is a scrollport
+   * before the reader ever opens it, and the item is already in view when they
+   * do. That is the structural argument for moving rather than hiding, and it
+   * is worth more than the animation.
+   *
+   * Invisible to every other tier: jsdom has no layout, and the stylesheet read
+   * as text says nothing about what a closed box does to a scrollport.
    */
-  afterEach(() => {
-    for (const dialog of document.querySelectorAll('dialog')) {
-      if (dialog.open) dialog.close();
-    }
-  });
-
-  function mountDrawer(pathname: string): HTMLDialogElement {
-    document.head.querySelector('#wave-docs-styles')?.remove();
-    const style = document.createElement('style');
-    style.id = 'wave-docs-styles';
-    style.textContent = styles;
-    document.head.append(style);
-
-    // The strip, in the order `docs.Layout` renders it: the trigger, then the
-    // drawer it opens by `id`. Both are children of the same wrapper, which
-    // is why nothing here needs a header any more.
-    render(
-      <div className="wave-docs-layout">
-        <div className="wave-docs-layout__sidebar">
-          <button
-            type="button"
-            className="wave-docs-layout__nav-trigger"
-            aria-label="Open navigation"
-            {...{ command: 'show-modal', commandfor: DOCS_NAV_ID }}
-          >
-            ☰
-          </button>
-          <DocsNav nav={NAV} pathname={pathname} />
-        </div>
-        <main className="wave-docs-layout__main">
-          <p>Prose</p>
-        </main>
-      </div>,
-    );
-
-    const dialog = document.querySelector('dialog');
-    if (dialog === null) throw new Error('the drawer did not mount');
-    return dialog;
-  }
-
-  it('has no scrollport at all while it is closed', async () => {
-    // The premise, asserted rather than assumed. If this ever stops being true
-    // the test below stops testing anything, and would keep passing.
+  it('still has a scrollport, so the current page is already found', async () => {
     await page.viewport(390, 800);
-    mountDrawer('/docs/p45');
+    const port = mountShell();
 
-    const active = document.querySelector<HTMLElement>('[aria-current="page"]');
-    if (active === null)
-      throw new Error('no item is marked as the current page');
-
-    expect(active.getBoundingClientRect().height).toBe(0);
-  });
-
-  it('shows the current page as soon as the drawer opens', async () => {
-    await page.viewport(390, 800);
-    mountDrawer('/docs/p45');
-
-    const trigger = document.querySelector<HTMLButtonElement>(
-      '.wave-docs-layout__nav-trigger',
-    );
-    if (trigger === null) throw new Error('no trigger');
-
-    await userEvent.click(trigger);
-    // One frame, so the open transition and the scroll assignment have landed.
+    render(<DocsSidebar nav={NAV} pathname="/docs/p45" />, { container: port });
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
-    const active = document.querySelector<HTMLElement>('[aria-current="page"]');
-    if (active === null)
-      throw new Error('no item is marked as the current page');
+    // The premise, asserted rather than assumed: a closed sidebar is moved, not
+    // hidden. A `display: none` version reports 0 for both and the assertion
+    // below could not fail.
+    expect(port.scrollHeight).toBeGreaterThan(port.clientHeight);
 
-    const port =
-      active.closest<HTMLElement>('.wave-docs-sidebar')?.parentElement;
-    if (port == null) throw new Error('the drawer has no scrollport');
+    const active = document.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active === null) {
+      throw new Error('no item is marked as the current page');
+    }
+    expect(active.getBoundingClientRect().height).toBeGreaterThan(0);
+  });
+
+  it('shows the current page once it is opened', async () => {
+    await page.viewport(390, 800);
+    const port = mountShell();
+    const shell = port.parentElement;
+    if (shell === null) throw new Error('no shell');
+
+    render(<DocsSidebar nav={NAV} pathname="/docs/p45" />, { container: port });
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    shell.setAttribute('data-state', 'open');
+    await Promise.all(
+      document
+        .getAnimations()
+        .map((animation) => animation.finished.catch(() => undefined)),
+    );
+
+    const active = document.querySelector<HTMLElement>('[aria-current="page"]');
+    if (active === null) {
+      throw new Error('no item is marked as the current page');
+    }
 
     // The invariant, not a number: the reader can see the page they are on.
     const portBox = port.getBoundingClientRect();
@@ -256,15 +216,10 @@ describe('the mobile drawer, below 64rem', () => {
     /*
      * ⚠️ AND INSIDE THE VIEWPORT, WHICH THE THREE ABOVE DO NOT ESTABLISH.
      * "Inside the scrollport" is only "visible" while the scrollport is itself
-     * on screen, and the drawer is on screen because `height: 100dvh` sizes it
-     * to exactly one viewport — a declaration in a stylesheet this fixture does
-     * not control. Mutated to `200dvh`: the three assertions above all pass,
-     * against an item whose bottom is 1594 in an 800px window. The reader is
-     * looking at the top of a list their page is nowhere in.
-     *
-     * (`height: auto` is the mutation that does *not* prove this, and is worth
-     * knowing before someone tries it: the UA sheet gives a modal dialog
-     * `inset: 0`, so an auto height is over-constrained back to the viewport.)
+     * on screen, and it is on screen because the shell is `height: calc(100dvh
+     * - …)` — a declaration in a stylesheet this fixture does not control.
+     * Mutated to `200dvh`, all three above pass against an item whose bottom is
+     * off the bottom of the window.
      */
     expect(itemBox.bottom).toBeLessThanOrEqual(window.innerHeight);
   });

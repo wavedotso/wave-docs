@@ -5,12 +5,12 @@
       "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. One delegated listener, one live region, and the two messages it announces \u2014 which are props now rather than string literals, because they are the only strings this package speaks to a screen reader at run time and they were English on every site in every language. If this grows past a kilobyte and a half it has stopped being one listener."
     },
     "nav": {
-      "max": 2450,
-      "note": "The drawer: a dialog, a close-on-navigate effect and an eight-line `command` fallback, plus the sidebar it wraps \u2014 so it moves whenever the sidebar does, and it did, for the drawer's own scroll-into-view fix. Growth beyond that means behaviour moved out of the browser and into us, which is the direction to argue about."
+      "max": 2850,
+      "note": "One sidebar at every width: the shell, the navigation, the trigger and the scrim, plus the sidebar tree it wraps. It replaced a `<dialog>` drawer, and it is ~500 bytes heavier on purpose \u2014 `inert`, Escape, scrim dismiss and focus move-and-restore were the browser's while the navigation was a modal and are ours now. There is also a `ResizeObserver` re-reading the mode the stylesheet resolved, because `matchMedia` cannot answer a `@container` query. Growth past this means more behaviour moved out of the browser and into us, which is the direction to argue about."
     },
     "next-nav": {
-      "max": 2550,
-      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper. Moves whenever `sidebar` does, and it did, for the drawer's scroll fix and then for the tree's three translatable strings."
+      "max": 2950,
+      "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper. Moves whenever `nav` does, and it did \u2014 for the drawer's scroll fix, the tree's translatable strings, and then for the five behaviours that came back when the drawer went."
     },
     "next-search": {
       "max": 9700,
