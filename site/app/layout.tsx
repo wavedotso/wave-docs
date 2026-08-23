@@ -49,7 +49,22 @@ export default function RootLayout({
 }): ReactNode {
   return (
     <html lang="en">
-      <body>
+      {/*
+       * ⚠️ THE UA'S OWN 8px, AND REMOVING IT IS THE SITE'S JOB RATHER THAN THE
+       * PACKAGE'S. Every browser ships `body { margin: 8px }`, and without this
+       * the docs region starts 8px in — so the sidebar's divider stops short of
+       * the top edge instead of running the height of the screen.
+       *
+       * `@waveso/docs` must never do this itself. It styles nothing outside
+       * `.wave-docs-*`, and a package that resets `body` would move a host
+       * application's entire page to fix its own corner of it.
+       *
+       * Not a layout property in the sense `site-budget.test.ts` forbids: it
+       * lays nothing out, it clears a UA default, and it is the same class of
+       * housekeeping as `lang="en"`. Every Next starter ships it in a
+       * `globals.css`; this site has no stylesheet, so it goes here.
+       */}
+      <body style={{ margin: 0 }}>
         <docs.Layout>{children}</docs.Layout>
       </body>
     </html>

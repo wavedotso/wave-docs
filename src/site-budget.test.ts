@@ -230,10 +230,21 @@ describe('the site is an acceptance harness', () => {
       );
     const offenders: string[] = [];
 
+    /*
+     * ⚠️ ONE EXEMPTION, AND IT IS THE ONE THE PACKAGE MUST NOT DO ITSELF.
+     * `body { margin: 0 }` clears the UA's own 8px; without it the docs region
+     * starts 8px in and the sidebar's divider stops short of the screen edge.
+     * It lays nothing out — and `@waveso/docs` cannot ship it, because a
+     * package that resets `body` moves a host application's whole page to fix
+     * its own corner of it. So it is the site's, and it is exactly this.
+     */
+    const ALLOWED = /^\s*margin:\s*0\s*,?\s*$/;
+
     for (const file of siteFiles().filter((name) => /\.tsx?$/.test(name))) {
       const source = readFileSync(file, 'utf8');
       for (const inline of source.matchAll(/style=\{\{([^}]*)\}\}/g)) {
         const declarations = inline[1] ?? '';
+        if (ALLOWED.test(declarations)) continue;
         for (const property of LAYOUT_PROPERTIES) {
           const key = new RegExp(`\\b(${property}|${camel(property)})\\s*:`);
           if (key.test(declarations)) {
