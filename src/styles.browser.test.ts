@@ -763,3 +763,162 @@ describe('code block spacing', () => {
     expect(Math.abs(figure.left - paragraph.left)).toBeLessThan(2);
   });
 });
+/**
+ * The back-to-top link's reveal, measured rather than read.
+ *
+ * `styles.test.ts` can see that the declarations are there and that the
+ * fallback is intact; only an engine that runs a scroll timeline can say what a
+ * reader at a given scroll offset actually sees.
+ */
+describe('the back-to-top reveal', () => {
+  /**
+   * The link inside the real column, not on a bare page — and that is what
+   * makes the fixture worth its length.
+   *
+   * Above 80rem `.wave-docs-layout__toc` is a scroll container of its own, so
+   * the tempting `scroll(nearest block)` resolves to *it* rather than to the
+   * document. On a fixture that renders the link on a bare body there is no
+   * such ancestor, `nearest` and `root` name the same scroller, and the
+   * mutation that would ship a link nobody ever sees passes every assertion
+   * below. Here the column exists and does not overflow, so `nearest` is an
+   * inactive timeline and the first test fails.
+   *
+   * `scroll` gives the document something to scroll; `fit` does not.
+   */
+  function mountToc(height: 'scroll' | 'fit'): HTMLAnchorElement {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    const paragraphs =
+      height === 'scroll' ? '<p style="block-size: 400dvh">Long.</p>' : '';
+
+    document.body.innerHTML = `
+      <div class="wave-docs-shell">
+        <div class="wave-docs-layout">
+          <div class="wave-docs-layout__main">
+            <article class="wave-docs-prose">
+              <h2 id="one">One</h2>
+              ${paragraphs}
+            </article>
+          </div>
+          <div class="wave-docs-layout__toc">
+            <nav class="wave-docs-toc" aria-label="On this page">
+              <p class="wave-docs-toc__title">On this page</p>
+              <ul class="wave-docs-toc__list">
+                <li class="wave-docs-toc__item">
+                  <a class="wave-docs-toc__link" href="#one">One</a>
+                </li>
+              </ul>
+              <a class="wave-docs-toc__top" href="#wave-docs-content">Back to top</a>
+            </nav>
+          </div>
+        </div>
+      </div>`;
+
+    const link = document.querySelector('.wave-docs-toc__top');
+    if (!(link instanceof HTMLAnchorElement)) {
+      throw new Error('failed to mount the toc fixture');
+    }
+    return link;
+  }
+
+  /** The column must actually be on screen, or every assertion below is vacuous. */
+  function assertTocColumnRendered(): void {
+    const column = document.querySelector('.wave-docs-layout__toc');
+    if (!(column instanceof HTMLElement)) throw new Error('no toc column');
+    expect(column.getBoundingClientRect().width).toBeGreaterThan(0);
+  }
+
+  /**
+   * A scroll timeline is sampled at frame time, so a `getComputedStyle` read on
+   * the same tick as `scrollTo` still reports the previous frame's progress.
+   * Two frames, because the first is the one the scroll lands in.
+   */
+  async function scrollDocumentTo(top: number): Promise<void> {
+    window.scrollTo({ top, behavior: 'instant' });
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }
+
+  /** 25dvh to 35dvh of a 900px-tall viewport. */
+  const BEFORE = 0;
+  const MIDWAY = 270;
+  const AFTER = 400;
+
+  it('is absent while the top of the page is still on screen', async () => {
+    const link = mountToc('scroll');
+    await resize(1440);
+    assertTocColumnRendered();
+    await scrollDocumentTo(BEFORE);
+
+    const style = getComputedStyle(link);
+    expect(Number(style.opacity)).toBe(0);
+    expect(style.visibility).toBe('hidden');
+  });
+
+  it('fades in on the way down and back out on the way up', async () => {
+    const link = mountToc('scroll');
+    await resize(1440);
+
+    await scrollDocumentTo(AFTER);
+    expect(Number(getComputedStyle(link).opacity)).toBe(1);
+    expect(getComputedStyle(link).visibility).toBe('visible');
+
+    /*
+     * A fade, not a switch: the whole point of asking for the midpoint is that
+     * a threshold implemented as `display: none` above and `block` below would
+     * pass both endpoints above and fail here.
+     */
+    await scrollDocumentTo(MIDWAY);
+    const midway = Number(getComputedStyle(link).opacity);
+    expect(midway).toBeGreaterThan(0);
+    expect(midway).toBeLessThan(1);
+
+    await scrollDocumentTo(BEFORE);
+    expect(Number(getComputedStyle(link).opacity)).toBe(0);
+  });
+
+  /**
+   * ⚠️ THE ONE ASSERTION THAT COSTS A KEYFRAME.
+   *
+   * `visibility` is what keeps an invisible link out of the tab order, and it
+   * steps rather than fades — so *where* the step lands is a design decision,
+   * not a detail. Halfway through the fade the link is still too faint to be a
+   * focus target, and the keyframes say so; drop the middle frame and this
+   * reports `visible` at an opacity of nearly zero.
+   */
+  it('stays out of the tab order until it is legible', async () => {
+    const link = mountToc('scroll');
+    await resize(1440);
+    await scrollDocumentTo(MIDWAY);
+
+    expect(Number(getComputedStyle(link).opacity)).toBeCloseTo(0.5, 1);
+    expect(getComputedStyle(link).visibility).toBe('hidden');
+  });
+
+  /**
+   * ⚠️ AND ON A PAGE THAT CANNOT SCROLL IT IS SIMPLY THERE.
+   *
+   * A scroll timeline whose scroller has no overflow is *inactive*, and an
+   * animation with an inactive timeline does not apply — so the un-overridden
+   * base rule is what a reader gets. That same code path is the whole fallback:
+   * an engine without scroll-driven animations, and a host that scrolls an
+   * inner pane rather than the document, both land here. If this ever fails,
+   * the link has been hidden in browsers where nothing will ever show it again.
+   */
+  it('is present, not hidden, where the timeline never runs', async () => {
+    const link = mountToc('fit');
+    await resize(1440);
+    await scrollDocumentTo(BEFORE);
+
+    expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(
+      document.documentElement.clientHeight + 1,
+    );
+    expect(Number(getComputedStyle(link).opacity)).toBe(1);
+    expect(getComputedStyle(link).visibility).toBe('visible');
+  });
+});

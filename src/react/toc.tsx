@@ -202,6 +202,13 @@ export function DocsToc({
        *
        * The id comes from the shared constant, so it cannot drift from the
        * one `SkipLink` targets and `docs.Page` emits.
+       *
+       * ⚠️ AND IT IS RENDERED UNCONDITIONALLY EVEN THOUGH IT IS NOT ALWAYS
+       * VISIBLE. It fades in once the reader has scrolled roughly a third of a
+       * screen, and the stylesheet does that on a scroll timeline — no state,
+       * no listener, no re-render per frame, and correct before this component
+       * has hydrated. A `useState` mirroring `scrollY` here would buy nothing
+       * and cost the smallest client bundle in the package.
        */}
       <a className="wave-docs-toc__top" href={`#${DOCS_CONTENT_ID}`}>
         {topLabel}

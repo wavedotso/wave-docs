@@ -1457,3 +1457,78 @@ describe('the chrome', () => {
     }
   });
 });
+/**
+ * The back-to-top link is revealed by a scroll timeline, and the two things
+ * that can go silently wrong with that are both invisible to a browser that
+ * supports the feature: the fallback for one that does not, and the scroller
+ * the timeline names.
+ */
+describe('the back-to-top reveal', () => {
+  const KEYFRAMES = '@keyframes wave-docs-toc-top-reveal';
+
+  /**
+   * ⚠️ THE FALLBACK IS THE ABSENCE OF A DECLARATION, WHICH IS THE ONE KIND OF
+   * BUG A DIFF DOES NOT SHOW.
+   *
+   * Put `opacity: 0` on the base rule and the reveal looks identical in
+   * Chromium and hides the link permanently everywhere the timeline never runs
+   * — Firefox, a page too short to scroll, and a host that scrolls an inner
+   * pane rather than the document. Three different audiences, one missing
+   * animation, and no failing assertion anywhere in a browser that works.
+   */
+  it('leaves the link visible for an engine that never runs the animation', () => {
+    const start = sheet.indexOf('.wave-docs-toc__top {');
+    expect(start).toBeGreaterThan(-1);
+
+    const base = readBlock(sheet, start);
+    expect(base).not.toMatch(/\bopacity\s*:/);
+    expect(base).not.toMatch(/\bvisibility\s*:/);
+
+    // And the animation itself is behind the guard rather than beside it.
+    const supports = sheet.indexOf('@supports (animation-timeline: scroll())');
+    const timeline = sheet.indexOf('animation-name: wave-docs-toc-top-reveal');
+    expect(supports).toBeGreaterThan(-1);
+    expect(timeline).toBeGreaterThan(supports);
+  });
+
+  /**
+   * `nearest` is the tempting spelling and it resolves to `.wave-docs-layout__toc`,
+   * which is a scroll container of its own above 80rem. That timeline is
+   * inactive on every page whose headings fit, so the link would never appear —
+   * and would look exactly like the feature being unsupported.
+   */
+  it('measures the document, not the column the link sits in', () => {
+    const start = sheet.indexOf(
+      '@supports (animation-timeline: scroll())',
+      sheet.indexOf('.wave-docs-toc__top'),
+    );
+    const guarded = readBlock(sheet, start);
+
+    expect(guarded).toContain('animation-timeline: scroll(root block);');
+    expect(guarded).toMatch(/animation-range:\s*\d+dvh\s+\d+dvh;/);
+  });
+
+  /**
+   * ⚠️ TWO `hidden` FRAMES, AND TWO IS NOT ONE MORE THAN NEEDED.
+   *
+   * `visibility` steps rather than interpolates, except across any interval
+   * with a `visible` endpoint — which is `visible` the whole way. Delete the
+   * middle frame and the link rejoins the tab order one pixel past the
+   * threshold at an opacity of nearly zero: Tab reaches it, and the focus ring
+   * is drawn around nothing.
+   */
+  it('keeps the link out of the tab order until it can be read', () => {
+    const start = sheet.indexOf(KEYFRAMES);
+    expect(start).toBeGreaterThan(-1);
+
+    const frames = readBlock(sheet, start);
+    expect([...frames.matchAll(/visibility:\s*hidden/g)]).toHaveLength(2);
+    expect([...frames.matchAll(/visibility:\s*visible/g)]).toHaveLength(1);
+
+    // The `hidden` pair is adjacent — a `visible` between them would restore
+    // the exception this depends on.
+    expect(frames.indexOf('visibility: visible')).toBeGreaterThan(
+      frames.lastIndexOf('visibility: hidden'),
+    );
+  });
+});

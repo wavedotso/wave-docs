@@ -1725,6 +1725,89 @@
     color: var(--wave-docs-fg);
   }
 
+  /*
+   * ⚠️ IT ONLY APPEARS ONCE THERE IS SOMETHING TO GO BACK TO, AND NOTHING IN
+   * JAVASCRIPT DECIDES THAT.
+   *
+   * A scroll-driven animation, so scroll position alone drives it: no listener,
+   * no state, no re-render on every frame of a scroll, and it is right before
+   * hydration rather than after it. `toc` is the smallest client component this
+   * package ships — 900 bytes, and its budget note exists to keep it that way —
+   * so the alternative was to grow the one bundle that should never grow, in
+   * order to recompute a number the compositor already has.
+   *
+   * ⚠️ `root`, NOT `nearest`. Above 80rem `.wave-docs-layout__toc` is itself a
+   * scroll container (`overflow-y: auto`, so a long column of headings scrolls
+   * in place), and `nearest` resolves to it. The animation would then track how
+   * far the reader had scrolled the *table of contents*, which on almost every
+   * page never scrolls at all — an inactive timeline, and a link that never
+   * appears. Same shape as the `nearest`/`self` trap on the table shadow above,
+   * arrived at from the opposite direction.
+   *
+   * ⚠️ AND THE RULE ABOVE IS THE FALLBACK, WHICH IS WHY NOTHING HERE OVERRIDES
+   * IT. Three cases collapse into one: Firefox does not match this `@supports`
+   * yet; a page too short to scroll leaves the timeline inactive; and so does a
+   * host that scrolls an inner pane rather than the document. In all three the
+   * link is simply always present, exactly as it was before this block existed.
+   * Nothing hides a control on the strength of a feature the engine did not run.
+   *
+   * `dvh` rather than `px`: the link is redundant while the top of the document
+   * is still on screen, and "still on screen" is a fraction of the viewport
+   * rather than a constant. On a 900px window it fades in between 225px and
+   * 315px of scroll. `dvh` because this sheet uses no `vh` anywhere, and the
+   * reason it does not — the retracted mobile URL bar — costs nothing here: the
+   * column this link lives in is `display: none` below 80rem.
+   *
+   * No `prefers-reduced-motion` gate, deliberately. That setting is about things
+   * that move under a reader who did not ask them to; this is opacity, and the
+   * reader's own scrolling is its clock.
+   */
+  @supports (animation-timeline: scroll()) {
+    .wave-docs-toc__top {
+      animation-timeline: scroll(root block);
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-name: wave-docs-toc-top-reveal;
+      animation-range: 25dvh 35dvh;
+    }
+  }
+
+  /*
+   * ⚠️ `visibility` KEEPS A LINK NOBODY CAN SEE OUT OF THE TAB ORDER, AND THE
+   * MIDDLE FRAME IS WHAT DECIDES WHEN IT REJOINS.
+   *
+   * `opacity` alone leaves a fully focusable, fully clickable link sitting
+   * invisibly at the foot of the rail: Tab reaches it and the focus ring is
+   * drawn around nothing.
+   *
+   * `visibility` interpolates as a step with one exception — across an interval
+   * where *either* endpoint is `visible` it is `visible` the whole way. Two
+   * frames would therefore flip it one pixel past the threshold and hand the
+   * link back to the tab order at an opacity of almost zero, which is the same
+   * defect a frame later. Two adjacent `hidden` frames have no `visible`
+   * endpoint between them, the exception does not apply, and the step lands at
+   * 60% — where the link is legible.
+   *
+   * That middle frame sits exactly on the linear ramp, so it changes the fade
+   * by nothing at all. Being the second `hidden` is its whole job.
+   */
+  @keyframes wave-docs-toc-top-reveal {
+    0% {
+      opacity: 0;
+      visibility: hidden;
+    }
+
+    60% {
+      opacity: 0.6;
+      visibility: hidden;
+    }
+
+    100% {
+      opacity: 1;
+      visibility: visible;
+    }
+  }
+
   .wave-docs-sidebar__external {
     /* Baseline-ish against the label, and never a flex item that grows. */
     margin-inline-start: 0.25rem;
