@@ -1,5 +1,95 @@
 # @waveso/docs
 
+## 0.10.0
+
+### Minor Changes
+
+- f52cb99: **Every page links to the ones either side of it.** `docs.Page` renders a pager
+  under the prose. Nothing is authored: a page gets one by being in the
+  navigation.
+
+  ⚠️ THE ORDER IS THE SIDEBAR'S, NOT THE SLUG LIST'S. `generateStaticParams` has
+  every route in it and no opinion about their order; `meta.json` is where the
+  author said what comes next, and it is what the reader is looking at. Two
+  orderings of the same pages is two answers to one question, and they drift the
+  first time a `meta.json` moves — so the pager reads the same tree `DocsSidebar`
+  renders and flattens it. A pager that disagrees with the column beside it is
+  impossible by construction.
+
+  Separators and external links are not stops: a separator is a label with
+  nowhere to go, and a "next page" that lands on npm has ended the sequence
+  rather than continued it. A group with an `index.md` contributes its own page
+  before its children, which is the order its rows appear in.
+
+  ⚠️ A PAGE OUTSIDE THE TREE GETS NO PAGER, RATHER THAN THE FIRST ONE. `-1` from
+  `findIndex` reads as "just before the beginning", so an unguarded lookup hands
+  every draft and every route rendered outside the navigation the same first page
+  as its "next" — confidently wrong on exactly the pages nobody checks.
+
+  ⚠️ AND AN EMPTY CELL AT EACH END, NOT A MISSING ONE. The two links share a grid
+  row; drop the absent side and the survivor slides into the first track, so the
+  first page of a site puts "Next" on the left and every other page puts it on
+  the right. The one page where the position moves is the one a reader sees
+  first.
+
+  Nothing renders at all when there is no neighbour either side — a one-page site
+  would otherwise get a navigation landmark containing nothing.
+
+  A chevron on the outer edge of each link points the way it goes.
+
+  ⚠️ AND "OUTWARD" MIRRORS. Under `dir="rtl"` the grid's first track is on the
+  right, so the _previous_ link moves there and its arrow has to point right —
+  the reverse of the rule that draws it. Same trap as the sidebar's chevron, in a
+  component built after it, and `[dir='rtl']` again rather than `:dir(rtl)`.
+
+  No client JavaScript: two links, two captions and two glyphs, rendered on the
+  server. Each
+  link is named by direction _and_ destination — "Previous: Installation" — since
+  a link announced as a bare title says nothing about which way it goes. The
+  landmark is named too, because a page now carries three of them.
+
+  New: `DocsPager` at `@waveso/docs/react/pager`, `pager: false` on
+  `createDocsRoute` to omit it, and `previousPage`, `nextPage` and `pagination`
+  in `labels`.
+
+### Patch Changes
+
+- 09a9369: The sidebar grip says whether it has anything to do.
+
+  Blue when the navigation is hidden or the pointer is on it; grey when the
+  sidebar is open and untouched. One rule at every width — a closed sidebar is
+  the same request for attention on a phone as on a desktop.
+
+  ⚠️ `:not([data-state='open'])`, NOT `[data-state='closed']`. The attribute is
+  absent until the reader chooses, and a server-rendered page has none — so
+  matching only the explicit value leaves every first paint below 64rem showing a
+  grey grip in front of hidden navigation, which is the one moment the cue is
+  for. Above 64rem the default inverts, and a second rule says so.
+
+  ⚠️ AND THE COLOUR IS A CUSTOM PROPERTY, NOT A SELECTOR FIGHT. Three things want
+  to set it — the resting style, the pointer, and the sidebar's state — and the
+  state lives on an _ancestor_, so `.sidebar[data-state] .trigger::before`
+  outranks `.trigger:hover::before` by a whole class. Written as backgrounds that
+  is a rule which silently kills hover on the one state that still needs it.
+  Properties settle it by inheritance: the state sets them on the sidebar, the
+  trigger sets them on itself under `:hover`, and a value on the element always
+  beats one it inherited. No specificity ladder, no `!important`.
+
+  The grip is also a full pill now rather than a rounded rectangle.
+
+  ⚠️ TESTED AS MARKUP, BECAUSE A MOUNTED COMPONENT CANNOT SHOW THE UNTOUCHED
+  STATE. `DocsNav` resolves the mode on mount and writes `data-state`
+  immediately, so every React fixture is already explicit. Two wrong versions
+  passed the whole suite against that — matching the explicit value, and dropping
+  the wide-layout reset — and both are caught now by a server-shaped fixture with
+  no attribute at all.
+
+  Also fixed here: the focus-indicator guard looked up one rule per selector, and
+  a selector may legitimately appear in several. The trigger now has one rule
+  setting properties on focus and another drawing the ring; taking "the first" or
+  "the last" is a coin flip on file order, so it reads every rule and asks for
+  one to declare an outline.
+
 ## 0.9.2
 
 ### Patch Changes
