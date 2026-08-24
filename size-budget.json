@@ -5,11 +5,11 @@
       "note": "The copy-button runtime, mounted by DocContent only on pages that have a code frame. One delegated listener, one live region, and the two messages it announces \u2014 which are props now rather than string literals, because they are the only strings this package speaks to a screen reader at run time and they were English on every site in every language. If this grows past a kilobyte and a half it has stopped being one listener."
     },
     "nav": {
-      "max": 2950,
+      "max": 3000,
       "note": "One sidebar at every width: the shell, the navigation, the trigger and the scrim, plus the sidebar tree it wraps. It replaced a `<dialog>` drawer, and it is ~500 bytes heavier on purpose \u2014 `inert`, Escape, scrim dismiss and focus move-and-restore were the browser's while the navigation was a modal and are ours now. There is also a `ResizeObserver` re-reading the mode the stylesheet resolved, because `matchMedia` cannot answer a `@container` query. Raised once more for the sidebar\u2019s marker column and the `icons` map it resolves names through \u2014 three inline glyphs and a lookup, no icon set. Growth past this means more behaviour moved out of the browser and into us, which is the direction to argue about."
     },
     "next-nav": {
-      "max": 3100,
+      "max": 3150,
       "note": "`nav` plus `usePathname` and `next/link`. It should stay within a few hundred bytes of `nav`; a larger gap means Next wiring leaked into it rather than staying in this thin wrapper. Moves whenever `nav` does, and it did \u2014 for the drawer's scroll fix, the tree's translatable strings, then for the five behaviours that came back when the drawer went, and now for the sidebar's marker column and the icon map it threads through."
     },
     "next-search": {
@@ -21,8 +21,8 @@
       "note": "The whole keyboard-first dialog: focus trap, combobox wiring, result rendering. The single largest thing this package ships to a browser, and the one worth defending line by line. Raised once for its chrome \u2014 a magnifier on the trigger and in the input, and the footer that replaced a standalone Close button: three key-caps, three verbs, and the dismiss control that is the only pointer route out of the dialog on a touch screen."
     },
     "sidebar": {
-      "max": 2200,
-      "note": "A tree with disclosure groups and no router import. Raised four times, each time for a client-only necessity: 1.37 \u2192 1.8 KB for scroll-into-view and the external-link icon; 1.8 \u2192 1.9 KB when that scroll learned to run for the mobile drawer, where a `display: none` dialog had always left it with no scrollport to measure; 1.9 \u2192 2.0 KB for the three strings this tree renders \u2014 the two disclosure verbs and the external-link suffix \u2014 which were hardcoded English under a `labels` prop claiming to be a site's whole translatable chrome; and 2.0 \u2192 2.15 KB for the two type markers, a folder on every group and a page on every page. That last one is two inline SVG paths and the `icons` flag that turns them off, and it bought the only thing separating a category from a page in a tree where the two interleave \u2014 weight and a chevron were not enough to scan twenty rows. If this approaches the dialog's 9 KB, the navigation has grown a feature that belongs on the server."
+      "max": 2300,
+      "note": "A tree with disclosure groups and no router import. Raised four times, each time for a client-only necessity: 1.37 \u2192 1.8 KB for scroll-into-view and the external-link icon; 1.8 \u2192 1.9 KB when that scroll learned to run for the mobile drawer, where a `display: none` dialog had always left it with no scrollport to measure; 1.9 \u2192 2.0 KB for the three strings this tree renders \u2014 the two disclosure verbs and the external-link suffix \u2014 which were hardcoded English under a `labels` prop claiming to be a site's whole translatable chrome; and 2.0 \u2192 2.15 KB for the two type markers, a folder on every group and a page on every page. That last one is two inline SVG paths and the `icons` flag that turns them off, and it bought the only thing separating a category from a page in a tree where the two interleave \u2014 weight and a chevron were not enough to scan twenty rows. Then 2.15 \u2192 2.25 KB to stop the tree collapsing behind the reader: a walk that names the groups holding the current route, so a navigation can open those and close nothing. The line it replaced was `setToggled({})` and cost nothing, which is the whole point \u2014 the cheapest possible reset was also the one that threw away every expansion the reader had made. If this approaches the dialog's 9 KB, the navigation has grown a feature that belongs on the server."
     },
     "toc": {
       "max": 900,

@@ -394,20 +394,108 @@ describe('DocsSidebar collapse state', () => {
     }
   });
 
-  it('re-syncs the tree to the route after a navigation', async () => {
+  /**
+   * ⚠️ THIS TEST USED TO ASSERT THE BUG, AND IT WAS THE REASON THE BUG SURVIVED.
+   *
+   * It read: "a group the reader collapsed an hour ago must not hide the page
+   * they just opened — and one they expanded should not stay expanded forever
+   * either", and it enforced the second half by requiring `Caching` to be gone
+   * after a navigation. The implementation was `setToggled({})`, which cannot
+   * separate those two claims: the reader's state and the route's default share
+   * one map, so clearing it collapses every group the reader had deliberately
+   * opened.
+   *
+   * Reported from real use, twice over: expand three sections, click a page, and
+   * two of them shut behind you. The first half is kept below. The second is
+   * gone — no docs sidebar worth copying closes a section because you read
+   * something in a different one.
+   */
+  it('reopens a collapsed group that holds the page just opened', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+    );
+
+    // The group holding the current page starts open; shut it by hand.
+    await user.click(screen.getByRole('button', { name: /Collapse API/ }));
+    expect(screen.queryByRole('link', { name: 'Authentication' })).toBeNull();
+
+    // Navigate deeper into that same group.
+    rerender(
+      <DocsSidebar nav={nav} pathname="/docs/api/webhooks/signatures" />,
+    );
+
+    expect(
+      screen.getByRole('link', { name: 'Signatures' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves every other group exactly as the reader left it', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<DocsSidebar nav={nav} pathname="/docs" />);
+
     await user.click(screen.getByRole('button', { name: 'Guides' }));
     expect(screen.getByRole('link', { name: 'Caching' })).toBeInTheDocument();
 
     rerender(<DocsSidebar nav={nav} pathname="/docs/api/authentication" />);
 
-    // A group the reader collapsed an hour ago must not hide the page they just
-    // opened — and one they expanded should not stay expanded forever either.
+    // The page just opened is reachable...
     expect(
       screen.getByRole('link', { name: 'Authentication' }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Caching' })).toBeNull();
+    // ...and the section the reader opened on the way is still open.
+    expect(screen.getByRole('link', { name: 'Caching' })).toBeInTheDocument();
+  });
+
+  /**
+   * The variant nobody reported, and the reason the state is seeded on mount
+   * rather than starting empty.
+   *
+   * A group open at first paint is open by inference — it holds the route — and
+   * a group opened by a click is open by record. Leave the first uninferred and
+   * the two behave differently for no reason a reader could name: land on a deep
+   * page from a search result or a shared link, click anywhere else, and the
+   * section you arrived in collapses, while one you had opened by hand would
+   * not have.
+   */
+  it('keeps the section you arrived in open when you click away', async () => {
+    const { rerender } = render(
+      <DocsSidebar nav={nav} pathname="/docs/api/authentication" />,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Authentication' }),
+    ).toBeInTheDocument();
+
+    // Straight to a top-level page that no group contains.
+    rerender(<DocsSidebar nav={nav} pathname="/docs" />);
+
+    expect(
+      screen.getByRole('link', { name: 'Authentication' }),
+      'the section the reader arrived in collapsed behind them',
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * The second way it was reported: open a group, read a page in it, open the
+   * next group, read a page in *that* — and the first one shuts. Two
+   * navigations rather than one, because the defect needs the reader to have
+   * left the first group's route before it shows.
+   */
+  it('survives reading a page in one section and then another', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<DocsSidebar nav={nav} pathname="/docs" />);
+
+    await user.click(screen.getByRole('button', { name: /Expand API/ }));
+    rerender(<DocsSidebar nav={nav} pathname="/docs/api/authentication" />);
+
+    await user.click(screen.getByRole('button', { name: 'Guides' }));
+    rerender(<DocsSidebar nav={nav} pathname="/docs/guides/caching" />);
+
+    expect(screen.getByRole('link', { name: 'Caching' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Authentication' }),
+      'the first section collapsed behind the reader',
+    ).toBeInTheDocument();
   });
 });
 

@@ -130,6 +130,30 @@ function isActiveHref(pathname: string, href: string): boolean {
   return normalizeHref(pathname) === normalizeHref(href);
 }
 
+/**
+ * `{ [key]: true }` for every group the active page lives inside, keyed the way
+ * the tree renders — `${prefix}-${index}`, index counted over *all* siblings
+ * because that is what `NavList` does.
+ *
+ * Shaped as the state itself rather than as a list of keys so both callers can
+ * spread it: it seeds the map on mount and merges into it on every navigation,
+ * and neither needs a loop of its own.
+ */
+function openAlong(
+  nodes: DocNavNode[],
+  pathname: string,
+  prefix: string,
+  into: Record<string, boolean> = {},
+): Record<string, boolean> {
+  nodes.forEach((node, index) => {
+    if (node.type !== 'group' || !containsActive(node, pathname)) return;
+    const key = `${prefix}-${index}`;
+    into[key] = true;
+    openAlong(node.children, pathname, key, into);
+  });
+  return into;
+}
+
 /** Whether the active page lives anywhere under this node. */
 function containsActive(node: DocNavNode, pathname: string): boolean {
   switch (node.type) {
@@ -213,16 +237,54 @@ export function DocsSidebar({
     externalLink: externalLink ?? DEFAULT_SIDEBAR_LABELS.externalLink,
   };
   const baseId = useId();
-  const [toggled, setToggled] = useState<Record<string, boolean>>({});
 
-  // Re-sync the tree to the route on navigation: a group the reader collapsed
-  // an hour ago should not hide the page they just opened. Adjusting state
-  // during render is the supported way to react to a changed prop — an effect
-  // would paint the stale tree first.
+  /*
+   * Groups the reader has an opinion about. Anything absent falls back to
+   * "open if it holds the current page".
+   *
+   * Seeded from the first route rather than empty, so a group open at first
+   * paint is open for the same reason as one opened by a later navigation —
+   * recorded, not inferred. Without the seed, landing directly on a deep page
+   * and then clicking away collapses the section behind you, which is the same
+   * defect as the one below wearing a different hat.
+   */
+  const [toggled, setToggled] = useState<Record<string, boolean>>(() =>
+    openAlong(nav, pathname, baseId),
+  );
+
+  /*
+   * Open whatever holds the page just navigated to. Close nothing.
+   *
+   * ⚠️ THIS USED TO BE `setToggled({})`, AND THAT THREW AWAY EVERY EXPANSION IN
+   * THE TREE. The reader's own state and the route's default share one map —
+   * `toggled[key] ?? hasActive` — so clearing it does not "reset to default" in
+   * any useful sense: it collapses every group the reader had deliberately
+   * opened, because the default is "open only what holds the current page".
+   * Reported from real use twice over: expand three sections, click a page, and
+   * two of them shut behind you.
+   *
+   * ⚠️ AND IT RECORDS `true` RATHER THAN DELETING THE KEY, WHICH IS THE HALF
+   * THAT IS EASY TO GET WRONG. Deleting also reopens the group — it falls back
+   * to `hasActive` — and looks correct for exactly one navigation. Read a page
+   * in one section, then a page in another, and the first section has no entry
+   * left and no longer holds the route, so it shuts. The reader opened it; that
+   * has to survive them going somewhere else.
+   *
+   * The one behaviour kept from the old reset: a group collapsed an hour ago
+   * must not hide the page just navigated to. It is reopened here, explicitly.
+   *
+   * Adjusting state during render is the supported way to react to a changed
+   * prop; an effect would paint the stale tree first.
+   */
   const lastPathname = useRef(pathname);
   if (lastPathname.current !== pathname) {
     lastPathname.current = pathname;
-    setToggled({});
+    // The reader's map first, the new route's over it: everything they opened
+    // survives, and anything holding the page they just asked for is open.
+    setToggled((previous) => ({
+      ...previous,
+      ...openAlong(nav, pathname, baseId),
+    }));
   }
 
   const handleToggle = (key: string, isOpen: boolean) => {
