@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { DOCS_CONTENT_ID } from '../docs-content-id.js';
@@ -100,6 +100,37 @@ export function DocsToc({
     setActiveId(undefined);
   }
 
+  /*
+   * Two things decide the highlight and they have to decide it together.
+   *
+   * The observer knows which headings are in the band; the scroll listener
+   * below knows whether the document has run out. Left as two `setActiveId`
+   * calls they race, and the observer wins — at the foot of a page the heading
+   * *above* the last section is still inside the top 40%, so it is a perfectly
+   * correct answer to the wrong question, written last.
+   *
+   * Refs rather than state: neither input should render on its own, and both
+   * are read by the other's callback.
+   */
+  const inBand = useRef<Set<string>>(new Set());
+  const atBottom = useRef(false);
+
+  const resolveActive = useCallback((): void => {
+    if (atBottom.current) {
+      const last = ids[ids.length - 1];
+      if (last !== undefined) {
+        setActiveId(last);
+        return;
+      }
+    }
+    // First in document order, not first to fire: the observer batches records
+    // in arbitrary order, and "current" means the topmost one.
+    const next = ids.find((id) => inBand.current.has(id));
+    if (next !== undefined) {
+      setActiveId(next);
+    }
+  }, [ids]);
+
   useEffect(() => {
     // Bail out where there is nothing to observe or no observer to do it —
     // jsdom and older browsers both land here.
@@ -107,7 +138,7 @@ export function DocsToc({
       return;
     }
 
-    const visible = new Set<string>();
+    const visible = inBand.current;
     const observer = new IntersectionObserver(
       (records) => {
         for (const record of records) {
@@ -117,12 +148,7 @@ export function DocsToc({
             visible.delete(record.target.id);
           }
         }
-        // First in document order, not first to fire: the callback batches
-        // entries in arbitrary order, and "current" means the topmost one.
-        const next = ids.find((id) => visible.has(id));
-        if (next !== undefined) {
-          setActiveId(next);
-        }
+        resolveActive();
       },
       { rootMargin, threshold: 0 },
     );
@@ -169,7 +195,58 @@ export function DocsToc({
       }
       observer.disconnect();
     };
-  }, [ids, rootMargin]);
+  }, [ids, rootMargin, resolveActive]);
+
+  /*
+   * ⚠️ THE BAND CANNOT REACH THE LAST SECTIONS, AND NO `rootMargin` FIXES THAT.
+   *
+   * `rootMargin` makes the top 40% of the viewport the region that counts as
+   * "current", which is right while there is document left to scroll: a heading
+   * rises into the band and takes the highlight. At the *end* there is no
+   * scrolling left. A short trailing section sits on screen, fully readable,
+   * below the band it can never enter — so it never lights up, and the entry
+   * above it stays marked while the reader is plainly past it. Reported on a
+   * page whose last section could only be highlighted by clicking its own link.
+   *
+   * Any band smaller than the viewport has this hole; making it bigger only
+   * trades it for a highlight that jumps early. So the end of the document is
+   * handled as what it is — a place where scrolling stops answering — and the
+   * last heading takes the highlight there.
+   *
+   * ⚠️ ONLY WHEN THE DOCUMENT ACTUALLY SCROLLS. On a page that fits, "scrolled
+   * to the bottom" is true at rest, and the last section would be current
+   * before the reader had read a word of the first.
+   *
+   * `passive`, and it reads two numbers: no `getBoundingClientRect`, no layout
+   * flush, nothing that makes a scroll janky.
+   *
+   * Like every other scroll reader in this package it watches the document. A
+   * host that scrolls an inner pane instead keeps the observer's behaviour and
+   * loses only this tail case.
+   */
+  useEffect(() => {
+    const last = ids[ids.length - 1];
+    if (last === undefined || typeof window === 'undefined') {
+      return;
+    }
+
+    const onScroll = (): void => {
+      const doc = document.documentElement;
+      const scrollable = doc.scrollHeight - window.innerHeight;
+      // 2px, because a fractional device pixel ratio leaves the last scroll
+      // position a hair short of the arithmetic end.
+      const bottom = scrollable > 2 && window.scrollY >= scrollable - 2;
+      if (bottom === atBottom.current) return;
+      atBottom.current = bottom;
+      // Both directions: leaving the foot of the page hands the answer straight
+      // back to the band, without waiting for a heading to cross it.
+      resolveActive();
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [ids, resolveActive]);
 
   if (entries.length === 0) {
     return null;
