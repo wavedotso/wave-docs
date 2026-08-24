@@ -1768,14 +1768,28 @@
     margin-block: 1rem 0.25rem;
   }
 
+  /*
+   * ⚠️ NO `text-transform: uppercase`, AND IT USED TO HAVE ONE.
+   *
+   * A separator's text is authored — `"---Reference---"` in someone's
+   * `meta.json` — so uppercasing it is this package rewriting words it does not
+   * own, in a language it cannot read. Portuguese `Referência` came out as
+   * `REFERÊNCIA`; Turkish loses the dotted and dotless `i` to each other, and
+   * no CJK script has a case to transform at all, so those authors got the
+   * `letter-spacing` and none of the effect it was there to rescue. And it
+   * could not be turned off — the string is a prop, but its shape was ours.
+   *
+   * The job the caps were doing — read as a divider, not as a row — is already
+   * done by the size, the weight and the subtle colour, none of which touch a
+   * single character. `letter-spacing` went with them: it exists to make caps
+   * legible, and on sentence case it only reads as loose.
+   */
   .wave-docs-sidebar__separator {
     display: block;
     padding-inline: 0.5rem;
     color: var(--wave-docs-fg-subtle);
     font-size: 0.75rem;
     font-weight: 650;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 
   @media (prefers-reduced-motion: no-preference) {

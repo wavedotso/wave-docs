@@ -1620,3 +1620,32 @@ describe('the two keyboard treatments', () => {
     expect(readBlock(sheet, at)).toMatch(/font-size:\s*1\.\d+em/);
   });
 });
+
+/**
+ * ⚠️ THIS SHEET DOES NOT REWRITE WORDS SOMEONE ELSE AUTHORED.
+ *
+ * A sidebar separator's text comes from a consumer's `meta.json`
+ * — `"---Reference---"` — and `text-transform: uppercase` on it is this package
+ * restyling a string in a language it cannot read. Portuguese `Referência`
+ * became `REFERÊNCIA`; Turkish trades its dotted and dotless `i` for each
+ * other; and no CJK script has a case to transform, so those authors got the
+ * `letter-spacing` and none of the effect it existed to rescue. The string was
+ * a prop; its shape was not.
+ *
+ * Reading as a divider rather than as a row is done by size, weight and colour
+ * — none of which touch a character.
+ */
+describe('authored strings keep their own shape', () => {
+  it('never uppercases a sidebar separator', () => {
+    const rule = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-sidebar__separator {'),
+    );
+
+    expect(rule).not.toMatch(/text-transform/);
+    expect(rule).not.toMatch(/letter-spacing/);
+    // And it is still visibly a divider rather than another row.
+    expect(rule).toContain('font-weight');
+    expect(rule).toContain('--wave-docs-fg-subtle');
+  });
+});
