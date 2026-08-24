@@ -1646,14 +1646,59 @@
     color: var(--wave-docs-fg);
   }
 
+  /*
+   * The chevron points at the label it belongs to, not away from it.
+   *
+   * `.wave-docs-sidebar__group-header` is `justify-content: space-between`, so
+   * this sits flush against the navigation's inline end with the label at the
+   * other side of the row. The icon is Lucide's `chevron-right`, and unrotated
+   * it therefore aimed at the panel's border — at nothing. Worse than nothing,
+   * in fact: a chevron at the *trailing* edge of a row is the platform idiom
+   * for "this takes you somewhere else", so it read as navigation on a control
+   * that only opens a list in place.
+   *
+   * ⚠️ AND THAT IS WHY THERE IS A MIRROR RULE. `rotate` is physical — `180deg`
+   * is left in every writing mode — while everything else positioning this row
+   * is logical, so the header mirrors under `dir="rtl"` and a lone physical
+   * rotation does not. Mirrored, the chevron moves to the inline start with the
+   * label to its right, and 180deg would then point it out of the panel on the
+   * other side. `0deg` is what "at the label" means there.
+   *
+   * ⚠️ `[dir='rtl']`, AND NOT `:dir(rtl)`, WHICH IS THE SELECTOR FOR THIS JOB
+   * AND DOES NOT SURVIVE THE BUILD. Next compiles this sheet with lightningcss,
+   * which downlevels `:dir(rtl)` into a hardcoded list of right-to-left
+   * *languages*:
+   *
+   *   .wave-docs-sidebar__chevron:is(:lang(ae), :lang(ar), … :lang(yi))
+   *
+   * Direction is not language. Measured on the site with `<html dir="rtl"
+   * lang="en">`: `:dir(rtl)` matched the element, the rule was nowhere in the
+   * served stylesheet, and the chevron kept pointing out of the panel. It fails
+   * the other way too — `lang="ar" dir="ltr"` gets the mirror it did not ask
+   * for. The attribute selector is plain CSS 2.1, so no pipeline has an opinion
+   * about it, and it is what `rtl:` compiles to in every design system that
+   * ships one.
+   */
   .wave-docs-sidebar__chevron {
     flex: none;
     color: var(--wave-docs-fg-subtle);
+    rotate: 180deg;
   }
 
+  [dir='rtl'] .wave-docs-sidebar__chevron {
+    rotate: 0deg;
+  }
+
+  /*
+   * Open is down in both directions, so this needs no mirror — and it must
+   * come last, because the mirror above matches with the same specificity
+   * (0,2,0 either way) and would otherwise hold a mirrored open group pointing
+   * sideways.
+   */
   .wave-docs-sidebar__chevron[data-open] {
     rotate: 90deg;
   }
+
 
   .wave-docs-sidebar__separator-item {
     margin-block: 1rem 0.25rem;

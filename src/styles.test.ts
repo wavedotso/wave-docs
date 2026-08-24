@@ -1532,3 +1532,30 @@ describe('the back-to-top reveal', () => {
     );
   });
 });
+
+/**
+ * ⚠️ `:dir()` DOES NOT SURVIVE A CONSUMER'S BUILD, SO THIS SHEET DOES NOT USE IT.
+ *
+ * Next compiles CSS with lightningcss, which downlevels `:dir(rtl)` into a
+ * hardcoded list of right-to-left *languages* — `:is(:lang(ae), :lang(ar), …
+ * :lang(yi))`. Direction is not language, and the substitution is wrong in both
+ * directions: `<html dir="rtl" lang="en">` gets no mirror, `lang="ar"
+ * dir="ltr"` gets one it did not ask for.
+ *
+ * It is invisible from inside this repo. The browser tests inject the source
+ * text into a `<style>` element, so `:dir()` behaves perfectly there and the
+ * defect appears only on a built site — which is where it was found, after the
+ * rule had already been written and measured passing.
+ *
+ * The replacement is `[dir='rtl'] …`, which is plain CSS 2.1 and which no
+ * pipeline rewrites.
+ */
+describe('direction-aware rules', () => {
+  it('never reaches for :dir(), which lightningcss rewrites', () => {
+    expect(sheet).not.toMatch(/:dir\(/);
+  });
+
+  it('mirrors with an attribute selector instead', () => {
+    expect(sheet).toContain("[dir='rtl'] .wave-docs-sidebar__chevron");
+  });
+});

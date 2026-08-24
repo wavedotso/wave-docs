@@ -52,6 +52,8 @@ const NAV: DocNavNode[] = Array.from({ length: 60 }, (_, index) => ({
 
 afterEach(() => {
   document.body.innerHTML = '';
+  // `dir` is on the root element, so it outlives a body reset.
+  document.documentElement.dir = '';
 });
 
 /**
@@ -223,4 +225,137 @@ describe('the sidebar while it is closed', () => {
      */
     expect(itemBox.bottom).toBeLessThanOrEqual(window.innerHeight);
   });
+});
+
+/**
+ * Which way the disclosure chevron faces.
+ *
+ * Here rather than in `styles.browser.test.ts` because the angle is only half
+ * of the answer: `sidebar.tsx` owns the icon, and a rotation is a claim about
+ * ink that no stylesheet can honour alone. Swap `chevron-right` for
+ * `chevron-left` in that file and every angle the sheet declares is still what
+ * it always was while every chevron in the navigation faces backwards. Only a
+ * test that renders the real component can see it.
+ */
+describe('the disclosure chevron', () => {
+  /** A collapsed group and, because it holds the current page, an open one. */
+  const GROUPS: DocNavNode[] = [
+    {
+      type: 'group',
+      title: 'Closed group',
+      children: [
+        { type: 'page', title: 'Hidden', href: '/docs/hidden', slug: 'hidden' },
+      ],
+    },
+    {
+      type: 'group',
+      title: 'Open group',
+      children: [
+        { type: 'page', title: 'Here', href: '/docs/here', slug: 'here' },
+      ],
+    },
+  ];
+
+  function mountGroups(direction: 'ltr' | 'rtl'): SVGSVGElement[] {
+    document.documentElement.dir = direction;
+    const port = mountShell();
+    render(<DocsSidebar nav={GROUPS} pathname="/docs/here" />, {
+      container: port,
+    });
+
+    const icons = [
+      ...document.querySelectorAll<SVGSVGElement>(
+        '.wave-docs-sidebar__chevron',
+      ),
+    ];
+    expect(icons, 'expected a chevron on each group').toHaveLength(2);
+    return icons;
+  }
+
+  /**
+   * Where the chevron's point lands on screen, relative to the middle of its
+   * own box. Negative `x` is toward the viewport's left and positive toward its
+   * right; positive `y` is downward.
+   *
+   * ⚠️ FROM THE PATH, NOT FROM A BOUNDING BOX. A chevron's ink is symmetric
+   * about its own centre — Lucide's is `9,18 → 15,12 → 9,6`, three units either
+   * side — so `getBoundingClientRect` reports the same extent whichever way it
+   * faces, and the first version of this assertion was deciding on sub-pixel
+   * noise. The middle vertex is the point; the path knows where that is, and
+   * `getScreenCTM` carries it through the rotation.
+   */
+  function pointOffset(icon: SVGSVGElement): { x: number; y: number } {
+    const path = icon.querySelector('path');
+    if (path === null) throw new Error('the chevron has no path');
+
+    const ctm = path.getScreenCTM();
+    if (ctm === null) throw new Error('the chevron is not rendered');
+
+    const tip = path.getPointAtLength(path.getTotalLength() / 2);
+    const onScreen = new DOMPoint(tip.x, tip.y).matrixTransform(ctm);
+    const box = icon.getBoundingClientRect();
+    return {
+      x: onScreen.x - (box.left + box.width / 2),
+      y: onScreen.y - (box.top + box.height / 2),
+    };
+  }
+
+  /**
+   * The group header is `justify-content: space-between`, so the chevron is
+   * flush against the row's inline end and the label is at the other side of
+   * it. Unrotated the icon therefore aimed at the panel's border — and a
+   * chevron at the trailing edge of a row is the platform idiom for "this takes
+   * you somewhere else", so it also read as navigation on a control that only
+   * opens a list in place.
+   */
+  it('aims a collapsed group at its own label', async () => {
+    await page.viewport(1280, 800);
+    const [closed] = mountGroups('ltr');
+    if (closed === undefined) throw new Error('no collapsed chevron');
+
+    // The label is to its left, so the point must be too.
+    expect(pointOffset(closed).x).toBeLessThan(-1);
+  });
+
+  /**
+   * ⚠️ AND IT MIRRORS, WHICH A ROTATION DOES NOT DO BY ITSELF.
+   *
+   * `rotate` is physical — 180deg is left in every writing mode — while every
+   * other property placing this row is logical. Under `dir="rtl"` the header
+   * mirrors, the chevron moves to the inline start and the label lands to its
+   * right, so a single unmirrored rotation points it out of the panel on the
+   * other side: the same defect this rule exists to fix, reflected. The
+   * stylesheet carries a `:dir(rtl)` rule for exactly this, and deleting it
+   * fails here and nowhere else.
+   */
+  it('still aims at the label when the sidebar is mirrored', async () => {
+    await page.viewport(1280, 800);
+    const [closed] = mountGroups('rtl');
+    if (closed === undefined) throw new Error('no collapsed chevron');
+
+    expect(pointOffset(closed).x).toBeGreaterThan(1);
+  });
+
+  /**
+   * ⚠️ SOURCE ORDER IS LOAD-BEARING FOR THIS ONE. `:dir(rtl)` and `[data-open]`
+   * match with the same specificity, so an open group in a mirrored sidebar
+   * points down only while the open rule is written last. Swap the two and a
+   * chevron lies flat above a list that is expanded beneath it.
+   */
+  it.each(['ltr', 'rtl'] as const)(
+    'aims an open group down, under dir=%s',
+    async (direction) => {
+      await page.viewport(1280, 800);
+      const open = mountGroups(direction)[1];
+      if (open === undefined) throw new Error('no open chevron');
+
+      expect(getComputedStyle(open).rotate).toBe('90deg');
+
+      // Down, not merely rotated: the point sits below its own centre, and no
+      // further to one side than rounding.
+      const { x, y } = pointOffset(open);
+      expect(y).toBeGreaterThan(1);
+      expect(Math.abs(x)).toBeLessThan(1);
+    },
+  );
 });
