@@ -64,6 +64,8 @@ import type {
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
 import { DocsHero } from './react/hero.js';
+import { neighbours } from './nav-order.js';
+import { DocsPager } from './react/pager.js';
 import type { DocsLinkComponent } from './react/markdown-components.js';
 /*
  * Type-only because only the type is wanted here; the erasure is not doing
@@ -364,6 +366,16 @@ export interface DocsRouteOptions<
 > extends DocsConfig<TFrontmatter> {
   /** Overrides merged over the Next-flavoured defaults (`next/link` + `next/image`). */
   components?: MarkdownComponents | undefined;
+  /**
+   * Links to the pages either side of this one, under every page. Default on.
+   *
+   * The order is the navigation's, so it cannot disagree with the sidebar —
+   * see `nav-order.ts`. Nothing is authored: a page gets a pager by being in
+   * the tree, and a page outside it gets none.
+   *
+   * `false` omits it, for a host whose own layout already ends a page.
+   */
+  pager?: boolean | undefined;
   /** Reuse an existing Shiki highlighter. */
   highlighter?: DocsHighlighter | Promise<DocsHighlighter> | undefined;
   /** Grammars to load, when building the default highlighter. */
@@ -1253,6 +1265,32 @@ export function createDocsRoute<
           components: { ...components, ...options.components },
           ...(copyLabels === undefined ? {} : { labels: copyLabels }),
         }),
+        /*
+         * The pager, inside `<main>` and after the prose.
+         *
+         * ⚠️ THE NAV TREE, NOT THE SLUG LIST. `generateStaticParams` has every
+         * route in it and no opinion about their order; the sidebar's order is
+         * the one the author wrote, and the one the reader is looking at. Two
+         * orderings of the same pages is two answers to one question, and they
+         * drift the first time a `meta.json` moves.
+         *
+         * `null` when the page has no neighbour either side — see `DocsPager`.
+         */
+        options.pager === false
+          ? null
+          : createElement(DocsPager, {
+              ...neighbours(await requestScopedSource.nav(), doc.href),
+              Link: link,
+              ...(routeLabels?.previousPage === undefined
+                ? {}
+                : { previousLabel: routeLabels.previousPage }),
+              ...(routeLabels?.nextPage === undefined
+                ? {}
+                : { nextLabel: routeLabels.nextPage }),
+              ...(routeLabels?.pagination === undefined
+                ? {}
+                : { label: routeLabels.pagination }),
+            }),
       ),
       /*
        * NO ELEMENT AT ALL when there are no headings, rather than an empty

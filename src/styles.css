@@ -388,6 +388,7 @@
   .wave-docs-toc,
   .wave-docs-skip-link,
   .wave-docs-hero,
+  .wave-docs-pager,
   .wave-docs-layout__sidebar,
   .wave-docs-search-trigger,
   .wave-docs-search-dialog {
@@ -1877,6 +1878,133 @@
       transition:
         opacity 150ms ease-out,
         color 150ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Pager
+ *
+ * Links to the pages either side of this one, emitted by `docs.Page` at the
+ * foot of the article.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  /*
+   * ⚠️ TWO TRACKS, ALWAYS — WHICH IS WHY THE COMPONENT RENDERS AN EMPTY CELL
+   * RATHER THAN NOTHING AT EACH END OF THE SEQUENCE. With `auto-fit` or a
+   * plain flex row, the first page of a site puts its only link — `Next` — on
+   * the left, and every other page puts it on the right. The reader learns the
+   * position, and the one page where it moves is the one they see first.
+   *
+   * ⚠️ THE MEASURE *AND* THE CENTRING, WHICH IS TWO DECLARATIONS AND I SHIPPED
+   * ONE. `.wave-docs-prose` is capped and centred inside `__main`, so a
+   * `max-width` alone left this the right width in the wrong place: the
+   * paragraphs began at 440px and the pager at 304px, a 136px step directly
+   * under them. It belongs to the prose, so it takes both halves of what puts
+   * the prose where it is.
+   */
+  .wave-docs-pager {
+    display: grid;
+    margin-inline: auto;
+    /* `minmax(0, 1fr)`, never a bare `1fr`: that floors each track at its
+     * content's min-content width, so a long page title pushes the pair past
+     * the measure instead of wrapping inside it. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.75rem;
+    max-width: var(--wave-docs-measure);
+    margin-block-start: 3rem;
+  }
+
+  .wave-docs-pager__link {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    color: var(--wave-docs-fg);
+    text-decoration: none;
+  }
+
+  /*
+   * The next page is set to its own edge, so the pair reads outward from the
+   * middle — the direction each one takes you. `text-align` and not
+   * `align-items`, so a title that wraps to two lines stays aligned with
+   * itself rather than ragging against the box.
+   */
+  .wave-docs-pager__link[data-direction='next'] {
+    text-align: end;
+  }
+
+  /*
+   * ⚠️ THE ARROW POINTS OUTWARD, AND "OUTWARD" MIRRORS. Under `dir="rtl"` the
+   * grid's first track is on the right, so the *previous* link moves there and
+   * its arrow has to point right — the reverse of both rules above it. Same
+   * shape as the sidebar's chevron, and the same reason it is `[dir='rtl']`
+   * rather than `:dir(rtl)`: lightningcss rewrites the latter into a list of
+   * right-to-left *languages*, which is not the same question.
+   *
+   * Source order is load-bearing in the middle pair: `[dir='rtl'] .chevron` and
+   * `[data-direction='next'] .chevron` have the same specificity, so the
+   * mirror only wins by being written second.
+   */
+  .wave-docs-pager__chevron {
+    flex: none;
+    /* Sized down from the 16 it is drawn at: beside 12px type a full-size
+     * chevron is the loudest thing in the card. */
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    rotate: 180deg;
+  }
+
+  .wave-docs-pager__link[data-direction='next'] .wave-docs-pager__chevron {
+    rotate: 0deg;
+  }
+
+  [dir='rtl'] .wave-docs-pager__chevron {
+    rotate: 0deg;
+  }
+
+  [dir='rtl']
+    .wave-docs-pager__link[data-direction='next']
+    .wave-docs-pager__chevron {
+    rotate: 180deg;
+  }
+
+  /* The arrow shares the caption's line, so the two read as one label and the
+   * title below starts at the card's own edge. */
+  .wave-docs-pager__caption {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.75rem;
+  }
+
+  .wave-docs-pager__link[data-direction='next'] .wave-docs-pager__caption {
+    justify-content: flex-end;
+  }
+
+  .wave-docs-pager__title {
+    font-weight: 600;
+  }
+
+  .wave-docs-pager__link:hover {
+    border-color: var(--wave-docs-border-strong);
+    background: var(--wave-docs-bg-subtle);
+  }
+
+  .wave-docs-pager__link:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .wave-docs-pager__link {
+      transition:
+        background-color 150ms ease-out,
+        border-color 150ms ease-out;
     }
   }
 }

@@ -51,6 +51,9 @@ const DIGEST = `sha256:${'0123456789abcdef'.repeat(4)}`;
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  // `dir` is on the root element, so it outlives a body reset — and the pager's
+  // chevrons are tested in both directions below.
+  document.documentElement.dir = '';
 });
 
 describe('the reading column', () => {
@@ -920,5 +923,156 @@ describe('the back-to-top reveal', () => {
     );
     expect(Number(getComputedStyle(link).opacity)).toBe(1);
     expect(getComputedStyle(link).visibility).toBe('visible');
+  });
+});
+
+/**
+ * The pager sits in the reading column, not in the column that holds it.
+ *
+ * ⚠️ THE MEASURE IS TWO DECLARATIONS AND IT SHIPPED WITH ONE. `.wave-docs-prose`
+ * is capped *and* centred inside `__main`; a `max-width` alone gives the pager
+ * the right width in the wrong place. Measured on the site at 1600px: the
+ * paragraphs began at 440 and the pager at 304, a 136px step directly under
+ * them — the right width, so nothing about the number looked wrong.
+ */
+describe('the pager', () => {
+  /** The glyph `DocsPager` renders, verbatim — the rotation is the sheet's. */
+  const CHEVRON =
+    '<svg class="wave-docs-pager__chevron" aria-hidden="true" viewBox="0 0 24 24"' +
+    ' width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">' +
+    '<path d="m9 18 6-6-6-6" /></svg>';
+
+  /*
+   * ⚠️ THE FIXTURE CARRIES A SIDEBAR BECAUSE THE GRID IS `auto minmax(0, 1fr)`.
+   * Leave it out and `__main` falls into the *first* track, which is sized to
+   * its content — 101px wide, measured — so the prose is never capped, the
+   * centring has nothing to do, and deleting `margin-inline: auto` passes.
+   * `main` has to get a column wider than the measure or this cannot see the
+   * defect it exists for.
+   */
+  function mountPager(): void {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    document.body.innerHTML = `
+      <div class="wave-docs-shell">
+        <div class="wave-docs-layout">
+          <div class="wave-docs-layout__sidebar">
+            <div class="wave-docs-layout__sidebar-nav" tabindex="-1"></div>
+            <button type="button" class="wave-docs-layout__sidebar-trigger"></button>
+          </div>
+          <div class="wave-docs-layout__main">
+            <article class="wave-docs-prose"><p>A paragraph of prose.</p></article>
+            <nav class="wave-docs-pager" aria-label="Pagination">
+              <a class="wave-docs-pager__link" data-direction="previous" href="/a">
+                <span class="wave-docs-pager__caption">${CHEVRON}Previous</span>
+                <span class="wave-docs-pager__title">A</span>
+              </a>
+              <a class="wave-docs-pager__link" data-direction="next" href="/b">
+                <span class="wave-docs-pager__caption">Next${CHEVRON}</span>
+                <span class="wave-docs-pager__title">B</span>
+              </a>
+            </nav>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function edges(selector: string): [number, number] {
+    const el = document.querySelector(selector);
+    if (!(el instanceof HTMLElement)) throw new Error(`no ${selector}`);
+    const box = el.getBoundingClientRect();
+    return [box.left, box.right];
+  }
+
+  it.each([1024, 1440, 1600])(
+    'shares both edges with the prose at %ipx',
+    async (width) => {
+      mountPager();
+      await resize(width);
+
+      const [proseStart, proseEnd] = edges('.wave-docs-prose > p');
+      const [pagerStart, pagerEnd] = edges('.wave-docs-pager');
+
+      expect(
+        Math.abs(pagerStart - proseStart),
+        'the pager starts elsewhere',
+      ).toBeLessThan(1);
+      expect(
+        Math.abs(pagerEnd - proseEnd),
+        'the pager ends elsewhere',
+      ).toBeLessThan(1);
+    },
+  );
+
+  /**
+   * ⚠️ THE ARROWS POINT OUTWARD, AND "OUTWARD" MIRRORS. Under `dir="rtl"` the
+   * grid's first track is on the right, so the *previous* link moves there and
+   * its arrow has to point right — the reverse of the rule that draws it. The
+   * same trap the sidebar's chevron had, in a component built after it.
+   */
+  it.each(['ltr', 'rtl'] as const)(
+    'points each arrow outward under dir=%s',
+    async (direction) => {
+      mountPager();
+      document.documentElement.dir = direction;
+      await resize(1440);
+
+      /** Where the chevron's point lands, relative to its own centre. */
+      const points = (selector: string): number => {
+        const icon = document.querySelector(selector);
+        const path = icon?.querySelector('path');
+        const ctm = path?.getScreenCTM();
+        if (!(icon instanceof Element) || !path || !ctm)
+          throw new Error(selector);
+        const tip = path.getPointAtLength(path.getTotalLength() / 2);
+        const onScreen = new DOMPoint(tip.x, tip.y).matrixTransform(ctm);
+        const box = icon.getBoundingClientRect();
+        return onScreen.x - (box.left + box.width / 2);
+      };
+
+      const previous = points(
+        '.wave-docs-pager__link[data-direction="previous"] .wave-docs-pager__chevron',
+      );
+      const next = points(
+        '.wave-docs-pager__link[data-direction="next"] .wave-docs-pager__chevron',
+      );
+
+      // Whichever way round the tracks are, the two arrows point apart.
+      expect(Math.sign(previous), 'both arrows point the same way').not.toBe(
+        Math.sign(next),
+      );
+      // And `previous` points at the viewport edge its own track sits against.
+      expect(Math.sign(previous)).toBe(direction === 'ltr' ? -1 : 1);
+    },
+  );
+
+  /**
+   * ⚠️ TWO TRACKS EVEN WITH ONE LINK. Drop the absent side and the survivor
+   * slides into the first track, so the first page of a site puts `Next` on the
+   * left and every other page puts it on the right.
+   */
+  it('keeps the next link in the second track when there is no previous', async () => {
+    mountPager();
+    await resize(1440);
+
+    const pager = document.querySelector('.wave-docs-pager');
+    const first = pager?.firstElementChild;
+    if (pager === null || !(first instanceof HTMLElement)) {
+      throw new Error('no pager');
+    }
+    // Stand in for the component's empty cell.
+    first.replaceWith(
+      Object.assign(document.createElement('div'), {
+        className: 'wave-docs-pager__gap',
+      }),
+    );
+
+    const [, pagerEnd] = edges('.wave-docs-pager');
+    const [, nextEnd] = edges('.wave-docs-pager__link[data-direction="next"]');
+    expect(Math.abs(nextEnd - pagerEnd)).toBeLessThan(1);
   });
 });

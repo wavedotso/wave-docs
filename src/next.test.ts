@@ -1212,6 +1212,9 @@ describe('every label reaches a reader', () => {
     youtubeHide: 'page markup',
     copyCode: 'page markup',
     copyCodeFrom: 'page markup',
+    previousPage: 'page markup',
+    nextPage: 'page markup',
+    pagination: 'page markup',
     // The shell needs `next/navigation`, so these are mounted where it can be
     // mocked. `layout.test.tsx` renders the real components and reads the DOM.
     nav: 'layout.test.tsx',
@@ -1253,7 +1256,27 @@ describe('every label reaches a reader', () => {
       youtubeHide: 'L-HIDE {title}',
       copyCode: 'L-COPY',
       copyCodeFrom: 'L-COPY-FROM {title}',
+      previousPage: 'L-PREVIOUS',
+      nextPage: 'L-NEXT',
+      pagination: 'L-PAGINATION',
     };
+
+    /*
+     * ⚠️ THE HOLE THIS CLOSES: `LABEL_COVERAGE` SAYS WHERE A KEY IS PROVEN, AND
+     * NOTHING CHECKED THAT "page markup" MEANT ANYTHING. A key added to the map
+     * with that value and no sentinel below was counted as covered by a test
+     * that never looked for it — which is the same shape as the defect the map
+     * exists to prevent, one level up.
+     *
+     * The fixture gained a second page for the same reason: `DocsPager` renders
+     * `null` when a page has no neighbour, so on a one-page fixture its three
+     * labels would have been "proven" against markup that could not contain
+     * them.
+     */
+    const claimed = Object.entries(LABEL_COVERAGE)
+      .filter(([, where]) => where === 'page markup')
+      .map(([key]) => key);
+    expect(Object.keys(labels).sort()).toEqual(claimed.sort());
 
     const route = createDocsRoute({
       contentDir: path.join(

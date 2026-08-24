@@ -203,6 +203,7 @@ Every component takes data as props, and every module that imports from `next/*`
 | `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
 | `DocsHero` | `react/hero` | A landing page's header. `title`, `description`, `actions`, `Link`, `externalLabel`. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation`. `icons` controls the marker column — see [Sidebar icons](#sidebar-icons) |
+| `DocsPager` | `react/pager` | Links to the pages either side of this one. `docs.Page` renders it; `pager: false` on the route omits it |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
 | `DocsLink` | `react/next-link` | `next/link`, adapted — pass it as `Link` when composing by hand |
@@ -213,6 +214,24 @@ Every component takes data as props, and every module that imports from `next/*`
 | `createMarkdownComponents` | `react/markdown-components` | The element → component map. `defaultMarkdownComponents` is the unwired one |
 
 `DocsToc`'s `rootMargin` is the `IntersectionObserver` margin that decides how far above the viewport a heading counts as current; the default keeps the highlight on the section you are reading rather than the one about to arrive. `topLabel` is the back-to-top link at the end — it fades in once the reader is about a third of a screen down and fades out again on the way back, on a scroll timeline rather than a scroll listener, so the component ships no extra bytes to do it. Where that timeline cannot run — an engine without scroll-driven animations, a page too short to scroll, or a host that scrolls an inner pane rather than the document — the link is simply always there.
+
+### The pager
+
+`docs.Page` renders it under every page, so most sites never touch it. The order is the navigation's — flattened from the same tree `DocsSidebar` renders — so a pager that disagrees with the sidebar beside it is impossible. Nothing is authored: a page gets one by being in the tree, and a page outside it (a draft, or a route you render yourself) gets none.
+
+Separators and external links are not stops. A separator is a label with nowhere to go, and a "next page" that lands on npm has ended the sequence rather than continued it. A directory with an `index.md` contributes its own page before its children, which is the order its rows appear in.
+
+| Prop | Type | Default | What it is |
+| --- | --- | --- | --- |
+| `previous` | `NavStop` | — | The stop before this page. Omit at the beginning |
+| `next` | `NavStop` | — | The stop after it. Omit at the end |
+| `Link` | `DocsLinkComponent` | `<a>` | Client-side router link |
+| `previousLabel` | `string` | `'Previous'` | Above the previous page's title |
+| `nextLabel` | `string` | `'Next'` | Above the next page's title |
+| `label` | `string` | `'Pagination'` | Accessible name for the landmark |
+| `className` | `string` | — | Extra classes |
+
+With neither neighbour it renders nothing at all, rather than an empty landmark. Set `pager: false` on `createDocsRoute` to omit it everywhere, and the three strings through `labels` — `previousPage`, `nextPage`, `pagination`.
 
 ### Sidebar icons
 

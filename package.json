@@ -107,6 +107,10 @@
     "./react/youtube": {
       "types": "./dist/react/youtube.d.ts",
       "default": "./dist/react/youtube.js"
+    },
+    "./react/pager": {
+      "types": "./dist/react/pager.d.ts",
+      "default": "./dist/react/pager.js"
     }
   },
   "files": [

@@ -84,6 +84,23 @@ export interface DocsLabels {
   toc?: string | undefined;
   /** The link at the end of the TOC. Default `'Back to top'`. */
   backToTop?: string | undefined;
+  /**
+   * Above the previous page's title in the pager. Defaults to `'Previous'`.
+   *
+   * The direction, not the destination: the page's own title is the name, and
+   * these two words are what say which way it lies.
+   */
+  previousPage?: string | undefined;
+  /** The same for the next page. Defaults to `'Next'`. */
+  nextPage?: string | undefined;
+  /**
+   * Accessible name for the pager landmark. Defaults to `'Pagination'`.
+   *
+   * A page carries three navigation landmarks — the sidebar, the table of
+   * contents and this — and "navigation" three times is not a list anyone can
+   * steer by.
+   */
+  pagination?: string | undefined;
 
   /* ---------------------------------------------------------------------
    * The content — rendered from your markdown by `docs.Page`
@@ -183,6 +200,9 @@ export const DOCS_LABEL_KEYS = [
   'youtubeHide',
   'copyCode',
   'copyCodeFrom',
+  'previousPage',
+  'nextPage',
+  'pagination',
   'copied',
   'copyFailed',
 ] as const satisfies ReadonlyArray<keyof DocsLabels>;
