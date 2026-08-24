@@ -51,8 +51,7 @@ const DIGEST = `sha256:${'0123456789abcdef'.repeat(4)}`;
 
 beforeEach(() => {
   document.body.innerHTML = '';
-  // `dir` is on the root element, so it outlives a body reset — and the pager's
-  // chevrons are tested in both directions below.
+  // `dir` is on the root element, so it outlives a body reset.
   document.documentElement.dir = '';
 });
 
@@ -925,7 +924,6 @@ describe('the back-to-top reveal', () => {
     expect(getComputedStyle(link).visibility).toBe('visible');
   });
 });
-
 /**
  * The pager sits in the reading column, not in the column that holds it.
  *
@@ -1074,5 +1072,70 @@ describe('the pager', () => {
     const [, pagerEnd] = edges('.wave-docs-pager');
     const [, nextEnd] = edges('.wave-docs-pager__link[data-direction="next"]');
     expect(Math.abs(nextEnd - pagerEnd)).toBeLessThan(1);
+  });
+});
+
+/**
+ * The grip's colour, before anyone has touched it.
+ *
+ * ⚠️ THIS IS THE ONE STATE A MOUNTED COMPONENT CANNOT SHOW YOU. `DocsNav`
+ * resolves the mode on mount and writes `data-state` immediately, so every
+ * React fixture is already explicit — but a *server*-rendered page has no
+ * attribute at all, and that is what a reader sees on first paint. The shape is
+ * markup, so it is tested as markup.
+ *
+ * Two wrong versions pass everything else. Matching `[data-state='closed']`
+ * instead of `:not([data-state='open'])` leaves every first paint on a phone
+ * grey in front of hidden navigation; dropping the wide-layout reset lights the
+ * grip on every desktop page load. Both were measured surviving a suite that
+ * only ever sees an explicit state.
+ */
+describe('the untouched sidebar grip', () => {
+  function mountUntouched(width: number): HTMLElement {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    // No `data-state` anywhere: this is the server's output.
+    document.body.innerHTML = `
+      <div class="wave-docs-shell" style="width: ${width}px">
+        <div class="wave-docs-layout">
+          <div class="wave-docs-layout__sidebar">
+            <div class="wave-docs-layout__sidebar-nav" tabindex="-1"></div>
+            <button type="button" class="wave-docs-layout__sidebar-trigger"></button>
+          </div>
+          <div class="wave-docs-layout__main"><p>Prose.</p></div>
+        </div>
+      </div>`;
+
+    const sidebar = document.querySelector('.wave-docs-layout__sidebar');
+    if (!(sidebar instanceof HTMLElement)) throw new Error('no sidebar');
+    return sidebar;
+  }
+
+  it.each([
+    [900, 'cover', true],
+    [1400, 'push', false],
+  ])('at a %ipx container it is %s, lit: %s', async (width, mode, lit) => {
+    const sidebar = mountUntouched(width);
+    await resize(1600);
+
+    expect(sidebar.hasAttribute('data-state')).toBe(false);
+    expect(
+      getComputedStyle(sidebar)
+        .getPropertyValue('--wave-docs-sidebar-mode')
+        .trim(),
+    ).toBe(mode);
+
+    const accent = getComputedStyle(document.documentElement)
+      .getPropertyValue('--wave-docs-accent')
+      .trim();
+    const fill = getComputedStyle(sidebar)
+      .getPropertyValue('--wave-docs-trigger-fill')
+      .trim();
+
+    expect(fill === 'var(--wave-docs-accent)' || fill === accent).toBe(lit);
   });
 });

@@ -382,6 +382,12 @@
    * Declared at all because inheriting means a host that never set a family
    * renders its documentation in the UA serif. `--wave-docs-font-sans: inherit`
    * gives the host's typeface back in one line.
+   *
+   * ⚠️ EVERY NEW ROOT HAS TO BE ADDED HERE, AND ONE ALREADY WAS NOT. The pager
+   * sits inside `<main>` but outside `.wave-docs-prose` — `DocContent` owns
+   * that class — so it matched nothing in this list and shipped its page titles
+   * in Times. Caught in a screenshot, not by a test: nothing here fails when a
+   * root is missing, it just renders wrong.
    */
   .wave-docs-prose,
   .wave-docs-sidebar,
@@ -2755,6 +2761,47 @@
    * 20px transparent border for a while to answer to 44 while painting 24, and
    * a box the eye cannot see is a box the next person deletes.
    */
+  /*
+   * ⚠️ THE GRIP'S COLOUR IS A CUSTOM PROPERTY, NOT A SELECTOR FIGHT.
+   *
+   * Three things want to set it: the resting style, the reader's pointer, and
+   * the sidebar's own state — and the state lives on an *ancestor*, so
+   * `.sidebar[data-state] .trigger::before` outranks `.trigger:hover::before`
+   * by a whole class. Written as backgrounds that is a rule that silently kills
+   * hover on the one state that still needs it.
+   *
+   * Custom properties settle it by inheritance instead: the state sets them on
+   * the sidebar, the trigger sets them on itself under `:hover`, and a value on
+   * the element always beats one it inherited. No specificity, no `!important`,
+   * and the hover rule stays two lines long.
+   */
+  .wave-docs-layout__sidebar {
+    --wave-docs-trigger-fill: var(--wave-docs-border-strong);
+    --wave-docs-trigger-ink: var(--wave-docs-fg-muted);
+    --wave-docs-trigger-opacity: 0.4;
+  }
+
+  /*
+   * Blue means the grip is the thing to press; grey means it is at rest.
+   *
+   * The navigation is hidden and this is the way back to it — so a closed
+   * sidebar lights the grip, exactly as the pointer does. Open, the grip has
+   * nothing to offer that the visible column does not, and it goes quiet.
+   *
+   * ⚠️ `:not([data-state='open'])`, NOT `[data-state='closed']`. Below 64rem
+   * the sidebar starts closed and the attribute is absent until the reader
+   * chooses — a server-rendered page has no state at all. Matching only the
+   * explicit value leaves every first paint on a phone showing a grey grip in
+   * front of hidden navigation, which is the one moment the cue is for.
+   *
+   * The wide layout inverts the default, and overrides this below.
+   */
+  .wave-docs-layout__sidebar:not([data-state='open']) {
+    --wave-docs-trigger-fill: var(--wave-docs-accent);
+    --wave-docs-trigger-ink: var(--wave-docs-accent-fg);
+    --wave-docs-trigger-opacity: 1;
+  }
+
   .wave-docs-layout__sidebar-trigger {
     flex: none;
     /*
@@ -2784,7 +2831,7 @@
     padding: 4px;
     border: 0;
     background: none;
-    color: var(--wave-docs-fg-muted);
+    color: var(--wave-docs-trigger-ink);
     cursor: pointer;
   }
 
@@ -2808,8 +2855,10 @@
      * of the three dots, and nothing here scales with the pill: see `::after`.
      */
     height: 3.5rem;
-    border-radius: var(--wave-docs-radius-sm);
-    background-color: var(--wave-docs-border-strong);
+    /* A full pill: the radius is half the *short* side, so `9999px` clamps to
+     * exactly that whatever the two dimensions become. */
+    border-radius: 9999px;
+    background-color: var(--wave-docs-trigger-fill);
   }
 
   /*
@@ -2861,14 +2910,17 @@
    */
   .wave-docs-layout__sidebar-trigger::before,
   .wave-docs-layout__sidebar-trigger::after {
-    opacity: 0.4;
+    opacity: var(--wave-docs-trigger-opacity);
   }
 
-  .wave-docs-layout__sidebar-trigger:hover::before,
-  .wave-docs-layout__sidebar-trigger:hover::after,
-  .wave-docs-layout__sidebar-trigger:focus-visible::before,
-  .wave-docs-layout__sidebar-trigger:focus-visible::after {
-    opacity: 1;
+  /* On the element, not on the pseudo-elements: a custom property set here is
+   * inherited by both, and beats the sidebar's regardless of how specific the
+   * state selector that set it was. */
+  .wave-docs-layout__sidebar-trigger:hover,
+  .wave-docs-layout__sidebar-trigger:focus-visible {
+    --wave-docs-trigger-fill: var(--wave-docs-accent);
+    --wave-docs-trigger-ink: var(--wave-docs-accent-fg);
+    --wave-docs-trigger-opacity: 1;
   }
 
   /*
@@ -2883,11 +2935,6 @@
       var(--wave-docs-accent) 30%,
       transparent
     );
-    color: var(--wave-docs-accent-fg);
-  }
-
-  .wave-docs-layout__sidebar-trigger:hover::before {
-    background-color: var(--wave-docs-accent);
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -3009,6 +3056,18 @@
     .wave-docs-layout__sidebar:not([data-state='closed']) {
       translate: 0;
       margin-inline-end: 0;
+    }
+
+    /*
+     * Unchosen means *open* up here, so the grip is at rest by default — the
+     * mirror of the rule above, and the reason that one is written as
+     * "not open" rather than "closed". A closed sidebar keeps the blue it
+     * inherits from there; nothing needs restating.
+     */
+    .wave-docs-layout__sidebar:not([data-state='closed']) {
+      --wave-docs-trigger-fill: var(--wave-docs-border-strong);
+      --wave-docs-trigger-ink: var(--wave-docs-fg-muted);
+      --wave-docs-trigger-opacity: 0.4;
     }
 
     /* Nothing is covered, so nothing is scrimmed. */

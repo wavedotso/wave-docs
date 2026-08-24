@@ -459,6 +459,40 @@ describe('the sidebar, at every container width', () => {
     expect(Math.round(strip)).toBeGreaterThanOrEqual(24);
   });
 
+  /**
+   * Blue means the grip is the thing to press; grey means it is at rest.
+   *
+   * ⚠️ THE STATE LIVES ON AN ANCESTOR AND HOVER LIVES ON THE BUTTON, so written
+   * as backgrounds the state selector outranks the hover one by a whole class
+   * and silently kills hover on the state that still needs it. The sheet sets
+   * custom properties instead and lets inheritance decide — these are the cases
+   * that hold that.
+   */
+  it.each([
+    ['closed', true],
+    ['open', false],
+  ])('lights the grip while %s', async (state, lit) => {
+    const { shell, trigger } = mount();
+    await settle();
+
+    // `shell` *is* `.wave-docs-layout__sidebar` here — see `mount`.
+    const sidebar = shell;
+    if (sidebar.getAttribute('data-state') !== state) {
+      trigger.click();
+      await settle();
+    }
+    expect(sidebar.getAttribute('data-state')).toBe(state);
+
+    const accent = getComputedStyle(document.documentElement)
+      .getPropertyValue('--wave-docs-accent')
+      .trim();
+    const fill = getComputedStyle(sidebar)
+      .getPropertyValue('--wave-docs-trigger-fill')
+      .trim();
+
+    expect(fill === `var(--wave-docs-accent)` || fill === accent).toBe(lit);
+  });
+
   it('toggles from the keyboard, not only the pointer', async () => {
     const { shell, trigger } = mount();
     await settle();

@@ -706,22 +706,31 @@ describe('focus indicators', () => {
       if (INDICATOR_ELSEWHERE.has(selector)) continue;
 
       /*
-       * ⚠️ THE SELECTOR AS A WHOLE SELECTOR, NOT AS A PREFIX. `indexOf` finds
-       * `…:focus-visible` inside `…:focus-visible::before` too — a different
-       * rule, about the pseudo-elements, that has no business declaring an
-       * outline. It matched first and this reported the *button* as having no
-       * focus indicator while the button's own rule sat further down the file,
-       * declaring one.
+       * ⚠️ EVERY RULE FOR THIS SELECTOR, NOT THE FIRST ONE.
+       *
+       * Twice now a second rule for a focus selector has broken this. First
+       * `indexOf` matched `…:focus-visible` *inside* `…:focus-visible::before`
+       * — a different rule, about pseudo-elements. Pinning it to a whole
+       * selector fixed that and left the real problem: a selector may
+       * legitimately appear in several rules, and the sidebar trigger now has
+       * one that sets custom properties on focus and one that draws the ring.
+       * Taking either "the first" or "the last" is a coin flip on file order.
+       *
+       * The claim is that the indicator exists *somewhere*, so read them all
+       * and ask for one.
        */
-      const at = sheet.search(
-        new RegExp(
-          `${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,{]`,
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const blocks = [
+        ...sheet.matchAll(new RegExp(`${escaped}\\s*[,{]`, 'g')),
+      ].map((match) => readBlock(sheet, match.index ?? 0));
+
+      expect(blocks.length, `${selector} has no rule`).toBeGreaterThan(0);
+      expect(
+        blocks.some((block) =>
+          /outline:\s*\d+px solid (?!transparent)/.test(block),
         ),
-      );
-      expect(at, `${selector} has no rule`).toBeGreaterThan(-1);
-      expect(readBlock(sheet, at), `${selector} declares no outline`).toMatch(
-        /outline:\s*\d+px solid (?!transparent)/,
-      );
+        `${selector} declares no outline in any of its ${blocks.length} rule(s)`,
+      ).toBe(true);
     }
   });
 
