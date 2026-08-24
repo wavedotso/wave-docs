@@ -515,3 +515,93 @@ describe('the search trigger and the tree share a column', () => {
     ).toBeLessThan(1);
   });
 });
+/**
+ * A separator's label starts where a row's content starts — the marker column
+ * when there is one, the words when there is not.
+ *
+ * ⚠️ THAT IS ONE TARGET IN BOTH MODES, AND IT IS EASY TO TALK YOURSELF INTO
+ * TWO. A row's own `padding-inline` is what the modes share: the icon sits on
+ * it with markers on, the text sits on it with `icons={false}`. Aim at the
+ * row's *text* instead and the label chases a number that moves by 24px
+ * between modes — which is what these two cases are here to catch.
+ *
+ * And a test that fakes the off state with `display: none` proves nothing about
+ * any of it: the element stays in the DOM, so anything asking the tree what it
+ * drew still sees a marker. These render the real prop.
+ */
+describe('a separator label starts where a row does', () => {
+  const NAV: DocNavNode[] = [
+    { type: 'page', title: 'Overview', href: '/docs', slug: '' },
+    { type: 'separator', title: 'Links' },
+    {
+      type: 'link',
+      title: 'GitHub',
+      href: 'https://example.com',
+      external: true,
+    },
+  ];
+
+  /** Where the glyphs start, not where the box does — the label is a block. */
+  function textLeft(selector: string): number {
+    const el = document.querySelector(selector);
+    if (!(el instanceof Element)) throw new Error(`no ${selector}`);
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return range.getBoundingClientRect().left;
+  }
+
+  function mountNav(icons: boolean): void {
+    const port = mountShell();
+    const host = document.createElement('div');
+    port.append(host);
+    render(<DocsSidebar nav={NAV} pathname="/docs" icons={icons} />, {
+      container: host,
+    });
+  }
+
+  it('lines up with the marker column when markers are drawn', async () => {
+    await page.viewport(1280, 800);
+    mountNav(true);
+
+    const icon = document.querySelector('.wave-docs-sidebar__icon');
+    if (icon === null) throw new Error('no marker to line up with');
+
+    expect(
+      Math.abs(
+        textLeft('.wave-docs-sidebar__separator') -
+          icon.getBoundingClientRect().left,
+      ),
+    ).toBeLessThan(1);
+  });
+
+  it('lines up with the words when they are not', async () => {
+    await page.viewport(1280, 800);
+    mountNav(false);
+
+    expect(document.querySelector('.wave-docs-sidebar__icon')).toBeNull();
+    expect(
+      Math.abs(
+        textLeft('.wave-docs-sidebar__separator') -
+          textLeft('.wave-docs-sidebar__label'),
+      ),
+    ).toBeLessThan(1);
+  });
+
+  /** The rule is not the label: it divides the column, so it keeps its edge. */
+  it('keeps the rule on the column edge in both modes', async () => {
+    await page.viewport(1280, 800);
+
+    mountNav(true);
+    const withIcons = document
+      .querySelector('.wave-docs-sidebar__separator-item')
+      ?.getBoundingClientRect().left;
+
+    mountNav(false);
+    const without = document
+      .querySelector('.wave-docs-sidebar__separator-item')
+      ?.getBoundingClientRect().left;
+
+    expect(withIcons).toBeDefined();
+    expect(without).toBe(withIcons);
+  });
+});

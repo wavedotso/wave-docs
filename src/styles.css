@@ -1764,8 +1764,35 @@
     rotate: 90deg;
   }
 
+  /*
+   * A separator ends the block above it as much as it names the block below,
+   * and a rule says that in a way whitespace alone cannot: at 1rem of margin
+   * the gap read as "these two lists are a bit far apart" rather than as a
+   * division.
+   *
+   * ⚠️ THE RULE AND THE LABEL SHARE THE LIST'S OWN EDGE, WHICH IS ALSO THE
+   * ROWS'. A row is full-bleed — its hover surface spans the whole column, and
+   * so does the search field above it — so a rule on that edge divides the
+   * column, while an inset one floats inside it. The label sits on the same
+   * line, because a heading and the rule above it reading as one object is the
+   * whole reason the rule is there.
+   *
+   * Measured before this: the label sat at 24px, the rows' *icon* column. It
+   * headed a column of decoration, a step in from the words it names and a step
+   * out from the edge — aligned with neither.
+   *
+   * ⚠️ AND NO RULE ON THE FIRST CHILD, which would draw a line above nothing. A
+   * `meta.json` may open with `"---Reference---"`, and on that tree the very
+   * first thing in the navigation would be a hairline.
+   */
   .wave-docs-sidebar__separator-item {
     margin-block: 1rem 0.25rem;
+  }
+
+  .wave-docs-sidebar__separator-item:not(:first-child) {
+    margin-block-start: 1rem;
+    padding-block-start: 1rem;
+    border-block-start: 1px solid var(--wave-docs-border);
   }
 
   /*
@@ -1784,12 +1811,38 @@
    * single character. `letter-spacing` went with them: it exists to make caps
    * legible, and on sentence case it only reads as loose.
    */
+  /*
+   * The label starts where a row's content starts — the marker column when
+   * there is one, the words when there is not.
+   *
+   * ⚠️ THAT IS ONE NUMBER, NOT TWO, AND CHASING IT WITH `:has()` WAS THE WRONG
+   * SHAPE. A row's own `padding-inline` is what both modes have in common: with
+   * markers the icon sits on it, with `icons={false}` the text does. Matching
+   * the row's padding lands on whichever is there, in both modes, with no
+   * query and nothing threaded.
+   *
+   * The *rule* keeps the column's edge instead — it divides the column rather
+   * than naming anything. See `__separator-item`.
+   */
   .wave-docs-sidebar__separator {
     display: block;
-    padding-inline: 0.5rem;
+    padding-inline-start: 0.5rem;
     color: var(--wave-docs-fg-subtle);
     font-size: 0.75rem;
-    font-weight: 650;
+    /*
+     * ⚠️ THE WEIGHT IS THE LEVER HERE, NOT THE COLOUR. At 650 this label was
+     * heavier than the group titles it sits under and read as the loudest thing
+     * in the column — a divider out-shouting the navigation it divides.
+     *
+     * The obvious fix is a lighter colour, and there is none to reach for:
+     * `--wave-docs-fg-subtle` is already the lightest text token at 5.05:1 on
+     * the page, against WCAG 1.4.3's 4.5:1 floor for text this size — 0.55 of
+     * slack. `--wave-docs-border`, which is what the rule above it is painted
+     * with, measures 1.31:1 and is a line colour, not a text one.
+     *
+     * 500 drops it below the rows without touching the contrast at all.
+     */
+    font-weight: 500;
   }
 
   @media (prefers-reduced-motion: no-preference) {

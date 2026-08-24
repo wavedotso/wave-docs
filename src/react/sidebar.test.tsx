@@ -739,6 +739,40 @@ describe('DocsSidebar injected Link', () => {
  * weight and a chevron, and in a tree where the two interleave a dozen times
  * that is not enough to scan.
  */
+/**
+ * The rule above a separator.
+ *
+ * A separator ends the block above it as much as it names the block below, and
+ * whitespace alone was not saying so. The one case that has to stay clean is a
+ * `meta.json` that *opens* with one — there the line would sit above nothing.
+ */
+describe('DocsSidebar separators', () => {
+  it('rules off the block above, but not above the first thing in the tree', () => {
+    const leading: DocNavNode[] = [
+      { type: 'separator', title: 'Reference' },
+      { type: 'page', title: 'Introduction', href: '/docs', slug: '' },
+    ];
+    render(<DocsSidebar nav={leading} pathname="/docs" />);
+
+    const first = screen
+      .getByText('Reference')
+      .closest('.wave-docs-sidebar__separator-item');
+    expect(first).not.toBeNull();
+    // The guard is `:not(:first-child)`, so this is the assertion that keeps it:
+    // a separator that opens a list must be the list's first child.
+    expect(first?.previousElementSibling).toBeNull();
+  });
+
+  it('sits below a block when the tree has one', () => {
+    render(<DocsSidebar nav={nav} pathname="/docs" />);
+
+    const item = screen
+      .getByText('Reference')
+      .closest('.wave-docs-sidebar__separator-item');
+    expect(item?.previousElementSibling).not.toBeNull();
+  });
+});
+
 describe('DocsSidebar type icons', () => {
   /** The marker's shape, read off the row rather than off a class name. */
   function markers(): string[] {
