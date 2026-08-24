@@ -69,16 +69,16 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 13.9 KB |
+| Everything the quick start ships, gzipped | 14 KB |
 | Search dialog and router wiring | 9.3 KB |
-| Navigation: one sidebar, open and closed | 2.9 KB |
+| Navigation: one sidebar, open and closed | 3 KB |
 | Table of contents | 0.9 KB |
 | Copy-button runtime | 1.1 KB |
 | hast over the wire vs HTML, prose page | 1.20× |
 | hast over the wire vs HTML, code and tables | 1.12× |
 | Highlighting vs no highlighting | 2.00× |
 
-The first row is the honest total: a reader who lands on a page of your documentation downloads under 13.9 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 14 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
 The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
 
@@ -202,7 +202,7 @@ Every component takes data as props, and every module that imports from `next/*`
 | --- | --- | --- |
 | `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
 | `DocsHero` | `react/hero` | A landing page's header. `title`, `description`, `actions`, `Link`, `externalLabel`. Server Component |
-| `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation` |
+| `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation`. `icons` controls the marker column — see [Sidebar icons](#sidebar-icons) |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
 | `DocsLink` | `react/next-link` | `next/link`, adapted — pass it as `Link` when composing by hand |
@@ -213,6 +213,48 @@ Every component takes data as props, and every module that imports from `next/*`
 | `createMarkdownComponents` | `react/markdown-components` | The element → component map. `defaultMarkdownComponents` is the unwired one |
 
 `DocsToc`'s `rootMargin` is the `IntersectionObserver` margin that decides how far above the viewport a heading counts as current; the default keeps the highlight on the section you are reading rather than the one about to arrive. `topLabel` is the back-to-top link at the end — it fades in once the reader is about a third of a screen down and fades out again on the way back, on a scroll timeline rather than a scroll listener, so the component ships no extra bytes to do it. Where that timeline cannot run — an engine without scroll-driven animations, a page too short to scroll, or a host that scrolls an inner pane rather than the document — the link is simply always there.
+
+### Sidebar icons
+
+Every row in the sidebar carries a marker at its head: a folder on a group, a page on a page, an arrow on a link that leaves your site. Weight and a chevron were the only difference before, and where categories and pages interleave that is not enough to scan.
+
+Three glyphs ship. **No icon set does**, and none ever will — this package is mounted inside applications that already have one, and a second vocabulary beside theirs is worse than none. Your own icons come in by name:
+
+```yaml
+# content/reference/index.md
+---
+title: Reference
+icon: book
+---
+```
+
+```json
+// content/reference/meta.json — for a directory with no index page,
+// and for hand-written links
+{ "title": "Reference", "icon": "book", "pages": [{ "title": "npm", "href": "https://npmjs.com", "icon": "package" }] }
+```
+
+```tsx
+import { DocsSidebar } from '@waveso/docs/react/sidebar';
+import type { DocNavNode } from '@waveso/docs/types';
+
+// Yours: `lucide-react`, your design system, or hand-written. Rendered with no
+// props, in a 1rem box — `currentColor` and `100%` keep it in line with the
+// built-ins and with the row it sits on.
+const Book = () => (
+  <svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15Z" />
+  </svg>
+);
+
+export function Nav({ nav, pathname }: { nav: DocNavNode[]; pathname: string }) {
+  return <DocsSidebar nav={nav} pathname={pathname} icons={{ book: Book }} />;
+}
+```
+
+A name with no entry in the map falls back to the built-in marker for that node's type — a typo in one file leaves a folder where a book should be, not a hole in the column. The component is rendered with no props, in a `1rem` box, and the built-ins use `currentColor`, so anything following those two conventions sits in line with them.
+
+`icons={false}` removes the column entirely. The external-link mark moves back to the trailing edge there: turning off a decorative column is not consent to drop a warning that a link leaves your site.
 
 The two components the adapter injects take a little more than an `<a>` and an `<img>`. `DocsLinkProps` adds `prefetch` — passed straight to `next/link`, where `false` disables the hover and viewport paths both, so it is a stronger switch in the App Router than the name suggests. `DocsImageProps` carries `src`, `alt`, `width` and `height` — the four `next/image` refuses to render without — and adds `sizes`, `loading`, `decoding` and `fetchPriority`, forwarded to it; markdown carries none of them, so they come from your `imageResolver` or from a `components` override. `decoding` defaults to `async`, and `loading` to `lazy` — except on an image the author marked `eager`, which is usually the page's largest element.
 

@@ -18,6 +18,7 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import type { DocNavNode } from '../types.js';
+import type { DocsIconMap } from './sidebar.js';
 import { DocsNav } from './nav.js';
 import type { NextLinkComponent } from './link-adapter.js';
 import { wrapNextLink } from './link-adapter.js';
@@ -37,6 +38,8 @@ export interface DocsNextNavProps {
   expandGroup?: string | undefined;
   collapseGroup?: string | undefined;
   externalLink?: string | undefined;
+  /** The marker column. See `DocsSidebarProps.icons`. */
+  icons?: boolean | DocsIconMap | undefined;
 }
 
 export function DocsNextNav({
@@ -48,6 +51,7 @@ export function DocsNextNav({
   expandGroup,
   collapseGroup,
   externalLink,
+  icons,
 }: DocsNextNavProps): ReactNode {
   return (
     <DocsNav
@@ -60,6 +64,7 @@ export function DocsNextNav({
       {...(expandGroup === undefined ? {} : { expandGroup })}
       {...(collapseGroup === undefined ? {} : { collapseGroup })}
       {...(externalLink === undefined ? {} : { externalLink })}
+      {...(icons === undefined ? {} : { icons })}
     >
       {children}
     </DocsNav>

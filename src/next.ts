@@ -79,6 +79,7 @@ import type { DocsLinkComponent } from './react/markdown-components.js';
  * `createDocsSitemap` and `createDocsRedirects` outside the Next runtime.
  */
 import type { DocsLayoutSearchProps } from './react/layout.js';
+import type { DocsIconMap } from './react/sidebar.js';
 import type { DocsLabels } from './react/shell-labels.js';
 import { DocsToc } from './react/toc.js';
 import type {
@@ -519,6 +520,19 @@ export interface DocsLayoutProps {
    * mean naming one string cost you the other twenty-one.
    */
   labels?: DocsLabels | undefined;
+  /**
+   * The sidebar's marker column: `true` (default), `false`, or your own icons
+   * keyed by the `icon` names your content authors in frontmatter and
+   * `meta.json`. See `DocsSidebarProps.icons`.
+   *
+   * ⚠️ EVERY COMPONENT IN THE MAP MUST BE A CLIENT COMPONENT — the same
+   * boundary `search` documents at length. This is a Server Component handing
+   * props to a Client one, so React serialises a *reference* to a client
+   * component and cannot serialise a server one. Icons imported from a library
+   * already satisfy this; one defined inline in a server file fails the build
+   * at the boundary.
+   */
+  icons?: boolean | DocsIconMap | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -1286,6 +1300,7 @@ export function createDocsRoute<
       children,
       search,
       labels,
+      icons,
     }: DocsLayoutProps): Promise<ReactNode> {
       /*
        * Lazy, and load-bearing. `layout.tsx` is itself a Server Component, but
@@ -1374,6 +1389,7 @@ export function createDocsRoute<
         searchIndexUrl,
         search: searchProps,
         ...(shellLabels === undefined ? {} : { labels: shellLabels }),
+        ...(icons === undefined ? {} : { icons }),
       });
     },
 

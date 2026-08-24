@@ -1,11 +1,22 @@
 'use client';
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 import type { DocNavGroup, DocNavNode } from '../types.js';
 import type { DocsLinkComponent } from './markdown-components.js';
 import { nearestScrollTop } from './nearest-scroll-top.js';
+
+/**
+ * `icon` names to components, for `DocsSidebar`'s `icons` prop.
+ *
+ * The component is rendered with no props: an icon that needs configuration is
+ * a closure the host writes, not a contract this package invents. It should
+ * draw at the size it is given — the column is `1rem` square and the built-in
+ * markers use `currentColor`, so anything following those two conventions sits
+ * in line with them.
+ */
+export type DocsIconMap = Record<string, ComponentType>;
 
 export interface DocsSidebarProps {
   /** The tree from `@waveso/docs/source`. */
@@ -37,6 +48,44 @@ export interface DocsSidebarProps {
    * The separating space is markup, so this is the sentence and nothing else.
    */
   externalLink?: string | undefined;
+  /**
+   * The marker column. `true` (default), `false`, or your own icons.
+   *
+   * Weight and a chevron were the only things separating a category from a
+   * page, and in a tree where the two interleave — a `Reference` group sitting
+   * directly above an `Internals` page — that is not enough to scan. A leading
+   * glyph gives the column a shape you read before you read any words.
+   *
+   * `false` renders no markers at all, for a host whose own navigation has a
+   * different vocabulary and does not want a second one. The external-link mark
+   * returns to the trailing edge there — turning off a decorative column is not
+   * consent to drop a warning.
+   *
+   * A **map** replaces the defaults with your components, keyed by the `icon`
+   * name authored in frontmatter or `meta.json`:
+   *
+   * ```tsx
+   * import { Book, Rocket } from 'lucide-react';
+   *
+   * <DocsSidebar nav={nav} pathname={pathname}
+   *   icons={{ book: Book, rocket: Rocket }} />
+   * ```
+   *
+   * ```yaml
+   * # content/reference/index.md
+   * icon: book
+   * ```
+   *
+   * ⚠️ A NAME THE HOST RESOLVES, NEVER ART THIS PACKAGE SHIPS. Content is
+   * authored in YAML and JSON and cannot carry a React element, and a docs
+   * package mounted inside someone else's application must not put its
+   * iconography beside theirs. Three markers ship; everything else is yours.
+   *
+   * A name with no entry in the map falls back to the built-in marker for that
+   * node's type. A typo in one file leaves a folder where a book should be —
+   * not a hole in the column.
+   */
+  icons?: boolean | DocsIconMap | undefined;
   className?: string | undefined;
 }
 
@@ -54,6 +103,17 @@ interface SidebarLabels {
   collapseGroup: string;
   externalLink: string;
 }
+
+/**
+ * `icons` as the tree consumes it: `false` for no column at all, or the map to
+ * look names up in — empty when the host asked for the defaults and named
+ * nothing.
+ *
+ * Resolved once at the root rather than re-normalised at each of the four hops
+ * down, so `icons === false` is the only "off" test anywhere below and an empty
+ * object cannot be mistaken for one.
+ */
+type ResolvedIcons = false | DocsIconMap;
 
 const DEFAULT_SIDEBAR_LABELS: SidebarLabels = {
   expandGroup: 'Expand {title}',
@@ -142,8 +202,11 @@ export function DocsSidebar({
   expandGroup,
   collapseGroup,
   externalLink,
+  icons = true,
   className,
 }: DocsSidebarProps): ReactNode {
+  const iconMap: ResolvedIcons =
+    icons === false ? false : icons === true ? {} : icons;
   const text: SidebarLabels = {
     expandGroup: expandGroup ?? DEFAULT_SIDEBAR_LABELS.expandGroup,
     collapseGroup: collapseGroup ?? DEFAULT_SIDEBAR_LABELS.collapseGroup,
@@ -235,6 +298,7 @@ export function DocsSidebar({
         nodes={nav}
         depth={0}
         keyPrefix={baseId}
+        icons={iconMap}
         pathname={pathname}
         Link={Link}
         toggled={toggled}
@@ -332,6 +396,8 @@ interface NavListProps {
   nodes: DocNavNode[];
   depth: number;
   keyPrefix: string;
+  /** Threaded rather than read from context: this tree renders on the server. */
+  icons: ResolvedIcons;
   pathname: string;
   Link: DocsLinkComponent | undefined;
   toggled: Record<string, boolean>;
@@ -345,6 +411,7 @@ function NavList({
   nodes,
   depth,
   keyPrefix,
+  icons,
   pathname,
   Link,
   toggled,
@@ -392,8 +459,12 @@ function NavList({
                   isNearby={holdsActive}
                   Link={Link}
                   externalLink={text.externalLink}
+                  icons={icons}
                 >
-                  {node.title}
+                  {icons === false ? null : (
+                    <NavIcon type="external" name={node.icon} icons={icons} />
+                  )}
+                  <span className="wave-docs-sidebar__label">{node.title}</span>
                 </NavLink>
               </li>
             );
@@ -407,7 +478,10 @@ function NavList({
                   isNearby={holdsActive}
                   Link={Link}
                 >
-                  {node.title}
+                  {icons === false ? null : (
+                    <NavIcon type="file" name={node.icon} icons={icons} />
+                  )}
+                  <span className="wave-docs-sidebar__label">{node.title}</span>
                 </NavLink>
               </li>
             );
@@ -418,6 +492,7 @@ function NavList({
                 node={node}
                 itemKey={key}
                 depth={depth}
+                icons={icons}
                 pathname={pathname}
                 Link={Link}
                 toggled={toggled}
@@ -437,6 +512,7 @@ interface NavGroupProps {
   node: DocNavGroup;
   itemKey: string;
   depth: number;
+  icons: ResolvedIcons;
   pathname: string;
   Link: DocsLinkComponent | undefined;
   toggled: Record<string, boolean>;
@@ -448,6 +524,7 @@ function NavGroup({
   node,
   itemKey,
   depth,
+  icons,
   pathname,
   Link,
   toggled,
@@ -475,6 +552,9 @@ function NavGroup({
             aria-controls={isOpen ? listId : undefined}
             onClick={() => onToggle(itemKey, !isOpen)}
           >
+            {icons === false ? null : (
+              <NavIcon type="folder" name={node.icon} icons={icons} />
+            )}
             <span className="wave-docs-sidebar__group-title">{node.title}</span>
             <Chevron isOpen={isOpen} />
           </button>
@@ -489,7 +569,10 @@ function NavGroup({
               isNearby={hasActive}
               Link={Link}
             >
-              {node.title}
+              {icons === false ? null : (
+                <NavIcon type="folder" name={node.icon} icons={icons} />
+              )}
+              <span className="wave-docs-sidebar__label">{node.title}</span>
             </NavLink>
             <button
               type="button"
@@ -515,6 +598,7 @@ function NavGroup({
           nodes={node.children}
           depth={depth + 1}
           keyPrefix={itemKey}
+          icons={icons}
           pathname={pathname}
           Link={Link}
           toggled={toggled}
@@ -535,6 +619,11 @@ interface NavLinkProps {
   Link: DocsLinkComponent | undefined;
   /** Only read on the external branch, so the internal one omits it. */
   externalLink?: string | undefined;
+  /**
+   * Whether the icon column is drawn. Read only on the external branch, and
+   * only to decide *where* its mark goes — see `NavLink` below.
+   */
+  icons?: ResolvedIcons | undefined;
   children: ReactNode;
 }
 
@@ -545,6 +634,7 @@ function NavLink({
   isNearby = false,
   Link,
   externalLink = DEFAULT_SIDEBAR_LABELS.externalLink,
+  icons = {},
   children,
 }: NavLinkProps): ReactNode {
   const className = 'wave-docs-sidebar__link';
@@ -559,26 +649,36 @@ function NavLink({
       >
         {children}
         {/*
-         * An inline SVG, matching the `Chevron` precedent in this file rather
-         * than a `::after` glyph — some screen-reader and browser pairs
-         * announce generated content, which would double the name the sr-only
-         * span below already provides. `aria-hidden` for the same reason.
+         * ⚠️ THE MARK COMES BACK TO THIS EDGE WHEN THE ICON COLUMN IS OFF.
+         *
+         * With icons on, the caller has already put it at the head of the row —
+         * it *is* this row's type marker. With `icons={false}` there is no
+         * column to put it in, and rendering nothing would leave a link that
+         * leaves the site looking exactly like one that does not. Turning off a
+         * decorative column is not consent to drop a warning, so it returns to
+         * where it shipped before the column existed.
+         *
+         * An inline SVG rather than a `::after` glyph: some screen-reader and
+         * browser pairs announce generated content, which would double the name
+         * the sr-only span already provides. `aria-hidden` for the same reason.
          */}
-        <svg
-          className="wave-docs-sidebar__external"
-          aria-hidden="true"
-          focusable="false"
-          viewBox="0 0 24 24"
-          width="12"
-          height="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
-        </svg>
+        {icons === false ? (
+          <svg
+            className="wave-docs-sidebar__external"
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d={NAV_ICON_PATHS.external[0]} />
+          </svg>
+        ) : null}
         {/* The leading space is markup: it separates the suffix from the
             link text, and a translator should not have to type it. */}
         <span className="wave-docs-sr-only"> {externalLink}</span>
@@ -610,6 +710,86 @@ function NavLink({
     >
       {children}
     </Link>
+  );
+}
+
+/**
+ * The glyph at the head of a row: a folder for a group, a page for a page.
+ *
+ * Weight and a chevron were the only things telling a category from a page, and
+ * where the two interleave — a `Reference` group directly above an `Internals`
+ * page — that is not enough to scan a column of twenty. A silhouette is read
+ * before any word is.
+ *
+ * An external link takes the third glyph, in the same leading slot. It used to
+ * carry that mark at the *far* end of its row, which cost twice: the leading
+ * slot then had to be an empty box to keep the column from going ragged, and
+ * the trailing edge held two unrelated meanings — "opens elsewhere" on one row,
+ * "expands" on the next. Leading is what a row *is*; trailing is what it
+ * *does*. With the mark moved, the only thing at the far end of any row is a
+ * chevron, which is what makes a group legible from across the column — and
+ * leaves that edge free for a status dot or an overflow control later.
+ *
+ * ⚠️ THE VISUAL MARK MOVED AND THE ANNOUNCED ONE DID NOT. The sr-only "(opens
+ * in a new tab)" stays after the link text, so the name is still read as
+ * "GitHub, opens in a new tab" rather than the other way round.
+ *
+ * Inline SVG, matching `Chevron` and the external mark rather than a font or a
+ * dependency — the package ships no icon set, and these two are as generic as
+ * the chevron beside them.
+ */
+const NAV_ICON_PATHS: Record<'folder' | 'file' | 'external', string[]> = {
+  folder: [
+    'M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z',
+  ],
+  file: [
+    'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z',
+    'M14 2v4a2 2 0 0 0 2 2h4',
+  ],
+  external: [
+    'M14 4h6v6M20 4l-8 8M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
+  ],
+};
+
+function NavIcon({
+  type,
+  name,
+  icons,
+}: {
+  type: 'folder' | 'file' | 'external';
+  /** The `icon` this node authored, if it authored one. */
+  name?: string | undefined;
+  icons: DocsIconMap;
+}): ReactNode {
+  const Custom = name === undefined ? undefined : icons[name];
+  if (Custom !== undefined) {
+    // Wrapped rather than trusted to carry the class: the host's component
+    // sizes and colours itself, and the column's box is ours to hold.
+    return (
+      <span className="wave-docs-sidebar__icon" aria-hidden="true">
+        <Custom />
+      </span>
+    );
+  }
+
+  return (
+    <svg
+      className="wave-docs-sidebar__icon"
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {NAV_ICON_PATHS[type].map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
   );
 }
 

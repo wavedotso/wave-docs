@@ -75,6 +75,20 @@ export interface DocFrontmatter {
    */
   order?: number | undefined;
   /**
+   * Sidebar marker for this page, as a name the *consumer* resolves.
+   *
+   * A name and not a component, because frontmatter is data: it is authored by
+   * whoever writes the page, in YAML, and cannot carry a React element. The
+   * host maps the name to their own icon via `DocsSidebar`'s `icons` prop, so
+   * the art belongs to whichever site is rendering — which is the only shape
+   * that serves a package mounted inside someone else's application.
+   *
+   * An unmapped name falls back to the default page marker rather than
+   * rendering nothing: a typo in one file should not knock a hole in the
+   * column.
+   */
+  icon?: string | undefined;
+  /**
    * Calls to action, and the opt-in for the page's hero.
    *
    * Declaring them turns {@link DocFrontmatter.title} and
@@ -147,6 +161,8 @@ export interface DocNavPage {
   title: string;
   href: string;
   slug: string;
+  /** Marker name from the page's frontmatter. See {@link DocFrontmatter.icon}. */
+  icon?: string | undefined;
 }
 
 /**
@@ -158,6 +174,8 @@ export interface DocNavGroup {
   title: string;
   href?: string | undefined;
   children: DocNavNode[];
+  /** Marker name from the directory's `meta.json`. */
+  icon?: string | undefined;
 }
 
 /** A non-interactive heading between groups, from `"---Label---"` in meta.json. */
@@ -172,6 +190,8 @@ export interface DocNavLink {
   title: string;
   href: string;
   external: boolean;
+  /** Marker name from the `meta.json` entry that declared this link. */
+  icon?: string | undefined;
 }
 
 export type DocNavNode =
@@ -198,8 +218,16 @@ export type DocNavNode =
 export interface DocsMeta {
   /** Directory title, shown as the group heading. Defaults to the dirname. */
   title?: string | undefined;
+  /**
+   * Sidebar marker for this directory, as a name the consumer resolves. See
+   * {@link DocFrontmatter.icon} — the same contract, declared where the
+   * directory is described rather than where a page is.
+   */
+  icon?: string | undefined;
   /** Ordered entries. Omit to sort by frontmatter `order`, then alphabetically. */
-  pages?: Array<string | { title: string; href: string }> | undefined;
+  pages?:
+    | Array<string | { title: string; href: string; icon?: string | undefined }>
+    | undefined;
 }
 
 /* -------------------------------------------------------------------------

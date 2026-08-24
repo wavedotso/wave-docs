@@ -53,6 +53,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DocNavNode } from '../types.js';
 import type { DocsLinkComponent } from './markdown-components.js';
 import { DocsSidebar } from './sidebar.js';
+import type { DocsIconMap } from './sidebar.js';
 
 /** The navigation's `id`, and the trigger's `aria-controls`. */
 export const DOCS_NAV_ID = 'wave-docs-nav';
@@ -82,6 +83,8 @@ export interface DocsNavProps {
   expandGroup?: string | undefined;
   collapseGroup?: string | undefined;
   externalLink?: string | undefined;
+  /** The marker column. See `DocsSidebarProps.icons`. */
+  icons?: boolean | DocsIconMap | undefined;
 }
 
 export function DocsNav({
@@ -95,6 +98,7 @@ export function DocsNav({
   expandGroup,
   collapseGroup,
   externalLink,
+  icons,
 }: DocsNavProps): ReactNode {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
@@ -246,6 +250,7 @@ export function DocsNav({
             {...(expandGroup === undefined ? {} : { expandGroup })}
             {...(collapseGroup === undefined ? {} : { collapseGroup })}
             {...(externalLink === undefined ? {} : { externalLink })}
+            {...(icons === undefined ? {} : { icons })}
           />
         </div>
         <button

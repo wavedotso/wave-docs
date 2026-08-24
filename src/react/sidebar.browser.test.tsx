@@ -226,7 +226,6 @@ describe('the sidebar while it is closed', () => {
     expect(itemBox.bottom).toBeLessThanOrEqual(window.innerHeight);
   });
 });
-
 /**
  * Which way the disclosure chevron faces.
  *
@@ -358,4 +357,98 @@ describe('the disclosure chevron', () => {
       expect(Math.abs(x)).toBeLessThan(1);
     },
   );
+});
+/**
+ * The type markers, measured — because the claim they make is about a *column*,
+ * and a column is geometry.
+ */
+describe('the sidebar type markers', () => {
+  const MIXED: DocNavNode[] = [
+    { type: 'page', title: 'Overview', href: '/docs', slug: '' },
+    {
+      type: 'group',
+      title: 'Reference',
+      children: [
+        { type: 'page', title: 'Inside', href: '/docs/inside', slug: 'inside' },
+      ],
+    },
+    {
+      type: 'page',
+      title: 'Internals',
+      href: '/docs/internals',
+      slug: 'internals',
+    },
+    {
+      type: 'link',
+      title: 'GitHub',
+      href: 'https://example.com',
+      external: true,
+    },
+  ];
+
+  /**
+   * Every row's label. `Reference` is shut at this route, so nothing nested
+   * renders and each of these is a top-level row.
+   */
+  function labelLefts(): number[] {
+    return [
+      ...document.querySelectorAll<HTMLElement>(
+        '.wave-docs-sidebar__label, .wave-docs-sidebar__group-title',
+      ),
+    ].map((el) => Math.round(el.getBoundingClientRect().left));
+  }
+
+  /**
+   * ⚠️ THE EXTERNAL LINK IS WHY THIS TEST EXISTS. Its mark used to sit at the
+   * far end of its row, which left the near end empty and its label starting a
+   * whole icon left of every label above it — a ragged column, the defect the
+   * markers were added to remove. The mark is that row's type marker now and
+   * leads it like every other, and only layout can prove the column closed up.
+   */
+  it('starts every top-level label on the same line', async () => {
+    await page.viewport(1280, 800);
+    const port = mountShell();
+    render(<DocsSidebar nav={MIXED} pathname="/docs" />, { container: port });
+
+    const lefts = labelLefts();
+    expect(lefts, 'expected four top-level rows').toHaveLength(4);
+    expect(Math.max(...lefts) - Math.min(...lefts)).toBeLessThan(1);
+  });
+
+  /** And the markers really are drawn, not merely present with zero size. */
+  it('gives each marker a real box', async () => {
+    await page.viewport(1280, 800);
+    const port = mountShell();
+    render(<DocsSidebar nav={MIXED} pathname="/docs" />, { container: port });
+
+    const boxes = [
+      ...document.querySelectorAll<Element>('.wave-docs-sidebar__icon'),
+    ].map((el) => el.getBoundingClientRect());
+    expect(boxes.length).toBeGreaterThan(0);
+    for (const box of boxes) {
+      expect(box.width).toBeGreaterThan(12);
+      expect(box.height).toBeGreaterThan(12);
+    }
+  });
+
+  /** Turning them off closes the column up rather than leaving a gutter. */
+  it('reclaims the space when a host turns them off', async () => {
+    await page.viewport(1280, 800);
+
+    const withIcons = mountShell();
+    render(<DocsSidebar nav={MIXED} pathname="/docs" />, {
+      container: withIcons,
+    });
+    const on = labelLefts()[0];
+
+    const withoutIcons = mountShell();
+    render(<DocsSidebar nav={MIXED} pathname="/docs" icons={false} />, {
+      container: withoutIcons,
+    });
+    const off = labelLefts()[0];
+
+    if (on === undefined || off === undefined) throw new Error('no labels');
+    // A 16px marker plus the row's 0.5rem gap.
+    expect(on - off).toBeGreaterThan(20);
+  });
 });

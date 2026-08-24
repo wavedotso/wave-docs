@@ -569,10 +569,51 @@ describe('docs.Layout', () => {
      * `actions` went with it, taking the count from five to three. That the
      * pin catches a *removal* as loudly as an addition is the point of writing
      * it as an exact union rather than a lower bound.
+     *
+     * It fired a third time for `icons`, and the answer was yes for the same
+     * reason as `labels`. The sidebar's marker column is chrome this shell
+     * renders, the map that replaces its glyphs has to reach `DocsSidebar` four
+     * components down, and `docs.Layout` is how a site that *is* its
+     * documentation consumes all of this — so without a prop here the feature
+     * exists only for hosts assembling the shell by hand. That is configuration
+     * that cannot be configured by the persona most likely to want it.
+     *
+     * Not a slots map even now: `icons` is data keyed by names the *content*
+     * authors, which is a different thing from a node the host renders. The
+     * argument in the paragraph above still holds for the day a fourth one
+     * arrives.
      */
     expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
-      'children' | 'search' | 'labels'
+      'children' | 'search' | 'labels' | 'icons'
     >();
+  });
+
+  /**
+   * ⚠️ FOUR COMPONENTS SEPARATE THIS PROP FROM THE THING THAT READS IT —
+   * `Layout` → `DocsNextNav` → `DocsNav` → `DocsSidebar` — and every hop is a
+   * place to drop it. `labels` was documented and defaulted at the bottom of a
+   * chain exactly like this one and never passed at the top; the only guard
+   * against a repeat is asserting the value arrives.
+   */
+  it('passes the icon map through to the shell', async () => {
+    const icons = { book: () => null };
+    const element = await route.Layout({ children: null, icons });
+
+    if (!isValidElement<{ icons?: unknown }>(element)) {
+      throw new Error('Layout did not return an element');
+    }
+    expect(element.props.icons).toBe(icons);
+  });
+
+  it('omits the icon map entirely when a host names none', async () => {
+    const element = await route.Layout({ children: null });
+
+    if (!isValidElement<Record<string, unknown>>(element)) {
+      throw new Error('Layout did not return an element');
+    }
+    // Absent, not `undefined`: this prop crosses to a Client Component, and an
+    // unconfigured site must not pay for a key in every page's payload.
+    expect('icons' in element.props).toBe(false);
   });
 
   it('passes labels through to the shell', async () => {

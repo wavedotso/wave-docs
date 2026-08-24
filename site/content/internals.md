@@ -1,6 +1,7 @@
 ---
 title: Internals
 description: The decisions that are hard to reverse, and why they went that way.
+icon: wrench
 ---
 
 Notes for anyone reading the source, or deciding whether to depend on it.

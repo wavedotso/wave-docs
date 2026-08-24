@@ -1575,6 +1575,71 @@
     font-weight: 600;
   }
 
+  /*
+   * The row is `justify-content: space-between`, so the label has to claim the
+   * space or the icon and the text end up at opposite edges with a hole between
+   * them. `min-width: 0` because a long title in a 240px column must be allowed
+   * to shrink; without it the flex base is the text's min-content width and the
+   * row overflows instead of wrapping.
+   */
+  .wave-docs-sidebar__label,
+  .wave-docs-sidebar__group-title {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /*
+   * The type marker: a folder on a group, a page on a page.
+   *
+   * ⚠️ THE BOX IS DECLARED HERE, NOT LEFT TO THE SVG'S OWN WIDTH, because one
+   * of these has no SVG in it. An external link carries its mark at the far end
+   * of the row and needs no second one, so it gets an empty box — and an empty
+   * `<span>` with no size is a column where three labels start 24px left of
+   * every other label. Ragged is the defect this feature exists to remove.
+   */
+  .wave-docs-sidebar__icon {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    /*
+     * ⚠️ `inherit` AND `opacity`, NOT A COLOUR OF ITS OWN. A fixed grey put a
+     * bold group title next to a marker several steps lighter than it and a
+     * muted page title next to one barely lighter, so the column read as two
+     * different treatments. Fading whatever the row already is keeps one
+     * relationship at every weight — and it is the reason the active row's
+     * marker turns accent-blue with its label rather than staying grey.
+     */
+    color: inherit;
+    opacity: 0.4;
+  }
+
+  /*
+   * A host's own icon, in the column's box.
+   *
+   * `grid` rather than `block`: the component inside is theirs and may be any
+   * size, and a grid with `place-items: center` centres it in our 1rem square
+   * without needing it to fill one. `> *` caps it at the box so an icon
+   * authored at 24 does not push the row taller than every other row.
+   */
+  span.wave-docs-sidebar__icon {
+    display: grid;
+    place-items: center;
+  }
+
+  .wave-docs-sidebar__icon > * {
+    max-inline-size: 100%;
+    max-block-size: 100%;
+  }
+
+  /* Full strength the moment the row is the reader's own or under their
+   * pointer. A current page whose marker stayed faded reads as
+   * half-highlighted. */
+  .wave-docs-sidebar__link:hover .wave-docs-sidebar__icon,
+  .wave-docs-sidebar__group-button:hover .wave-docs-sidebar__icon,
+  .wave-docs-sidebar__link[aria-current='page'] .wave-docs-sidebar__icon {
+    opacity: 1;
+  }
+
   .wave-docs-sidebar__list:not([data-depth='0']) {
     margin-inline-start: 0.5rem;
     padding-inline-start: 0.5rem;
@@ -1699,7 +1764,6 @@
     rotate: 90deg;
   }
 
-
   .wave-docs-sidebar__separator-item {
     margin-block: 1rem 0.25rem;
   }
@@ -1717,6 +1781,35 @@
   @media (prefers-reduced-motion: no-preference) {
     .wave-docs-sidebar__chevron {
       transition: rotate 150ms ease-out;
+    }
+
+    /*
+     * The row and its marker ease together, and the row is half of it.
+     *
+     * ⚠️ THE LINKS HAD NO TRANSITION AT ALL — the TOC's did, which is why this
+     * looked like an oversight only in the sidebar. Fading the marker alone
+     * would have been worse than fading nothing: the glyph would drift up to
+     * full strength while the surface under it snapped, so the two halves of
+     * one hover would visibly disagree.
+     *
+     * `background-color`, not `background`: the shorthand includes
+     * `background-image`, and naming it here would put this rule in the way of
+     * any consumer who paints one.
+     */
+    .wave-docs-sidebar__link,
+    .wave-docs-sidebar__group-button,
+    .wave-docs-sidebar__group-toggle {
+      transition:
+        background-color 150ms ease-out,
+        color 150ms ease-out;
+    }
+
+    /* `color` as well as `opacity`: the marker inherits its row's colour, and
+     * on the current page that is a jump from muted grey to accent blue. */
+    .wave-docs-sidebar__icon {
+      transition:
+        opacity 150ms ease-out,
+        color 150ms ease-out;
     }
   }
 }

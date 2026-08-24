@@ -66,6 +66,10 @@ export const docFrontmatterSchema = z.object({
   draft: z.boolean().exactOptional(),
   aliases: z.array(z.string()).exactOptional(),
   order: z.number().exactOptional(),
+  /* A name the consumer resolves, not a path or an import — see
+   * `DocFrontmatter.icon`. `min(1)` so `icon: ""` is a build error rather than
+   * a marker that silently falls back. */
+  icon: z.string().min(1).exactOptional(),
   /*
    * ⚠️ `isSafeHref` HERE AND NOT IN THE COMPONENT. Every other href this
    * package renders arrives through markdown and is checked on the way in;

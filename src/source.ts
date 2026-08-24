@@ -774,12 +774,21 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
     const title = groupTitle(child, visible?.doc);
     const href = visible?.doc.href;
 
+    /*
+     * A directory's marker comes from its `meta.json`, and falls back to the
+     * frontmatter of its own `index.md` when it has one. Both describe the same
+     * thing, and an author who wrote `icon:` on the index page of a section
+     * meant it for the section.
+     */
+    const icon = child.meta?.icon ?? visible?.doc.frontmatter.icon;
+
     const group: DocNavGroup = {
       type: 'group',
       title,
       children,
       // `exactOptionalPropertyTypes`: the key is absent, never `undefined`.
       ...(href !== undefined ? { href } : {}),
+      ...(icon !== undefined ? { icon } : {}),
     };
 
     // A directory with a page of its own and nothing under it is a link, not a
@@ -788,7 +797,13 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
     // it entirely.)
     const node: DocNavNode =
       children.length === 0 && visible !== undefined && href !== undefined
-        ? { type: 'page', title, href, slug: visible.doc.slug }
+        ? {
+            type: 'page',
+            title,
+            href,
+            slug: visible.doc.slug,
+            ...(icon !== undefined ? { icon } : {}),
+          }
         : group;
 
     const order = visible?.doc.frontmatter.order;
@@ -804,6 +819,9 @@ function buildNav(dir: DirScan, config: ResolvedDocsConfig): DocNavNode[] {
               title: navTitle(visible.doc),
               href,
               slug: visible.doc.slug,
+              ...(visible.doc.frontmatter.icon !== undefined
+                ? { icon: visible.doc.frontmatter.icon }
+                : {}),
             } satisfies DocNavPage,
           }
         : {}),
@@ -823,7 +841,15 @@ function toPageEntry(
   return {
     name: page.name,
     title,
-    node: { type: 'page', title, href: page.doc.href, slug: page.doc.slug },
+    node: {
+      type: 'page',
+      title,
+      href: page.doc.href,
+      slug: page.doc.slug,
+      ...(page.doc.frontmatter.icon !== undefined
+        ? { icon: page.doc.frontmatter.icon }
+        : {}),
+    },
     ...(order !== undefined ? { order } : {}),
     ...(isVisibleIn(page.doc, config) ? {} : { hidden: true }),
   };

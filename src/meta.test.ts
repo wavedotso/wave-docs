@@ -518,3 +518,36 @@ describe('meta.json is read the way markdown is', () => {
     ]);
   });
 });
+/**
+ * The `icon` name, on both halves of `meta.json`.
+ *
+ * A name and never a path or an import: this package ships three markers and no
+ * icon set, and a docs package mounted inside someone else's application must
+ * not put its iconography beside theirs. The consumer maps the name to their
+ * own component.
+ */
+describe('meta.json icons', () => {
+  it('accepts a name on the directory and on a hand-written link', () => {
+    const meta = parseDocsMeta(
+      {
+        title: 'Reference',
+        icon: 'book',
+        pages: [{ title: 'npm', href: 'https://npmjs.com', icon: 'package' }],
+      },
+      'reference/meta.json',
+    );
+
+    expect(meta.icon).toBe('book');
+    expect(meta.pages?.[0]).toMatchObject({ icon: 'package' });
+  });
+
+  /**
+   * ⚠️ `""` IS A BUILD ERROR, NOT A SILENT FALLBACK. An unmapped *name* falls
+   * back to the built-in marker on purpose — a typo should not knock a hole in
+   * the column. An empty string is not a typo, it is a key that can never map
+   * to anything, and `meta.json` is hand-written with the author right there.
+   */
+  it('refuses an empty name', () => {
+    expect(() => parseDocsMeta({ icon: '' }, 'reference/meta.json')).toThrow();
+  });
+});

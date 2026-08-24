@@ -27,6 +27,7 @@ import type { SerializableSearchOptions } from '../search-options.js';
 import type { DocNavNode } from '../types.js';
 import type { DocsSearchProps } from './next-search.js';
 import { DocsSearch } from './next-search.js';
+import type { DocsIconMap } from './sidebar.js';
 import type { DocsLabels } from './shell-labels.js';
 import { resolveLabels } from './shell-labels.js';
 import { DocsNextNav } from './next-nav.js';
@@ -85,6 +86,20 @@ export interface DocsLayoutShellProps {
    * passed either. Configuration that could not be configured.
    */
   labels?: DocsLabels | undefined;
+  /**
+   * The sidebar's marker column: `true` (default), `false`, or your own icons
+   * keyed by the `icon` names your content authors. See
+   * {@link DocsSidebarProps.icons}.
+   *
+   * ⚠️ EVERY COMPONENT IN THE MAP MUST BE A CLIENT COMPONENT. This shell is a
+   * Server Component and the tree it hands them to is not, so the map crosses
+   * that boundary — React can serialise a *reference* to a client component and
+   * cannot serialise a server one. Import your icons from a module carrying
+   * `'use client'` (every icon library does) and this is invisible; define one
+   * inline in a server file and the build fails at the boundary rather than
+   * here.
+   */
+  icons?: boolean | DocsIconMap | undefined;
 }
 
 export function DocsLayoutShell({
@@ -93,6 +108,7 @@ export function DocsLayoutShell({
   searchIndexUrl,
   search = true,
   labels,
+  icons,
 }: DocsLayoutShellProps): ReactNode {
   const text = resolveLabels(labels);
 
@@ -134,6 +150,7 @@ export function DocsLayoutShell({
             {...(labels?.externalLink === undefined
               ? {}
               : { externalLink: labels.externalLink })}
+            {...(icons === undefined ? {} : { icons })}
           >
             {search === false ? null : (
               <DocsSearch

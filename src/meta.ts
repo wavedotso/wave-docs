@@ -29,6 +29,13 @@ const REST = '...';
  */
 export const docsMetaSchema = z.strictObject({
   title: z.string().exactOptional(),
+  /*
+   * A name, resolved by the consumer — never a path, a URL or an import. This
+   * package ships three markers and no icon set, so the art comes from whoever
+   * is rendering. An unmapped name is not an error: it falls back to the
+   * default marker, because one typo should not knock a hole in the column.
+   */
+  icon: z.string().min(1).exactOptional(),
   pages: z
     .array(
       z.union([
@@ -53,6 +60,7 @@ export const docsMetaSchema = z.strictObject({
               'http(s), mailto, tel, sms, ftp, irc, xmpp, news, feed, git or ' +
               'matrix — or a path, which needs no scheme at all.',
           }),
+          icon: z.string().min(1).exactOptional(),
         }),
       ]),
     )
@@ -220,6 +228,8 @@ export function orderNavEntries(
          * the reader who cannot see that it did not.
          */
         external: opensInNewTab(page.href),
+        // `exactOptionalPropertyTypes`: absent, never an explicit `undefined`.
+        ...(page.icon !== undefined ? { icon: page.icon } : {}),
       });
       continue;
     }

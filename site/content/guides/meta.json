@@ -1,5 +1,6 @@
 {
   "title": "Guides",
+  "icon": "compass",
   "pages": [
     "markdown",
     "code-blocks",

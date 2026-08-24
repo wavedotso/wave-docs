@@ -1,5 +1,6 @@
 {
   "title": "Reference",
+  "icon": "book",
   "pages": [
     "configuration",
     "entry-points",

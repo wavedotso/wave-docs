@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 
 import { docs } from '@/lib/docs';
+import { siteIcons } from './icons';
 
 /*
  * ⚠️ THIS FILE MUST STAY THIS SMALL. The site exists to prove that
@@ -65,7 +66,7 @@ export default function RootLayout({
        * `globals.css`; this site has no stylesheet, so it goes here.
        */}
       <body style={{ margin: 0 }}>
-        <docs.Layout>{children}</docs.Layout>
+        <docs.Layout icons={siteIcons}>{children}</docs.Layout>
       </body>
     </html>
   );

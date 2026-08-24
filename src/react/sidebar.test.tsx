@@ -643,3 +643,223 @@ describe('DocsSidebar injected Link', () => {
     expect(currentHrefs()).toEqual(['/docs/api/authentication']);
   });
 });
+/**
+ * The type marker at the head of each row.
+ *
+ * The defect it fixes is not a missing feature, it is an unreadable column: a
+ * `Reference` group directly above an `Internals` page differed only by font
+ * weight and a chevron, and in a tree where the two interleave a dozen times
+ * that is not enough to scan.
+ */
+describe('DocsSidebar type icons', () => {
+  /** The marker's shape, read off the row rather than off a class name. */
+  function markers(): string[] {
+    return [...document.querySelectorAll('.wave-docs-sidebar__icon')].map(
+      (icon) =>
+        icon.tagName.toLowerCase() === 'span'
+          ? 'empty'
+          : // A folder is one path, a page is two.
+            `paths:${icon.querySelectorAll('path').length}`,
+    );
+  }
+
+  it('draws a folder on a group and a page on a page', () => {
+    render(<DocsSidebar nav={nav} pathname="/docs/api" />);
+
+    // Introduction (page), API (linked group), Authentication (page),
+    // Webhooks (unlinked group), Guides (group), then the external link. The
+    // separator gets nothing at all: it is not a row that points anywhere.
+    expect(markers()).toEqual([
+      'paths:2',
+      'paths:1',
+      'paths:2',
+      'paths:1',
+      'paths:1',
+      'paths:1',
+    ]);
+  });
+
+  /**
+   * ⚠️ THE MARK LEADS THE ROW, AND THE ANNOUNCEMENT STILL TRAILS IT. Moving the
+   * glyph to the icon column is what leaves the far edge holding one meaning
+   * only — a chevron, so a group is legible from across the column. The
+   * sr-only sentence must not move with it, or the link is read as "opens in a
+   * new tab, GitHub".
+   */
+  it('puts an external mark at the head of the row, not the tail', () => {
+    render(<DocsSidebar nav={nav} pathname="/docs" />);
+
+    const external = screen.getByRole('link', { name: /Changelog/ });
+    const marker = external.querySelector('.wave-docs-sidebar__icon');
+    const label = external.querySelector('.wave-docs-sidebar__label');
+    if (marker === null || label === null)
+      throw new Error('no marker or label');
+
+    // Document order decides both the column and the announcement.
+    expect(
+      marker.compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(external.querySelector('.wave-docs-sidebar__external')).toBeNull();
+    expect(external.textContent).toMatch(/Changelog \(opens in a new tab\)$/);
+  });
+
+  /**
+   * ⚠️ TURNING OFF A DECORATIVE COLUMN IS NOT CONSENT TO DROP A WARNING. With
+   * no column to lead, the mark goes back to the trailing edge exactly where it
+   * shipped before the column existed — otherwise a link that leaves the site
+   * looks identical to one that does not.
+   */
+  it('returns the external mark to the tail when icons are off', () => {
+    render(<DocsSidebar nav={nav} pathname="/docs" icons={false} />);
+
+    const external = screen.getByRole('link', { name: /Changelog/ });
+    expect(
+      external.querySelector('.wave-docs-sidebar__external'),
+    ).not.toBeNull();
+  });
+
+  it('renders nothing at all when a host turns them off', () => {
+    render(<DocsSidebar nav={nav} pathname="/docs/api" icons={false} />);
+
+    // No glyphs and no empty slots either — off means off, not "invisible but
+    // present". The `__label` wrapper stays: it is the flex hook that lets the
+    // row put a chevron at its far end, and it is there with or without a
+    // marker beside it.
+    expect(document.querySelectorAll('.wave-docs-sidebar__icon')).toHaveLength(
+      0,
+    );
+    expect(
+      document.querySelectorAll('.wave-docs-sidebar__label').length,
+    ).toBeGreaterThan(0);
+  });
+
+  /** Decorative: the name a reader hears must not gain the word "folder". */
+  it('keeps every marker out of the accessibility tree', () => {
+    render(<DocsSidebar nav={nav} pathname="/docs/api" />);
+
+    for (const icon of document.querySelectorAll('.wave-docs-sidebar__icon')) {
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+    }
+    expect(
+      screen.getByRole('link', { name: 'Authentication' }),
+    ).toBeInTheDocument();
+  });
+});
+/**
+ * Custom markers: a name in the content, a component in the host.
+ *
+ * The contract has two halves and each fails silently on its own — a name that
+ * reaches no component draws nothing, and a component keyed to a name nobody
+ * authored never appears. Both halves are asserted here.
+ */
+describe('DocsSidebar custom icons', () => {
+  const Book = (): ReactNode => <svg data-testid="book" />;
+  const Rocket = (): ReactNode => <svg data-testid="rocket" />;
+
+  const iconNav: DocNavNode[] = [
+    { type: 'page', title: 'Plain', href: '/docs/plain', slug: 'plain' },
+    {
+      type: 'page',
+      title: 'Launch',
+      href: '/docs/launch',
+      slug: 'launch',
+      icon: 'rocket',
+    },
+    {
+      type: 'group',
+      title: 'Reference',
+      icon: 'book',
+      children: [
+        {
+          type: 'page',
+          title: 'Deep',
+          href: '/docs/ref/deep',
+          slug: 'ref/deep',
+        },
+      ],
+    },
+    {
+      type: 'page',
+      title: 'Typo',
+      href: '/docs/typo',
+      slug: 'typo',
+      icon: 'nosuchicon',
+    },
+  ];
+
+  it("renders the host's component for a name it maps", () => {
+    render(
+      <DocsSidebar
+        nav={iconNav}
+        pathname="/docs/plain"
+        icons={{ book: Book, rocket: Rocket }}
+      />,
+    );
+
+    expect(screen.getByTestId('rocket')).toBeInTheDocument();
+    expect(screen.getByTestId('book')).toBeInTheDocument();
+  });
+
+  /**
+   * ⚠️ A TYPO LEAVES A FOLDER WHERE A BOOK SHOULD BE, NOT A HOLE. Content is
+   * authored in YAML by whoever writes the page; `icon: rockett` must degrade
+   * to the default marker rather than punching a gap in the column, because the
+   * column's whole value is that every row has one.
+   */
+  it('falls back to the built-in marker for a name it does not map', () => {
+    render(
+      <DocsSidebar
+        nav={iconNav}
+        pathname="/docs/plain"
+        icons={{ book: Book }}
+      />,
+    );
+
+    const typo = screen.getByRole('link', { name: 'Typo' });
+    const marker = typo.querySelector('.wave-docs-sidebar__icon');
+    if (marker === null) throw new Error('the typo row lost its marker');
+
+    // The default page marker: an `<svg>` of two paths, not the host's wrapper.
+    expect(marker.tagName.toLowerCase()).toBe('svg');
+    expect(marker.querySelectorAll('path')).toHaveLength(2);
+  });
+
+  /** The defaults are what `icons` alone means — a map is opt-in, per name. */
+  it('keeps the built-in marker for a node that authored no name', () => {
+    render(
+      <DocsSidebar
+        nav={iconNav}
+        pathname="/docs/plain"
+        icons={{ book: Book, rocket: Rocket }}
+      />,
+    );
+
+    const plain = screen.getByRole('link', { name: 'Plain' });
+    expect(plain.querySelector('.wave-docs-sidebar__icon')?.tagName).toBe(
+      'svg',
+    );
+  });
+
+  it('draws no custom marker at all when the column is off', () => {
+    render(<DocsSidebar nav={iconNav} pathname="/docs/plain" icons={false} />);
+
+    expect(screen.queryByTestId('rocket')).toBeNull();
+    expect(screen.queryByTestId('book')).toBeNull();
+  });
+
+  /** Decorative, whoever drew it: the host's icon must not gain a name. */
+  it("keeps the host's icon out of the accessibility tree", () => {
+    render(
+      <DocsSidebar
+        nav={iconNav}
+        pathname="/docs/plain"
+        icons={{ book: Book }}
+      />,
+    );
+
+    const wrapper = screen
+      .getByTestId('book')
+      .closest('.wave-docs-sidebar__icon');
+    expect(wrapper?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
