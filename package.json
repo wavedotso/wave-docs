@@ -1,6 +1,6 @@
 {
   "name": "@waveso/docs",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Zero parser bytes in the browser: markdown docs for Next.js, built to hast in Node and rendered as your components",
   "type": "module",
   "sideEffects": [
