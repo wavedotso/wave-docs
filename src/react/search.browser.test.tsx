@@ -64,11 +64,16 @@ function mount(count: number, status?: string): HTMLElement {
     <div class="wave-docs-search-backdrop">
       <div class="wave-docs-search-dialog" role="dialog" aria-modal="true">
         <div class="wave-docs-search-input-row">
+          <svg class="wave-docs-search-glyph" width="16" height="16" aria-hidden="true"></svg>
           <input class="wave-docs-search-input" role="combobox" aria-expanded="true" />
-          <button type="button" class="wave-docs-search-close">Close</button>
         </div>
         <div class="wave-docs-search-results" role="listbox">${rows}</div>
         ${status === undefined ? '' : `<p class="wave-docs-search-status">${status}</p>`}
+        <div class="wave-docs-search-footer">
+          <span class="wave-docs-search-hint" aria-hidden="true"><kbd class="wave-docs-search-kbd">↑</kbd><kbd class="wave-docs-search-kbd">↓</kbd>Select</span>
+          <span class="wave-docs-search-hint" aria-hidden="true"><kbd class="wave-docs-search-kbd">↵</kbd>Open</span>
+          <button type="button" class="wave-docs-search-close" aria-label="Close"><kbd class="wave-docs-search-kbd" aria-hidden="true">Esc</kbd><span aria-hidden="true">Close</span></button>
+        </div>
       </div>
     </div>`;
 

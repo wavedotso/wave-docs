@@ -1559,3 +1559,64 @@ describe('direction-aware rules', () => {
     expect(sheet).toContain("[dir='rtl'] .wave-docs-sidebar__chevron");
   });
 });
+
+/**
+ * The two `<kbd>` treatments, which were one rule and must not become one again.
+ *
+ * The footer's caps sit on the flat bottom of the dialog and are the only thing
+ * there that should look pressable. The trigger's shortcut sits *inside* a
+ * bordered, filled control — a chip on a chip, sharing its fill, for a hint
+ * nobody clicks.
+ *
+ * They shared a selector when the footer's caps were added, which is how the
+ * trigger got a border it never wanted. Nothing measurable changes if they are
+ * merged back: no layout moves, no test in the browser suite fails, and the
+ * defect is a screenshot away from anyone who does not know to look.
+ */
+describe('the two keyboard treatments', () => {
+  /**
+   * The block for `.wave-docs-search-kbd` **on its own**.
+   *
+   * ⚠️ NOT `indexOf`, WHICH FINDS THE SHARED RULE FIRST. That selector is also
+   * the second line of `.wave-docs-search-trigger-kbd, .wave-docs-search-kbd`,
+   * so a naive search reads the block the two still have in common and reports
+   * that the footer caps have no border — from a sheet where they do.
+   */
+  function keyRule(): string {
+    for (const match of sheet.matchAll(/\.wave-docs-search-kbd \{/g)) {
+      const at = match.index ?? -1;
+      const before = sheet.slice(Math.max(0, at - 80), at);
+      if (!before.includes('.wave-docs-search-trigger-kbd,')) {
+        return readBlock(sheet, at);
+      }
+    }
+    throw new Error('the footer caps have no rule of their own');
+  }
+
+  /** The block both `<kbd>`s still share. */
+  function sharedRule(): string {
+    const at = sheet.indexOf('.wave-docs-search-trigger-kbd,');
+    expect(at, 'the two kbd rules are no longer split').toBeGreaterThan(-1);
+    return readBlock(sheet, at);
+  }
+
+  it('draws the footer caps as keys', () => {
+    const footer = keyRule();
+    expect(footer).toContain('border: 1px solid');
+    expect(footer).toContain('border-radius');
+  });
+
+  it('leaves the trigger hint as plain text', () => {
+    const shared = sharedRule();
+    expect(shared).not.toMatch(/\bborder\b/);
+    expect(shared).not.toMatch(/\bbackground\b/);
+    expect(shared).not.toMatch(/\bpadding\b/);
+  });
+
+  /** The scale that matches `⌘`'s ink to the `K`'s, and must not reach `Ctrl`. */
+  it('scales only the glyph, and only behind the attribute', () => {
+    const at = sheet.indexOf('.wave-docs-search-trigger-mod[data-symbol]');
+    expect(at, 'the modifier rule is not attribute-gated').toBeGreaterThan(-1);
+    expect(readBlock(sheet, at)).toMatch(/font-size:\s*1\.\d+em/);
+  });
+});

@@ -69,8 +69,8 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 14 KB |
-| Search dialog and router wiring | 9.3 KB |
+| Everything the quick start ships, gzipped | 14.3 KB |
+| Search dialog and router wiring | 9.5 KB |
 | Navigation: one sidebar, open and closed | 3 KB |
 | Table of contents | 0.9 KB |
 | Copy-button runtime | 1.1 KB |
@@ -78,7 +78,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | hast over the wire vs HTML, code and tables | 1.12× |
 | Highlighting vs no highlighting | 2.00× |
 
-The first row is the honest total: a reader who lands on a page of your documentation downloads under 14 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 14.3 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
 The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
 
@@ -755,9 +755,16 @@ If your site sets Next's own `basePath` config, prefix `indexUrl` yourself: Next
 | `loadingLabel` | `string` | `'Loading the search index…'` | While the index is fetched |
 | `errorLabel` | `string` | `'Search is unavailable right now. Try reloading the page.'` | When it cannot be |
 | `emptyLabel` | `string` | `'No results for “{query}”.'` | No matches. `{query}` is what was typed |
+| `selectLabel` | `string` | `'Select'` | Footer hint beside `↑` `↓` |
+| `openLabel` | `string` | `'Open'` | Footer hint beside `↵` |
+| `closeLabel` | `string` | `'Close'` | The footer's dismiss button, beside `Esc` |
 | `resultCountLabels` | `Partial<Record<Intl.LDMLPluralRule, string>>` | `{ one: '{count} result', other: '{count} results' }` | The live region, by plural category |
 | `locale` | `string` | `<html lang>`, then `'en'` | Language tag for those plural rules |
 | `miniSearchOptions` | `Partial<Options<SearchRecord>>` | — | See [Tuning](#tuning) |
+
+The dialog's footer carries the three keyboard hints and the dismiss control. The key-caps beside them — `↑` `↓` `↵` `Esc` — are glyphs and are not translatable; the three props above are the verbs, which are.
+
+Under `(hover: none) and (pointer: coarse)` the two hints are hidden, on the same reasoning as the trigger's `⌘K`: an instruction to press a key is one a reader on a phone cannot follow. `closeLabel`'s button is deliberately not hidden with them — on exactly those devices it is the only pointer route out of the dialog.
 
 **`pageSize` replaced `maxResults` in 0.4.0**, and the meaning changed with the name: `maxResults` was a hard ceiling of 8 that made results unreachable on a six-page site, and the live region announced the slice as though it were the total. `pageSize` is a window — every match is reachable by scrolling, and the count announced is the real one.
 

@@ -86,6 +86,7 @@ function mountShell(): HTMLElement {
               type="button"
               class="wave-docs-search-trigger wave-docs-layout__search"
             >
+              <svg class="wave-docs-search-glyph" width="16" height="16" aria-hidden="true"></svg>
               <span class="wave-docs-search-trigger-label">Search</span>
             </button>
           </div>
@@ -450,5 +451,67 @@ describe('the sidebar type markers', () => {
     if (on === undefined || off === undefined) throw new Error('no labels');
     // A 16px marker plus the row's 0.5rem gap.
     expect(on - off).toBeGreaterThan(20);
+  });
+});
+/**
+ * One column, from the search trigger down through the tree.
+ *
+ * The trigger sits directly above the navigation inside the same scrollport, so
+ * its magnifier is the first thing in the column every folder and page marker
+ * continues, and its label starts the column every title continues. Nothing in
+ * either stylesheet rule says so — they are separate components with separate
+ * padding — which is exactly why it drifted, and why only geometry can hold it.
+ */
+describe('the search trigger and the tree share a column', () => {
+  function left(selector: string): number {
+    const el = document.querySelector(selector);
+    if (!(el instanceof Element)) throw new Error(`no ${selector}`);
+    return el.getBoundingClientRect().left;
+  }
+
+  /**
+   * ⚠️ MEASURED OFF BY 3px AND 11px BEFORE THIS. The trigger was spaced as a
+   * standalone control — 10px of inline padding against the rows' 8px, and a
+   * 16px gap against their 8px — and it carries a 1px border the rows do not,
+   * so the fix is `calc(0.5rem - 1px)` rather than `0.5rem`. A rule matching
+   * the number instead of the *content edge* leaves this 1px out and looks
+   * fixed in a screenshot.
+   */
+  it('starts the magnifier and the label where the tree does', async () => {
+    await page.viewport(1280, 800);
+    const port = mountShell();
+
+    /*
+     * ⚠️ A CHILD OF THE PORT, NOT THE PORT ITSELF. `createRoot` clears its
+     * container on mount, so rendering straight into the scrollport deletes the
+     * search trigger the fixture just put there — and this test would then be
+     * measuring the tree against nothing, and throwing rather than failing. A
+     * sibling node is also the real shape: the trigger is markup the shell
+     * emits ahead of the tree, not something the tree renders.
+     */
+    const host = document.createElement('div');
+    port.append(host);
+    render(
+      <DocsSidebar
+        nav={[{ type: 'page', title: 'Overview', href: '/docs', slug: '' }]}
+        pathname="/docs"
+      />,
+      { container: host },
+    );
+
+    expect(
+      Math.abs(
+        left('.wave-docs-search-glyph') - left('.wave-docs-sidebar__icon'),
+      ),
+      'the magnifier is not in the markers’ column',
+    ).toBeLessThan(1);
+
+    expect(
+      Math.abs(
+        left('.wave-docs-search-trigger-label') -
+          left('.wave-docs-sidebar__label'),
+      ),
+      'the placeholder is not in the titles’ column',
+    ).toBeLessThan(1);
   });
 });

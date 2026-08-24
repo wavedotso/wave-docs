@@ -133,14 +133,14 @@ afterEach(() => {
 });
 
 /** Mount the dialog and hand back the pieces every test needs. */
-function renderDialog(): {
+function renderDialog(props: Partial<SearchDialogProps> = {}): {
   user: ReturnType<typeof userEvent.setup>;
   navigate: Mock<(href: string) => void>;
   trigger: HTMLElement;
 } {
   const user = userEvent.setup();
   const navigate = vi.fn<(href: string) => void>();
-  render(<SearchDialog indexUrl={INDEX_URL} navigate={navigate} />);
+  render(<SearchDialog indexUrl={INDEX_URL} navigate={navigate} {...props} />);
   return {
     user,
     navigate,
@@ -534,12 +534,56 @@ describe('SearchDialog', () => {
       // "Search Ctrl K"; `aria-keyshortcuts` is where a shortcut belongs.
       const { trigger } = renderDialog();
 
-      await waitFor(() =>
-        expect(screen.getByText('Ctrl K')).toBeInTheDocument(),
-      );
+      /*
+       * The `<kbd>`'s text rather than `getByText`: the modifier is its own
+       * element now, so the hint is split across two nodes and a whole-string
+       * matcher reports "the text is broken up by multiple elements". Reading
+       * the container is the same claim, made where the split cannot break it.
+       */
+      await waitFor(() => {
+        const kbd = trigger.querySelector('.wave-docs-search-trigger-kbd');
+        expect(kbd?.textContent).toBe('Ctrl K');
+      });
 
       expect(trigger).toHaveAccessibleName('Search');
       expect(trigger).toHaveAttribute('aria-keyshortcuts');
+    });
+
+    /**
+     * ⚠️ THE FLAG THAT SCALES THE GLYPH MUST NOT REACH THE WORD.
+     *
+     * `⌘` carries a third less ink than the `K` beside it — measured at 12px in
+     * the shipped mono stack, 6.39px against 8.75px — so the stylesheet scales
+     * it by `1.35em` to make the two read as one mark. `Ctrl` is a word set in
+     * the same face as that `K`; the same rule applied to it makes the hint
+     * shout. The attribute is the only thing keeping them apart, and nothing
+     * else in the component would fail if it were on both.
+     */
+    it.each([
+      ['Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', '⌘', true],
+      ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 'Ctrl', false],
+    ])('scales the glyph and not the word (%s)', async (ua, text, scaled) => {
+      const original = Object.getOwnPropertyDescriptor(
+        window.navigator,
+        'userAgent',
+      );
+      Object.defineProperty(window.navigator, 'userAgent', {
+        value: ua,
+        configurable: true,
+      });
+
+      try {
+        const { trigger } = renderDialog();
+        await waitFor(() => {
+          const mod = trigger.querySelector('.wave-docs-search-trigger-mod');
+          expect(mod?.textContent).toBe(text);
+          expect(mod?.hasAttribute('data-symbol')).toBe(scaled);
+        });
+      } finally {
+        if (original !== undefined) {
+          Object.defineProperty(window.navigator, 'userAgent', original);
+        }
+      }
     });
   });
 
@@ -1295,5 +1339,89 @@ describe('the dialog says everything in the language it is given', () => {
     expect(
       document.querySelector('.wave-docs-search-announcer')?.textContent,
     ).toMatch(/^\d+ results?$/);
+  });
+});
+/**
+ * The magnifier and the keyboard footer.
+ *
+ * The footer replaces a standalone button that said `Close` in hardcoded
+ * English — the one user-facing string in this package that was never lifted to
+ * a prop, in the one dialog a reader cannot leave without it.
+ */
+describe('SearchDialog chrome', () => {
+  it('marks the trigger and the input with a magnifier', async () => {
+    const { user, trigger } = renderDialog();
+
+    expect(trigger.querySelector('.wave-docs-search-glyph')).not.toBeNull();
+
+    await user.click(trigger);
+    const row = document.querySelector('.wave-docs-search-input-row');
+    expect(row?.querySelector('.wave-docs-search-glyph')).not.toBeNull();
+  });
+
+  /**
+   * ⚠️ DECORATIVE, AND THE TRIGGER PROVES WHY. Named from content, that button
+   * announced as "Search Ctrl K" before its `aria-label` pinned the name — a
+   * glyph left in the tree would put a third fragment in front of it.
+   */
+  it('keeps every glyph and hint out of the accessibility tree', async () => {
+    const { user, trigger } = renderDialog();
+    await user.click(trigger);
+
+    for (const glyph of document.querySelectorAll('.wave-docs-search-glyph')) {
+      expect(glyph.getAttribute('aria-hidden')).toBe('true');
+    }
+    for (const hint of document.querySelectorAll('.wave-docs-search-hint')) {
+      expect(hint.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  /**
+   * ⚠️ THE REGRESSION THIS FILE EXISTED WITHOUT. `Close` was a literal in the
+   * JSX, so a Portuguese site rendered a Portuguese dialog with an English way
+   * out of it — and no test could see it, because every assertion looked for
+   * the same literal the component shipped.
+   */
+  it('takes its dismiss label from a prop, in whatever language', async () => {
+    const { user, trigger } = renderDialog({ closeLabel: 'Fechar' });
+    await user.click(trigger);
+
+    const close = screen.getByRole('button', { name: 'Fechar' });
+    expect(close).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+
+    await user.click(close);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('takes the two keyboard hints from props as well', async () => {
+    const { user, trigger } = renderDialog({
+      selectLabel: 'Selecionar',
+      openLabel: 'Abrir',
+    });
+    await user.click(trigger);
+
+    const footer = document.querySelector('.wave-docs-search-footer');
+    expect(footer?.textContent).toContain('Selecionar');
+    expect(footer?.textContent).toContain('Abrir');
+  });
+
+  /**
+   * ⚠️ AFTER THE RESULTS, NOT BEFORE THEM. The button it replaces sat in the
+   * input row, so one Tab from the query went to *Close* rather than to the
+   * first result — past every answer the reader had just asked for. Document
+   * order is tab order here, and this is the assertion that keeps it.
+   */
+  it('places the dismiss control after the result list', async () => {
+    const { user, trigger } = renderDialog();
+    await user.click(trigger);
+
+    const results = document.querySelector('.wave-docs-search-results');
+    const close = screen.getByRole('button', { name: 'Close' });
+    if (results === null) throw new Error('no result list');
+
+    expect(
+      results.compareDocumentPosition(close) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

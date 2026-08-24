@@ -2823,14 +2823,30 @@
  * ------------------------------------------------------------------------ */
 
 @layer components {
+  /*
+   * ⚠️ THE INLINE PADDING AND THE GAP ARE THE NAVIGATION'S, NOT THIS BUTTON'S,
+   * AND THE `- 1px` IS THE WHOLE REASON THEY LOOK THE SAME.
+   *
+   * The trigger sits directly above the tree, so its magnifier is the first
+   * thing in the same column as every folder and page marker below it, and its
+   * label starts the same column as every title. Both were off — measured at
+   * 1280px, the glyph by 3px and the label by 11px — because this button was
+   * spaced as a standalone control: 10px of padding against the rows' 8px, and
+   * a 16px gap against their 8px.
+   *
+   * The rows carry no border and this does, so matching `0.5rem` outright would
+   * leave the glyph 1px out. `calc(0.5rem - 1px)` puts the *content* edge where
+   * theirs is, which is the edge a reader sees. Block padding is untouched: it
+   * sets this control's height, and nothing below it is the same height.
+   */
   .wave-docs-search-trigger {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.5rem;
     width: 100%;
     max-width: 20rem;
-    padding: 0.4375rem 0.625rem;
+    padding: 0.4375rem calc(0.5rem - 1px);
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
     background: var(--wave-docs-bg-subtle);
@@ -2871,12 +2887,24 @@
     outline-offset: 2px;
   }
 
-  /* The label is the flexible half of the trigger; the shortcut hint beside it
-   * must never be the thing that gets squeezed out at narrow widths. */
+  /* The label is the flexible half of the trigger; neither the magnifier before
+   * it nor the shortcut hint after it may be the thing squeezed out at narrow
+   * widths. `flex: 1 1 auto` because the row is `space-between` and three
+   * items would otherwise centre the middle one, leaving a gap on both sides of
+   * a short label. */
   .wave-docs-search-trigger-label {
+    flex: 1 1 auto;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Quieter than the words either side of it, in the trigger and in the dialog
+   * alike — it is a category marker, not a control. */
+  .wave-docs-search-glyph {
+    flex: none;
+    color: var(--wave-docs-fg-subtle);
   }
 
   /*
@@ -2891,14 +2919,59 @@
     }
   }
 
-  .wave-docs-search-trigger-kbd {
+  .wave-docs-search-trigger-kbd,
+  .wave-docs-search-kbd {
     flex: none;
-    padding: 0.05rem 0.35rem;
-    border: 1px solid var(--wave-docs-border-strong);
-    border-radius: var(--wave-docs-radius-sm);
     color: var(--wave-docs-fg-subtle);
     font-family: var(--wave-docs-font-mono);
     font-size: 0.75rem;
+  }
+
+  /*
+   * The footer's caps are drawn as keys; the trigger's shortcut is not.
+   *
+   * They were one rule, and the trigger's read as a chip on a surface that is
+   * already a chip — a bordered box inside a bordered box, sharing its fill,
+   * for a hint nobody clicks. The footer's caps sit on the flat bottom of the
+   * dialog and are the only thing there that has to look pressable.
+   *
+   * No `background` was ever set on either: the trigger's own
+   * `--wave-docs-bg-subtle` showed through, which is what made the border read
+   * as a filled shape. Removing the border is what removes the shape.
+   */
+  .wave-docs-search-kbd {
+    padding: 0.05rem 0.35rem;
+    border: 1px solid var(--wave-docs-border-strong);
+    border-radius: var(--wave-docs-radius-sm);
+  }
+
+  /*
+   * ⚠️ THE SYMBOL IS SCALED AND THE WORD IS NOT — which is why this is a
+   * separate element rather than one string in the `<kbd>`.
+   *
+   * Measured in the shipped mono stack at 12px: `⌘` has 6.39px of ink against
+   * `K`'s 8.75px, so at a shared size it sits a third short of the letter next
+   * to it. `1.35em` is that ratio, and it makes the two read as one mark.
+   *
+   * `Ctrl` gets none of it: it is a word set in the same face as the `K`, and
+   * scaling it would make the hint shout.
+   */
+  .wave-docs-search-trigger-mod[data-symbol] {
+    font-size: 1.45em;
+    line-height: 1;
+    /*
+     * ⚠️ AND IT HAS TO BE MOVED DOWN, WHICH `font-size` ALONE WILL NEVER DO.
+     *
+     * `⌘` is drawn around the font's mathematical axis, not standing on the
+     * baseline like a capital. Measured at this size: its ink runs from 11.24px
+     * above the baseline to 1.98px *above* it — a centre 6.61px up — while the
+     * `K` beside it runs 8.75px to 0, centred 4.38px up. Aligned by baseline,
+     * as inline text is, the symbol therefore floats 2.24px high.
+     *
+     * `-0.13em` of this element's own 17.4px is 2.26px, which puts the two ink
+     * centres within a rounding error of each other.
+     */
+    vertical-align: -0.13em;
   }
 
   .wave-docs-search-backdrop {
@@ -2989,21 +3062,94 @@
     color: var(--wave-docs-fg-subtle);
   }
 
-  .wave-docs-search-close {
+  /*
+   * The keyboard footer.
+   *
+   * ⚠️ `flex: none`, BECAUSE THE LIST ABOVE IT IS `flex: 1 1 auto`. The dialog
+   * is a column with a ceiling, and the results are what takes the slack and
+   * scrolls; without this the footer is a second growable item and the two
+   * share the overflow — a footer that drifts down the dialog as results
+   * arrive, and a list that never quite reaches it.
+   */
+  .wave-docs-search-footer {
     flex: none;
-    padding: 0.3125rem 0.625rem;
-    border: 1px solid var(--wave-docs-border);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0.75rem;
+    border-block-start: 1px solid var(--wave-docs-border);
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.75rem;
+  }
+
+  .wave-docs-search-hint,
+  .wave-docs-search-close {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  /*
+   * ⚠️ A NEGATIVE MARGIN, BECAUSE `gap` CANNOT VARY PER PAIR. `↑` and `↓` are
+   * one instruction and read as one object; the gap that separates a cap from
+   * the word beside it is too wide between two caps that belong together. A
+   * flex container has a single gap, so the only ways to tighten one pair are
+   * an extra wrapper element or this — and a wrapper on every hint is markup
+   * bought for spacing.
+   *
+   * `-0.25rem` against the `0.375rem` above leaves `0.125rem` between them.
+   */
+  .wave-docs-search-kbd + .wave-docs-search-kbd {
+    margin-inline-start: -0.25rem;
+  }
+
+  /*
+   * The only cap holding a word rather than a glyph, and three letters at the
+   * arrows' size made it the loudest thing in the footer. `line-height` pins
+   * the box so it still sits at the same height as the caps beside it —
+   * without it the smaller text shrinks the content box and the cap rides
+   * high in a row of taller ones.
+   */
+  .wave-docs-search-close .wave-docs-search-kbd {
+    font-size: 0.625rem;
+    /* Solved, not guessed: the cap is 3.6px of border and padding plus its own
+     * line box, and the 12px caps beside it measure 17.6px. 10px x 1.4 = 14,
+     * and 14 + 3.6 is 17.6 — all four exactly the same height. */
+    line-height: 1.4;
+  }
+
+  /*
+   * ⚠️ HIDDEN WHERE THE KEY CANNOT BE PRESSED — the same query, and the same
+   * reason, as the trigger's `⌘K`. An instruction to press an arrow key is one
+   * a reader on a phone cannot follow, and a 10-inch tablet at 1024px would
+   * keep it under any width rule.
+   *
+   * The Close button beside them is deliberately NOT in here. It is the only
+   * pointer dismiss affordance in the dialog, and on exactly the devices this
+   * query names there is no Esc to fall back to.
+   */
+  @media (hover: none) and (pointer: coarse) {
+    .wave-docs-search-hint {
+      display: none;
+    }
+  }
+
+  /* Pushed to the far end, away from the two hints — the difference between a
+   * control and a caption, said with position. */
+  .wave-docs-search-close {
+    margin-inline-start: auto;
+    padding: 0.125rem 0.25rem;
+    border: 0;
     border-radius: var(--wave-docs-radius-sm);
     background: none;
     color: var(--wave-docs-fg-muted);
     font: inherit;
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     cursor: pointer;
   }
 
   .wave-docs-search-close:hover {
     color: var(--wave-docs-fg);
-    border-color: var(--wave-docs-border-strong);
   }
 
   /*

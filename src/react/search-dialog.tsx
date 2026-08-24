@@ -148,6 +148,29 @@ export interface SearchDialogProps {
    */
   emptyLabel?: string | undefined;
   /**
+   * The arrow-keys hint in the footer. Defaults to `'Select'`.
+   *
+   * The key-caps beside it are glyphs and are not translatable — an arrow is an
+   * arrow, and `Esc` is `Esc` on a Portuguese keyboard. These props are the
+   * verbs, which are not.
+   */
+  selectLabel?: string | undefined;
+  /** The Enter hint in the footer. Defaults to `'Open'`. */
+  openLabel?: string | undefined;
+  /**
+   * The footer's dismiss control. Defaults to `'Close'`.
+   *
+   * ⚠️ THIS REPLACES A BUTTON THAT SAID `Close` IN HARDCODED ENGLISH — the one
+   * string in this package that was never lifted to a prop, in the one dialog a
+   * reader cannot leave without it.
+   *
+   * It names a real button rather than a third hint: under `pointer: coarse`
+   * the two hints beside it are hidden, because an instruction to press Esc is
+   * one a reader on a phone cannot follow — and that leaves this as the only
+   * pointer route out of the dialog.
+   */
+  closeLabel?: string | undefined;
+  /**
    * The live region's announcement, by plural category. `{count}` is the total.
    *
    * Defaults to `{ one: '{count} result', other: '{count} results' }`.
@@ -232,6 +255,9 @@ export function SearchDialog({
   loadingLabel,
   errorLabel,
   emptyLabel,
+  selectLabel = 'Select',
+  openLabel = 'Open',
+  closeLabel = 'Close',
   resultCountLabels,
   locale,
 }: SearchDialogProps): ReactNode {
@@ -262,7 +288,22 @@ export function SearchDialog({
   const movedByKeyboard = useRef(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [status, setStatus] = useState<IndexStatus>('idle');
-  const [shortcutHint, setShortcutHint] = useState('');
+  /**
+   * The trigger's shortcut, split rather than held as one string.
+   *
+   * ⚠️ THE `⌘` NEEDS ITS OWN `font-size` AND CSS CANNOT SELECT A CHARACTER.
+   * Measured in the shipped mono stack at 12px, its ink is 6.39px tall against
+   * the `K`'s 8.75px — so as one string the symbol sits visibly short of the
+   * letter beside it. Two nodes is the only way to scale one and not the other.
+   *
+   * `null` until the effect below resolves the platform: reading it during
+   * render would disagree with the server's markup and break hydration.
+   */
+  const [shortcut, setShortcut] = useState<{
+    modifier: string;
+    /** A glyph, not a word — `Ctrl` must not be scaled with `⌘`. */
+    isSymbol: boolean;
+  } | null>(null);
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -385,7 +426,7 @@ export function SearchDialog({
   // with the server-rendered markup and blow up hydration.
   useEffect(() => {
     const isApple = /mac|iphone|ipad|ipod/i.test(navigator.userAgent);
-    setShortcutHint(isApple ? '⌘K' : 'Ctrl K');
+    setShortcut({ modifier: isApple ? '⌘' : 'Ctrl', isSymbol: isApple });
   }, []);
 
   // Focus into the input on open, back to the trigger on close.
@@ -628,9 +669,20 @@ export function SearchDialog({
         onPointerEnter={warmIndex}
         onFocus={warmIndex}
       >
+        <SearchGlyph />
         <span className="wave-docs-search-trigger-label">{triggerLabel}</span>
-        {shortcutHint === '' ? null : (
-          <kbd className="wave-docs-search-trigger-kbd">{shortcutHint}</kbd>
+        {shortcut === null ? null : (
+          <kbd className="wave-docs-search-trigger-kbd">
+            <span
+              className="wave-docs-search-trigger-mod"
+              data-symbol={shortcut.isSymbol ? '' : undefined}
+            >
+              {shortcut.modifier}
+            </span>
+            {/* `Ctrl K` reads as two words and `⌘K` as one mark. The space is
+                markup rather than part of either string. */}
+            {shortcut.isSymbol ? 'K' : ' K'}
+          </kbd>
         )}
       </button>
 
@@ -651,6 +703,7 @@ export function SearchDialog({
                 aria-label={dialogLabel}
               >
                 <div className="wave-docs-search-input-row">
+                  <SearchGlyph />
                   <input
                     ref={inputRef}
                     className="wave-docs-search-input"
@@ -671,13 +724,6 @@ export function SearchDialog({
                     autoCorrect="off"
                     spellCheck={false}
                   />
-                  <button
-                    type="button"
-                    className="wave-docs-search-close"
-                    onClick={closeDialog}
-                  >
-                    Close
-                  </button>
                 </div>
 
                 {/*
@@ -735,12 +781,94 @@ export function SearchDialog({
                   resultCountLabels={resultCountLabels}
                   locale={locale}
                 />
+
+                {/*
+                 * The keyboard footer, and the dialog's dismiss control.
+                 *
+                 * ⚠️ THE STANDALONE "Close" BUTTON THIS REPLACES SAID `Close`
+                 * IN HARDCODED ENGLISH. Every other string this package speaks
+                 * had been lifted to a prop; that one was missed, in the one
+                 * dialog a reader cannot leave without it. It is a prop now,
+                 * and it names a control that also teaches the key.
+                 *
+                 * ⚠️ AND IT IS STILL A BUTTON, NOT A THIRD HINT. On a touch
+                 * screen there is no Esc to press: the two hints beside it are
+                 * `display: none` under `pointer: coarse`, and without a real
+                 * control the only way out would be a tap on the backdrop —
+                 * undiscoverable, and the thing every reader tries last.
+                 *
+                 * The hints themselves are `aria-hidden`. They describe the
+                 * pointer-free path through a listbox that a screen reader
+                 * already exposes through `role`, `aria-activedescendant` and
+                 * `aria-posinset` — so announcing them adds two lines of
+                 * symbols and no information. The button is not hidden, and
+                 * carries its verb as its name rather than "Esc Close".
+                 */}
+                <div className="wave-docs-search-footer">
+                  <span className="wave-docs-search-hint" aria-hidden="true">
+                    <kbd className="wave-docs-search-kbd">↑</kbd>
+                    <kbd className="wave-docs-search-kbd">↓</kbd>
+                    {selectLabel}
+                  </span>
+                  <span className="wave-docs-search-hint" aria-hidden="true">
+                    <kbd className="wave-docs-search-kbd">↵</kbd>
+                    {openLabel}
+                  </span>
+                  <button
+                    type="button"
+                    className="wave-docs-search-close"
+                    aria-label={closeLabel}
+                    aria-keyshortcuts="Escape"
+                    onClick={closeDialog}
+                  >
+                    {/* No `aria-hidden` on either: `aria-label` above already
+                        overrides this button's contents for its accessible
+                        name, so it announces as "Close" rather than "Esc
+                        Close", and hiding the children as well would be a
+                        second answer to a question already answered. */}
+                    <kbd className="wave-docs-search-kbd">Esc</kbd>
+                    <span>{closeLabel}</span>
+                  </button>
+                </div>
               </div>
             </div>,
             document.body,
           )
         : null}
     </>
+  );
+}
+
+/**
+ * The magnifier, on the trigger and in the dialog's input row.
+ *
+ * Decorative in both places: the trigger carries its name in `aria-label` and
+ * the input carries its own, so this glyph would only ever repeat a word that
+ * is already there — announced as "search Search" and, on some engines, as the
+ * name of the character.
+ *
+ * Inline SVG rather than a `::before` glyph, matching every other icon in this
+ * package: generated content is announced by some screen-reader and browser
+ * pairs, which is the one thing `aria-hidden` cannot take back.
+ */
+function SearchGlyph(): ReactNode {
+  return (
+    <svg
+      className="wave-docs-search-glyph"
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
   );
 }
 
