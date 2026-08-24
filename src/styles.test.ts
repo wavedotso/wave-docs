@@ -704,8 +704,22 @@ describe('focus indicators', () => {
 
     for (const selector of declared) {
       if (INDICATOR_ELSEWHERE.has(selector)) continue;
-      const block = readBlock(sheet, sheet.indexOf(`${selector}`));
-      expect(block, `${selector} declares no outline`).toMatch(
+
+      /*
+       * ⚠️ THE SELECTOR AS A WHOLE SELECTOR, NOT AS A PREFIX. `indexOf` finds
+       * `…:focus-visible` inside `…:focus-visible::before` too — a different
+       * rule, about the pseudo-elements, that has no business declaring an
+       * outline. It matched first and this reported the *button* as having no
+       * focus indicator while the button's own rule sat further down the file,
+       * declaring one.
+       */
+      const at = sheet.search(
+        new RegExp(
+          `${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[,{]`,
+        ),
+      );
+      expect(at, `${selector} has no rule`).toBeGreaterThan(-1);
+      expect(readBlock(sheet, at), `${selector} declares no outline`).toMatch(
         /outline:\s*\d+px solid (?!transparent)/,
       );
     }

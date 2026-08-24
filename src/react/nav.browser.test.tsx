@@ -440,13 +440,23 @@ describe('the sidebar, at every container width', () => {
     await settle();
 
     const button = getComputedStyle(trigger, '::before');
-    expect(button.height).toBe('80px');
+    expect(button.height).toBe('56px');
 
     const strip = trigger.getBoundingClientRect().width;
     const paint = Number.parseFloat(button.width);
-    expect(Math.round(paint)).toBe(20);
+    expect(Math.round(paint)).toBe(16);
     expect(Math.round(strip - paint)).toBe(8);
     expect(getComputedStyle(trigger).padding).toBe('4px');
+
+    /*
+     * ⚠️ 24px IS THE FLOOR, AND THIS RULE IS NOW ON IT. WCAG 2.5.8 asks for a
+     * 24x24 CSS-pixel target; the strip is 16px of paint plus 4px of padding a
+     * side, and full-height, so it clears the minimum in one axis exactly and
+     * by a mile in the other. Narrow `--wave-docs-trigger-width` again and the
+     * target fails — which is the whole reason the hit area is derived from
+     * that token rather than set beside it.
+     */
+    expect(Math.round(strip)).toBeGreaterThanOrEqual(24);
   });
 
   it('toggles from the keyboard, not only the pointer', async () => {

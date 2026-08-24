@@ -153,7 +153,7 @@
      * of padding on every side — so setting this is the whole of resizing the
      * control, and the hit area grows with it rather than being a second number
      * to keep in step. */
-    --wave-docs-trigger-width: 1.25rem;
+    --wave-docs-trigger-width: 1rem;
     --wave-docs-toc-width: 15rem;
 
     /*
@@ -2621,7 +2621,12 @@
   .wave-docs-layout__sidebar-trigger::before {
     content: '';
     width: var(--wave-docs-trigger-width);
-    height: 5rem;
+    /*
+     * 16 x 56 — a 3.5:1 grip. It was 20 x 80, which at the old width read as a
+     * slab; narrowing it made the length obvious. The floor is 18px, the span
+     * of the three dots, and nothing here scales with the pill: see `::after`.
+     */
+    height: 3.5rem;
     border-radius: var(--wave-docs-radius-sm);
     background-color: var(--wave-docs-border-strong);
   }
@@ -2645,9 +2650,44 @@
     translate: -50% -50%;
     border-radius: 50%;
     background: currentcolor;
+    /*
+     * ⚠️ THE DOTS DO NOT SCALE WITH THE PILL. They are `box-shadow` offsets on
+     * one element, so ±7px is 18px of ink whatever `--wave-docs-trigger-width`
+     * or the pill's height happen to be. Shorten the pill below 18px and the
+     * outer two sit outside it, top and bottom — measured, not guessed.
+     */
     box-shadow:
       0 -7px 0 currentcolor,
       0 7px 0 currentcolor;
+  }
+
+  /*
+   * Faded at rest, full strength under a pointer or a caret — the same
+   * treatment as the tree's markers, and for the same reason: this is a handle,
+   * not a thing to look at while reading.
+   *
+   * ⚠️ BOTH MARKS, NOT THE PILL ALONE. Fading `::before` by itself leaves the
+   * dots at full strength on a washed-out slab, which reads louder than the
+   * solid grip it replaced — the opposite of the point.
+   *
+   * ⚠️ AND NOT ON THE BUTTON ITSELF, which would take the focus ring down with
+   * it: `opacity` applies to the whole element, outline included, so a keyboard
+   * reader would get a 40% indicator on a control they had just moved to.
+   *
+   * ⚠️ THE TAP TARGET IS UNTOUCHED BY ANY OF THIS. The `<button>` is the entire
+   * strip and runs the height of the column; the pill is paint. Its 80px was
+   * only ever ink, which is why 32px costs nothing a finger can feel.
+   */
+  .wave-docs-layout__sidebar-trigger::before,
+  .wave-docs-layout__sidebar-trigger::after {
+    opacity: 0.4;
+  }
+
+  .wave-docs-layout__sidebar-trigger:hover::before,
+  .wave-docs-layout__sidebar-trigger:hover::after,
+  .wave-docs-layout__sidebar-trigger:focus-visible::before,
+  .wave-docs-layout__sidebar-trigger:focus-visible::after {
+    opacity: 1;
   }
 
   /*
@@ -2681,7 +2721,8 @@
        */
       transition:
         background-color 120ms ease-out,
-        color 120ms ease-out;
+        color 120ms ease-out,
+        opacity 120ms ease-out;
     }
   }
 
@@ -2960,19 +3001,63 @@
   }
 
   /*
+   * ⚠️ THE LABEL'S SIZE, AND IT IS THE CAPS THAT HAD TO MATCH — NOT THE NUMBER.
+   *
+   * `Search` is `ui-sans-serif` and this is `ui-monospace`, and the same
+   * `font-size` in two families does not give you the same letter. Measured at
+   * 14px: the label's `S` carries 10.33px of ink and the mono `K` carries
+   * 10.21px. A tenth of a pixel — invisible until you look, and then it is the
+   * only thing you can see.
+   *
+   * `1.012em` is that tenth. Mono here draws 0.7292px of cap per px of
+   * `font-size`, so 10.33px of cap needs 14.17px, which is 1.012 x the 14px it
+   * sits beside. `em` rather than a `rem` constant so it tracks the label if
+   * the trigger's size ever moves.
+   *
+   * ⚠️ IT IS A MEASURED CONSTANT AND IT BELONGS TO THESE TWO FAMILIES. Change
+   * `--wave-docs-font-mono` or `--wave-docs-font-sans` and it is wrong — not
+   * broken, just quietly a tenth of a pixel out again. Re-measure the caps, do
+   * not re-derive from the declaration.
+   *
+   * Not in the shared rule above: the footer's caps sit in a 12px footer and
+   * belong at 12px. This is the only `<kbd>` standing beside body-sized text.
+   */
+  .wave-docs-search-trigger-kbd {
+    font-size: 1.012em;
+  }
+
+  /*
    * ⚠️ THE SYMBOL IS SCALED AND THE WORD IS NOT — which is why this is a
    * separate element rather than one string in the `<kbd>`.
    *
-   * Measured in the shipped mono stack at 12px: `⌘` has 6.39px of ink against
-   * `K`'s 8.75px, so at a shared size it sits a third short of the letter next
-   * to it. `1.35em` is that ratio, and it makes the two read as one mark.
+   * Measured in the shipped mono stack: `⌘` carries 6.39px of ink per 8.75px of
+   * `K`, so at a shared `font-size` it sits a third short of the letter next to
+   * it. `1.369em` is exactly that ratio, and it makes the two the same height.
+   *
+   * ⚠️ NOT A HAIR TALLER, WHICH IS WHERE THIS FIRST LANDED. `1.45em` gave the
+   * symbol 6% on the `K` — invisible at 12px, and at this size 0.6px of ink
+   * standing above the cap line. It made the whole badge read as *bigger type*
+   * than the label beside it: measured against the word `Search`, 88 device px
+   * of ink against 85, its top three device px higher and its centre 1.5 out.
+   * Same letter height, louder cluster. The eye compares the clusters.
    *
    * `Ctrl` gets none of it: it is a word set in the same face as the `K`, and
    * scaling it would make the hint shout.
    */
   .wave-docs-search-trigger-mod[data-symbol] {
-    font-size: 1.45em;
-    line-height: 1;
+    font-size: 1.369em;
+    /*
+     * ⚠️ `0`, NOT `1` — THIS GLYPH MUST NOT SIZE THE LINE IT SITS ON. A line
+     * box is as tall as the tallest inline box in it, so at `line-height: 1`
+     * this 20.5px symbol made the `<kbd>` 20.55px tall against the label's 17,
+     * and the two were centred as flex items by their *boxes*. Same cap height,
+     * 1.9px apart on screen — measured off an 8x render, invisible in the CSS.
+     *
+     * At `0` the symbol contributes no height, the `<kbd>` keeps the line box
+     * its own font gives it, and the `K` centres with the `S` beside it. The
+     * glyph still paints in full: `line-height` bounds the line, not the ink.
+     */
+    line-height: 0;
     /*
      * ⚠️ AND IT HAS TO BE MOVED DOWN, WHICH `font-size` ALONE WILL NEVER DO.
      *
