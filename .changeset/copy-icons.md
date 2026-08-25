@@ -26,12 +26,13 @@ hast-over-the-wire ratio for code and tables went from 1.11× to 1.09×.
 
 ## And it stops drawing a box around itself
 
-No border and no ground at rest. A bordered, filled 2rem box sitting on the
-frame's own band is a third framed rectangle inside a frame that already has
-two, for a control secondary to everything around it. The ground appears on
-hover — as `--wave-docs-bg` rather than `--wave-docs-bg-subtle`, because the
-subtle ramp *is* the frame's ground here, so the hover state it used to have
-was the colour the button was already sitting on.
+No border and no ground, in any state. A bordered, filled 2rem box sitting on
+the frame's own band is a third framed rectangle inside a frame that already has
+two, for a control secondary to everything around it. The glyph is the whole
+control, and hover moves its ink to the accent rather than putting a box behind
+it — the same signal every other interactive surface here gives. A ground also
+had nowhere to come from: the subtle ramp *is* the frame's colour, so the hover
+state it used to have was the colour the button was already sitting on.
 
 ⚠️ AND IT HAD NO FOCUS INDICATOR AT ALL, WHICH THE BORDER WAS COVERING FOR. A
 1px box is not a focus indicator — it is there whether the control is focused or

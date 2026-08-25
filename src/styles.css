@@ -1229,12 +1229,11 @@
     width: 2rem;
     height: 2rem;
     /*
-     * ⚠️ NO BORDER AND NO GROUND AT REST, AND IT HAD BOTH.
-     *
-     * A bordered, filled 2rem box on the frame's own band is a third framed
-     * rectangle inside a frame that already has two, for a control that is
-     * secondary to everything around it. Quiet at rest, and the ground appears
-     * on hover — which is also what tells you it is a control.
+     * ⚠️ NO BORDER AND NO GROUND, IN ANY STATE. It had both, and a bordered,
+     * filled 2rem box on the frame's own band is a third framed rectangle
+     * inside a frame that already has two — for a control secondary to
+     * everything around it. The glyph is the whole control; hover moves its
+     * ink, not a box behind it.
      */
     border: 0;
     border-radius: var(--wave-docs-radius-sm);
@@ -1271,15 +1270,14 @@
 
 
   /*
-   * ⚠️ `--wave-docs-bg`, NOT `--wave-docs-bg-subtle`, AND THE SWAP IS THE WHOLE
-   * POINT. The subtle ramp *is* the frame's ground here, so the hover state
-   * this used to have was the colour the button was already sitting on: a
-   * hover that changed nothing but the ink. Lighter than the band reads as a
-   * chip lifting off it.
+   * ⚠️ INK ONLY — NO GROUND ON HOVER EITHER. The accent is the same signal
+   * every other interactive surface in this package gives, and it needs no box
+   * behind it to be read. A ground here also had nowhere to come from: the
+   * subtle ramp *is* the frame's colour, so the hover state this used to have
+   * was the colour the button was already sitting on.
    */
   .wave-docs-code__copy:hover {
-    background-color: var(--wave-docs-bg);
-    color: var(--wave-docs-fg);
+    color: var(--wave-docs-accent);
   }
 
   /*
