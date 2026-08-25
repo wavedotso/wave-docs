@@ -2938,9 +2938,25 @@
     /* Without this, reaching the end of the nav keeps scrolling — the article
      * jumps under the reader's cursor while they are looking at the sidebar. */
     overscroll-behavior: contain;
-    /* Reserves the scrollbar's width whether or not it is showing, so the
-     * column does not jump when the nav grows past a screen. */
-    scrollbar-gutter: stable;
+    /*
+     * ⚠️ NO `scrollbar-gutter: stable`, AND IT USED TO HAVE ONE.
+     *
+     * It reserved the scrollbar's width whether or not it was showing, so the
+     * column would not jump when the nav grew past a screen. The jump it
+     * prevents is rare and transient; what it cost was permanent and on every
+     * page — measured at 1600px, the nav's content sat 16px from its inline
+     * start and 31px from its end, because the reserved 15px sits *inside* the
+     * padding. A sidebar visibly lopsided on every Windows and Linux machine,
+     * to spare an occasional 15px shift on the same ones.
+     *
+     * It also does nothing where overlay scrollbars are the default — macOS —
+     * so the asymmetry was invisible to anyone who built it.
+     *
+     * `thin`, so the scrollbar that does appear is narrow, and coloured rather
+     * than left as the UA's default slab against the panel.
+     */
+    scrollbar-width: thin;
+    scrollbar-color: var(--wave-docs-border-strong) transparent;
   }
 
   /* First child of the navigation, above the tree. */

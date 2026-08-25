@@ -493,6 +493,35 @@ describe('the sidebar, at every container width', () => {
     expect(fill === `var(--wave-docs-accent)` || fill === accent).toBe(lit);
   });
 
+  /**
+   * ⚠️ THE NAVIGATION'S CONTENT SITS THE SAME DISTANCE FROM BOTH ITS EDGES.
+   *
+   * It did not: `scrollbar-gutter: stable` reserved the scrollbar's width
+   * whether or not it was showing, and that reservation sits *inside* the
+   * padding — so the rows were 16px from the inline start and 31px from the
+   * end. Permanent, on every page, on every platform with classic scrollbars;
+   * and invisible on macOS, where overlay scrollbars make the property a no-op,
+   * which is why it survived being looked at.
+   *
+   * The jump it was preventing is one 15px shift, the first time a nav grows
+   * past a screen.
+   */
+  it('insets its rows equally from both edges', async () => {
+    const { nav } = mount();
+    await settle();
+
+    const link = nav.querySelector('.wave-docs-sidebar__link');
+    if (link === null) throw new Error('no rows to measure');
+
+    const port = nav.getBoundingClientRect();
+    const row = link.getBoundingClientRect();
+
+    expect(
+      Math.abs(row.left - port.left - (port.right - row.right)),
+      'the navigation is lopsided',
+    ).toBeLessThan(1);
+  });
+
   it('toggles from the keyboard, not only the pointer', async () => {
     const { shell, trigger } = mount();
     await settle();
