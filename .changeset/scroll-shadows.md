@@ -27,41 +27,25 @@ requires the shell to be a single surface. An element's background is painted
 tall: measured 255/255 at the top edge with the nav scrolled — declared,
 computed, and invisible.
 
-So the nav's shadows are sticky overlays instead, the way the table's are and for
-the reason its comment gives, with opacity driven by a **named** scroll timeline
-on the nav.
+So the navigation's overflow moved to an inner box, `.wave-docs-layout__sidebar-scroll`,
+and the panel keeps only its edges.
 
-⚠️ NAMED, BECAUSE `scroll(nearest block)` WAS A REAL BUG RATHER THAN A TIDIER
-SPELLING. `nearest` means the nearest ancestor *scroll container*, and a box is
-only one when it actually has scrollable overflow. This nav is a screen tall and
-on most sites its tree fits — measured `scrollHeight - clientHeight === 0` at
-1440×900 on this very site — so `nearest` walked straight past it and found the
-document, which always scrolls. The shadow was keyed to the *page*: it faded in
-as a reader scrolled the article, on a navigation with nothing hidden, while the
-sticky panel was still travelling to its pinned position. Appearing and moving at
-once.
+⚠️ THAT SPLIT IS THE FIX, AND EVERY VERSION BEFORE IT FOUGHT THE SCROLLER. An
+absolutely positioned child of a scroll container is laid out against that
+container's padding box and *joins its scrollable overflow* — so nothing placed
+inside a scroller is ever pinned to it. `position: sticky` only clamps, and a
+clamp is still a thing that travels until it catches. With the scrolling on an
+inner element the panel is an ordinary positioned box: `top: 0` and `bottom: 0`
+are its own edges, and the bands have no scroll to have a position within.
 
-Named, it can only be this element's own scroll, and the inactive-timeline rule
-then does the right thing for free: a nav that fits declares a timeline with no
-range, the animation does not apply, and `opacity: 0` wins.
+The timeline is declared on the scroller and `timeline-scope`d up to the panel,
+because a `scroll-timeline` name is visible to the declaring element's
+descendants and these pseudo-elements belong to its parent.
 
-⚠️ AND THE STICKY INSET IS NEGATIVE BY THE NAV'S BLOCK PADDING, WITH A MATCHING
-START MARGIN — TWO HALVES OF ONE FIX. A sticky child of a scroll container is
-constrained to the *content* box rather than the scrollport, so `top: 0` pinned
-the band 32px down the panel, floating over the search trigger instead of sitting
-on its edge. Found by painting it red and reading the pixels back.
-
-The margin is the other half: sticky only holds an element once scrolling would
-carry it past the threshold, so laid out at the content-box top the band began
-32px *below* the edge and slid up over the first 32px of scroll — visible, and
-moving, exactly while its opacity was ramping in. Pulled up by the same padding,
-its resting place already is the threshold: pinned from the first pixel, never
-moving. Measured identical pixel rows at scrollTop 20, 90 and max.
-
-The padding is a custom property now, because the overlays cancel exactly it and
-two literals that must agree are two literals that drift. The gradient is radial,
-the shape the table and the search list use — strongest against the edge it
-belongs to rather than a flat ramp across the band.
+⚠️ AND THE SHADOW BELONGS TO THE PANEL RATHER THAN THE TREE, because
+`.wave-docs-sidebar` paints an opaque ground — it is in the theme's opt-in rule,
+and the shell has to be one surface — so a background on the scroller would be
+painted underneath it. Measured 255/255 when it was.
 
 ⚠️ AND THE NAV'S FADE IS A LENGTH, NOT A PERCENTAGE OF THE SCROLL. The table's
 keyframes shape their fade in percentages, which are percentages of the

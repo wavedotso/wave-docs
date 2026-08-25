@@ -1459,34 +1459,50 @@ describe('the responsive shell', () => {
     });
 
     const selectors = scrolling.flatMap((rule) => splitSelectors(rule.prelude));
-    expect(selectors).toContain('.wave-docs-layout__sidebar-nav');
+    expect(selectors).toContain('.wave-docs-layout__sidebar-scroll');
     expect(selectors).toContain('.wave-docs-layout__toc');
 
     /*
-     * ⚠️ THE SCROLLER AND THE STICKY BOX ARE THE SAME ELEMENT AGAIN — AND THAT
-     * IS THE SECOND TIME THIS MOVED, SO CHECK IT RATHER THAN ASSUMING.
-     * The sidebar shell is the page's column and is not sticky at all; the
-     * navigation inside it is sticky, one screen tall, and its own scroller.
+     * ⚠️ THE SCROLLER AND THE STICKY BOX ARE DIFFERENT ELEMENTS — AND THIS HAS
+     * MOVED THREE TIMES NOW, SO CHECK IT RATHER THAN ASSUMING.
+     *
+     * The sidebar shell is the page's column and is not sticky. The navigation
+     * inside it is sticky and one screen tall, and it holds the edge shadows —
+     * which is exactly why it stopped being the scroller: an absolutely
+     * positioned child of a scroll container joins that container's scrollable
+     * overflow, so nothing inside a scroller is ever pinned to it.
+     * `.wave-docs-layout__sidebar-scroll` does the scrolling now.
      */
-    for (const selector of [
-      '.wave-docs-layout__sidebar-nav',
-      '.wave-docs-layout__toc',
+    /*
+     * ⚠️ THE STICKY BOX AND THE SCROLLER ARE NOT ALWAYS THE SAME ELEMENT, SO
+     * THE PAIR IS NAMED RATHER THAN ASSUMED. They are one element for the table
+     * of contents and two for the sidebar, where the panel holds the edge
+     * shadows and an inner box does the scrolling — an absolutely positioned
+     * child of a scroll container joins that container's scrollable overflow,
+     * so nothing inside a scroller can be pinned to it.
+     */
+    for (const [scroller, sticky] of [
+      ['.wave-docs-layout__sidebar-scroll', '.wave-docs-layout__sidebar-nav'],
+      ['.wave-docs-layout__toc', '.wave-docs-layout__toc'],
     ]) {
       // By predicate, not by first occurrence: `__toc` has two rules, and the
       // first is the `display: none` default with nothing in it to assert.
-      const sticky = RULES.filter((rule) => {
+      const pinned = RULES.filter((rule) => {
         const block = readBlock(sheet, rule.at);
         return (
-          splitSelectors(rule.prelude).includes(selector) &&
+          splitSelectors(rule.prelude).includes(sticky as string) &&
           block.includes('position: sticky')
         );
       });
 
-      expect(sticky, selector).toHaveLength(1);
-      const block = readBlock(sheet, sticky[0]?.at ?? -1);
+      expect(pinned, sticky).toHaveLength(1);
+      const block = readBlock(sheet, pinned[0]?.at ?? -1);
       // `dvh`, so the last nav items are not under a mobile URL bar.
-      expect(block, selector).toContain('dvh');
-      expect(block, selector).toContain('--wave-docs-chrome-offset');
+      expect(block, sticky).toContain('dvh');
+      expect(block, sticky).toContain('--wave-docs-chrome-offset');
+
+      // And the scroller is a real one, whether or not it is that same box.
+      expect(selectors, scroller).toContain(scroller);
     }
   });
 

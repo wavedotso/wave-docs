@@ -82,13 +82,22 @@ function mountShell(): HTMLElement {
       <div class="wave-docs-layout">
         <div class="wave-docs-layout__sidebar">
           <div class="wave-docs-layout__sidebar-nav" tabindex="-1">
-            <button
-              type="button"
-              class="wave-docs-search-trigger wave-docs-layout__search"
-            >
-              <svg class="wave-docs-search-glyph" width="16" height="16" aria-hidden="true"></svg>
-              <span class="wave-docs-search-trigger-label">Search</span>
-            </button>
+            <!--
+              THE SCROLLER IS THIS INNER BOX, NOT THE PANEL, AND THIS FIXTURE
+              HAS TO SAY SO. DocsNav renders it; a hand-written shell that omits
+              it has no scrollable ancestor at all, so scrollActiveIntoView
+              finds nothing and every assertion here about the current page
+              being visible fails against a component that is working.
+            -->
+            <div class="wave-docs-layout__sidebar-scroll">
+              <button
+                type="button"
+                class="wave-docs-search-trigger wave-docs-layout__search"
+              >
+                <svg class="wave-docs-search-glyph" width="16" height="16" aria-hidden="true"></svg>
+                <span class="wave-docs-search-trigger-label">Search</span>
+              </button>
+            </div>
           </div>
           <button
             type="button"
@@ -102,10 +111,15 @@ function mountShell(): HTMLElement {
     </div>
   `;
 
+  /*
+   * ⚠️ THE SCROLLER, NOT THE PANEL. The tree renders into it and the assertions
+   * measure against it, because that is the box `scrollActiveIntoView` finds:
+   * the panel holds the edge shadows and does not scroll.
+   */
   const port = document.querySelector<HTMLElement>(
-    '.wave-docs-layout__sidebar-nav',
+    '.wave-docs-layout__sidebar-scroll',
   );
-  if (port === null) throw new Error('the shell has no sidebar navigation');
+  if (port === null) throw new Error('the shell has no sidebar scroller');
   return port;
 }
 
@@ -190,7 +204,11 @@ describe('the sidebar while it is closed', () => {
   it('shows the current page once it is opened', async () => {
     await page.viewport(390, 800);
     const port = mountShell();
-    const shell = port.parentElement;
+    // The panel is the scroller's parent; the shell that carries `data-state`
+    // is the column above it.
+    const shell = document.querySelector<HTMLElement>(
+      '.wave-docs-layout__sidebar',
+    );
     if (shell === null) throw new Error('no shell');
 
     render(<DocsSidebar nav={NAV} pathname="/docs/p45" />, { container: port });

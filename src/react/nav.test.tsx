@@ -149,7 +149,17 @@ describe('DocsNav', () => {
     const nav = container.querySelector('.wave-docs-layout__sidebar-nav');
     if (!(nav instanceof HTMLElement)) throw new Error('no navigation');
 
-    expect(nav.firstElementChild).toHaveAttribute('data-testid', 'search');
+    /*
+     * ⚠️ INSIDE THE SCROLLER, NOT THE PANEL. The navigation's overflow moved to
+     * `.wave-docs-layout__sidebar-scroll` so the panel could hold edge shadows
+     * that do not travel — an absolutely positioned child of a scroll container
+     * joins that container's scrollable overflow. The slot is still the first
+     * thing in the tree; it is one box further in.
+     */
+    const scroller = nav.querySelector('.wave-docs-layout__sidebar-scroll');
+    if (!(scroller instanceof HTMLElement)) throw new Error('no scroller');
+
+    expect(scroller.firstElementChild).toHaveAttribute('data-testid', 'search');
     expect(nav.querySelector('nav')).not.toBeNull();
   });
 

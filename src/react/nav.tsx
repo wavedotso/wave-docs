@@ -241,17 +241,33 @@ export function DocsNav({
           /* Focusable only as a focus destination, never as a tab stop. */
           tabIndex={-1}
         >
-          {children}
-          <DocsSidebar
-            nav={nav}
-            pathname={pathname}
-            label={label}
-            Link={Link}
-            {...(expandGroup === undefined ? {} : { expandGroup })}
-            {...(collapseGroup === undefined ? {} : { collapseGroup })}
-            {...(externalLink === undefined ? {} : { externalLink })}
-            {...(icons === undefined ? {} : { icons })}
-          />
+          {/*
+           * ⚠️ THE SCROLLING IS THIS ELEMENT'S JOB, NOT THE PANEL'S, AND THAT
+           * SPLIT IS WHAT LETS THE PANEL HOLD A SHADOW THAT CANNOT MOVE.
+           *
+           * An absolutely positioned child of a scroll container is laid out
+           * against that container's padding box and joins its scrollable
+           * overflow — so it travels with the content, which is why the edge
+           * shadows were `position: sticky` and why every attempt to pin them
+           * fought the scroller instead of standing outside it.
+           *
+           * With the overflow moved in here, the panel is an ordinary
+           * positioned box: its `::before` and `::after` resolve against it,
+           * sit at `top: 0` and `bottom: 0`, and have nothing to scroll with.
+           */}
+          <div className="wave-docs-layout__sidebar-scroll">
+            {children}
+            <DocsSidebar
+              nav={nav}
+              pathname={pathname}
+              label={label}
+              Link={Link}
+              {...(expandGroup === undefined ? {} : { expandGroup })}
+              {...(collapseGroup === undefined ? {} : { collapseGroup })}
+              {...(externalLink === undefined ? {} : { externalLink })}
+              {...(icons === undefined ? {} : { icons })}
+            />
+          </div>
         </div>
         <button
           type="button"

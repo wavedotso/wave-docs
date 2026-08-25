@@ -3273,14 +3273,16 @@
     box-sizing: border-box;
     width: var(--wave-docs-sidebar-width);
     /*
-     * A property rather than a literal, because the scroll-shadow overlays
-     * below have to cancel exactly this to reach the panel's edges: a sticky
-     * child of a scroll container is constrained to the content box, so each
-     * one insets itself by `-1 *` this. Two literals that must agree are two
-     * literals that drift.
+     * ⚠️ NO PADDING AND NO OVERFLOW HERE — BOTH MOVED INTO
+     * `.wave-docs-layout__sidebar-scroll`, AND THAT SPLIT IS THE POINT.
+     *
+     * This panel is now an ordinary positioned box that happens to be sticky,
+     * so the edge shadows below resolve against it and have nothing to scroll
+     * with. While it was the scroll container itself they had to be
+     * `position: sticky` and cancel its padding by hand, and every version of
+     * that fought the scroller rather than standing outside it.
      */
-    --wave-docs-sidebar-nav-pad-block: 2rem;
-    padding: var(--wave-docs-sidebar-nav-pad-block) 1rem;
+    overflow: hidden;
     border: 0;
     /*
      * Cover mode only, and it is a different thing from the divider in push
@@ -3296,10 +3298,6 @@
     position: sticky;
     top: var(--wave-docs-chrome-offset);
     height: calc(100dvh - var(--wave-docs-chrome-offset));
-    overflow-y: auto;
-    /* Without this, reaching the end of the nav keeps scrolling — the article
-     * jumps under the reader's cursor while they are looking at the sidebar. */
-    overscroll-behavior: contain;
     /*
      * ⚠️ NO `scrollbar-gutter: stable`, AND IT USED TO HAVE ONE.
      *
@@ -3325,65 +3323,50 @@
     scrollbar-color: var(--wave-docs-border-strong) transparent;
   }
 
+  .wave-docs-layout__sidebar-scroll {
+    height: 100%;
+    overflow-y: auto;
+    /* Without this, reaching the end of the nav keeps scrolling — the article
+     * jumps under the reader's cursor while they are looking at the sidebar. */
+    overscroll-behavior: contain;
+    padding: 2rem 1rem;
+    scrollbar-width: inherit;
+    scrollbar-color: inherit;
+  }
+
   /*
-   * ⚠️ THE SHADOW IS AN OVERLAY AND NEVER A BACKGROUND, BECAUSE THE TREE PAINTS
-   * ITS OWN GROUND.
+   * ⚠️ ABSOLUTE AGAINST THE PANEL, WHICH IS NOT THE SCROLLER — AND THAT IS THE
+   * WHOLE REASON THIS FINALLY HOLDS STILL.
    *
-   * `.wave-docs-sidebar` is in the theme's opt-in rule — the one that installs a
-   * ground wherever it installs a foreground ramp — so it carries an opaque
-   * `--wave-docs-bg`. That is correct: a consumer mounting the tree alone needs
-   * it, and `styles.browser.test.ts` requires the shell to be one surface. But
-   * an element's background is painted *below* its children, so the
-   * four-gradient trick `.wave-docs-table-scroll` falls back on was covered by a
-   * child 480px tall — measured 255/255 at the top edge with the nav scrolled:
-   * declared, computed, and invisible.
+   * These were `position: sticky` inside the scroll container, cancelling its
+   * padding by hand, and they still read as moving. An absolutely positioned
+   * child of a scroll container is laid out against that container's padding
+   * box and joins its scrollable overflow, so nothing placed inside the
+   * scroller is ever truly pinned to the panel; sticky only clamps it, and a
+   * clamp is still a thing that travels until it catches.
    *
-   * These sit above it instead, the same way the table's do and for the reason
-   * its comment gives.
+   * With the overflow moved to `.wave-docs-layout__sidebar-scroll`, the panel is
+   * an ordinary positioned box. `top: 0` and `bottom: 0` are its own edges, and
+   * there is no scroll for these to have a position within.
    *
-   * ⚠️ THE NEGATIVE MARGINS KEEP THEM OUT OF THE FLOW. A sticky child is still
-   * laid out, so without the block ones each of these would push the tree
-   * 0.75rem down the column; the inline pair spans the shadow across the nav's
-   * `1rem` of side padding, which a block child would otherwise stop short of.
-   *
-   * `opacity: 0` is the base state and it is load-bearing: see below.
+   * ⚠️ AND THE SHADOW STILL BELONGS TO THE PANEL RATHER THAN THE TREE, because
+   * `.wave-docs-sidebar` paints an opaque ground — it is in the theme's opt-in
+   * rule, and the shell has to be one surface — so a background on the scroller
+   * would be painted underneath it. Measured 255/255 when it was.
    */
   .wave-docs-layout__sidebar-nav::before,
   .wave-docs-layout__sidebar-nav::after {
     content: '';
-    display: block;
-    position: sticky;
+    position: absolute;
+    inset-inline: 0;
     z-index: 1;
     height: 0.75rem;
-    margin-inline: -1rem;
     opacity: 0;
     pointer-events: none;
   }
 
-  /*
-   * ⚠️ THE INSET IS NEGATIVE BY THE NAV'S BLOCK PADDING, AND THE START MARGIN
-   * MATCHES IT — TWO HALVES OF ONE FIX.
-   *
-   * A sticky child of a scroll container is constrained to the *content* box
-   * rather than the scrollport, so `top: 0` pinned this 32px down the panel,
-   * floating over the search trigger instead of sitting on its edge. Found by
-   * painting it red and reading the pixels back: the band was at y=32 on the
-   * dot. The negative `top` moves the threshold out to the panel's edge.
-   *
-   * ⚠️ AND WITHOUT THE MATCHING MARGIN IT TRAVELS BEFORE IT PINS. Sticky only
-   * holds an element once scrolling would carry it past the threshold: laid out
-   * at the content-box top it began 32px *below* the edge and slid up for the
-   * first 32px of scroll — visible, and moving, exactly while the opacity was
-   * ramping in. Pulled up by the same padding, its resting place already is the
-   * threshold, so it is pinned from the first pixel and never moves.
-   *
-   * The end margin is what keeps that free: `pad - height` puts the content
-   * back where the padding alone would have.
-   */
   .wave-docs-layout__sidebar-nav::before {
-    top: calc(-1 * var(--wave-docs-sidebar-nav-pad-block));
-    margin-block: calc(-1 * var(--wave-docs-sidebar-nav-pad-block))
-      calc(var(--wave-docs-sidebar-nav-pad-block) - 0.75rem);
+    top: 0;
     /*
      * Radial, the shape the table and the search list use: strongest against
      * the edge it belongs to and falling away from it, rather than a flat ramp
@@ -3397,10 +3380,7 @@
   }
 
   .wave-docs-layout__sidebar-nav::after {
-    /* The same pair at the other end — see `::before`. */
-    bottom: calc(-1 * var(--wave-docs-sidebar-nav-pad-block));
-    margin-block: calc(var(--wave-docs-sidebar-nav-pad-block) - 0.75rem)
-      calc(-1 * var(--wave-docs-sidebar-nav-pad-block));
+    bottom: 0;
     background: radial-gradient(
       farthest-side at 50% 100%,
       var(--wave-docs-scroll-shadow),
@@ -3425,11 +3405,11 @@
    * a reader keeps the cue rather than losing both.
    */
   @supports (animation-timeline: scroll()) {
-    .wave-docs-layout__sidebar-nav {
+    .wave-docs-layout__sidebar-scroll {
       scrollbar-width: none;
     }
 
-    .wave-docs-layout__sidebar-nav::-webkit-scrollbar {
+    .wave-docs-layout__sidebar-scroll::-webkit-scrollbar {
       display: none;
     }
 
@@ -3453,7 +3433,19 @@
      * fits declares a timeline with no scroll range, the animation does not
      * apply, and `opacity: 0` wins.
      */
+    /*
+     * ⚠️ THE TIMELINE IS DECLARED ON THE SCROLLER AND *SCOPED* UP TO THE PANEL,
+     * because the two are different elements now. A `scroll-timeline` name is
+     * visible to the declaring element's descendants, and these pseudo-elements
+     * belong to its parent — so without `timeline-scope` they would not find it
+     * and would sit at `opacity: 0` for ever, looking exactly like the feature
+     * being unsupported.
+     */
     .wave-docs-layout__sidebar-nav {
+      timeline-scope: --wave-docs-sidebar-nav-scroll;
+    }
+
+    .wave-docs-layout__sidebar-scroll {
       scroll-timeline: --wave-docs-sidebar-nav-scroll block;
     }
 
