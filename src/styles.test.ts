@@ -1011,31 +1011,31 @@ describe('tables', () => {
    * the cell, so it scrolls out from under a sticky header instead of staying
    * with it — which is why the thing that was here was a shadow.
    */
-  it('puts the header on the frame, and the card at the body', () => {
-    const head = readBlock(sheet, sheet.indexOf('.wave-docs-table thead th {'));
-    // The frame's own ground: this row is the panel's header slot, reached
-    // from the other side because `<thead>` cannot leave the `<table>`.
-    expect(head).toContain('--wave-docs-bg-subtle');
-    expect(head).not.toContain('box-shadow');
-    expect(head).not.toContain('border-block-end');
-    /*
-     * Painted rather than transparent: a sticky cell with no background shows
-     * the rows travelling underneath it the moment anything gives this table a
-     * height to scroll in.
-     */
-    expect(head).toContain('position: sticky');
+  /**
+   * ⚠️ THE TABLE DOES NOT WEAR `.wave-docs-panel`, AND IT DID FOR FIVE COMMITS.
+   *
+   * The panel — frame, header band, inset card — exists to separate *chrome*
+   * from *content*. "Where to go next" and a code frame both have chrome for
+   * that band: a title, a language, a copy button. A table's header row is
+   * data. Setting the body into a card away from its own header cost three
+   * vertical rules down each side, stopped the row dividers short of the box
+   * and narrowed the reading width, on the densest element on a page.
+   *
+   * What is kept is the outer radius, so a table and a code block still read as
+   * two of one family. This pins that: one frame, at the panel's radius.
+   */
+  it('draws one frame, at the panel radius rather than a panel', () => {
+    expect(scroll).toContain('border: 1px solid var(--wave-docs-border)');
+    expect(scroll).toContain('var(--wave-docs-radius-lg)');
+    expect(scroll).not.toContain('wave-docs-panel');
 
-    /*
-     * ⚠️ THE CARD IS THE CELLS, BECAUSE A `tbody` CANNOT BE ONE. Measured in a
-     * real engine, both ways: the separated model does not paint a row-group
-     * border at all, and the collapsing model paints it square. A cell is an
-     * ordinary box and takes a radius in either.
-     */
-    const corner = readBlock(
-      sheet,
-      sheet.indexOf('.wave-docs-table tbody tr:first-child'),
-    );
-    expect(corner).toContain('radius');
+    // With `border-collapse: collapse` a border belongs to the table rather
+    // than the cell, so it scrolls out from under a sticky header — which is
+    // why the header's own separator is a shadow.
+    const head = readBlock(sheet, sheet.indexOf('.wave-docs-table thead th {'));
+    expect(head).toContain('position: sticky');
+    expect(head).toContain('box-shadow: inset');
+    expect(head).not.toContain('border-block-end');
   });
 
   /**

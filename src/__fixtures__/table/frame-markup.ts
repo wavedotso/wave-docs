@@ -13,8 +13,7 @@
 
 /** Every class `createTable` puts on the frame, in one place. */
 export const TABLE_FRAME_CLASSES = {
-  frame: ['wave-docs-panel', 'wave-docs-table-frame'],
-  surface: ['wave-docs-panel__body', 'wave-docs-table-scroll'],
+  surface: ['wave-docs-table-scroll'],
   table: ['wave-docs-table'],
 } as const;
 
@@ -40,10 +39,8 @@ export function tableFrameMarkup(
     : attr(TABLE_FRAME_CLASSES.table);
 
   return [
-    `<div class="${attr(TABLE_FRAME_CLASSES.frame)}">`,
     `<section class="${attr(TABLE_FRAME_CLASSES.surface)}" aria-label="${label}" tabindex="0">`,
     `<table class="${classes}">${inner}</table>`,
     `</section>`,
-    `</div>`,
   ].join('');
 }

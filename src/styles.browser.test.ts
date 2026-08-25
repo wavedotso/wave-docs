@@ -214,56 +214,51 @@ describe('tables', () => {
     expect(getComputedStyle(scroll).overflowX).toBe('auto');
   });
 
-  it('wears the panel: one frame, set in on every side', () => {
+  it('draws one frame, and lets its dividers reach both edges', () => {
     /*
-     * The table is the third thing to wear `.wave-docs-panel`, after "where to
-     * go next" and the code frame, and that is the whole point of it — a
-     * table, a fence and a widget reading as three of one thing rather than
-     * three boxes that happen to be near each other.
-     */
-    const scroll = mountTable(API);
-    const frame = scroll.closest('.wave-docs-panel');
-    if (!(frame instanceof HTMLElement)) throw new Error('no panel frame');
-
-    const outer = getComputedStyle(frame);
-    const inner = getComputedStyle(scroll);
-
-    // The surface carries the border now, and so does the frame: two boxes,
-    // one gap, which is what makes the corners read as concentric.
-    expect(inner.borderTopWidth).toBe('1px');
-    expect(outer.borderTopWidth).toBe('1px');
-
-    // Inset by the frame's own border plus its padding, on all four sides —
-    // an asymmetry here is the frame drawing a margin rather than a band.
-    const gap =
-      Number.parseFloat(outer.borderTopWidth) +
-      Number.parseFloat(outer.paddingTop);
-    const f = frame.getBoundingClientRect();
-    const s = scroll.getBoundingClientRect();
-
-    expect(s.top - f.top).toBeCloseTo(gap, 1);
-    expect(f.bottom - s.bottom).toBeCloseTo(gap, 1);
-    expect(s.left - f.left).toBeCloseTo(gap, 1);
-    expect(f.right - s.right).toBeCloseTo(gap, 1);
-
-    /*
-     * Concentric: the inner radius is the outer one minus the frame's padding,
-     * or the two corners run at different curvatures and the surface reads as
-     * pasted onto the frame rather than set into it.
+     * ⚠️ THE TABLE DOES NOT WEAR `.wave-docs-panel`, AND IT DID.
      *
-     * ⚠️ MINUS THE PADDING, NOT MINUS THE WHOLE GAP — measured at 15px against
-     * a `gap` of 5. Strictly the surface's border box starts a *border* inside
-     * the frame's padding box too, so the geometric answer is one pixel less
-     * again: the same correction `--wave-docs-panel-inset` documents for the
-     * inline axis and does not make here. One pixel of curvature is below what
-     * a corner shows, so the tokens are the tokens; this pins which of the two
-     * arithmetics they are, so nobody "fixes" it in either direction by
-     * accident.
+     * The panel — frame, header band, inset card — separates *chrome* from
+     * *content*, and a table's header row is content. Setting the body into a
+     * card away from its own header put three vertical rules down each side,
+     * stopped the row dividers short of the box, and narrowed the reading
+     * width on the densest element on a page. Full-width dividers are what let
+     * an eye track a row across, and that is what this measures.
      */
-    expect(Number.parseFloat(inner.borderTopLeftRadius)).toBeCloseTo(
-      Number.parseFloat(outer.borderTopLeftRadius) -
-        Number.parseFloat(outer.paddingTop),
-      1,
+    const scroll = mountTable(
+      `<tbody>
+        <tr><td>alpha</td><td>one</td></tr>
+        <tr><td>beta</td><td>two</td></tr>
+      </tbody>`,
+    );
+
+    expect(scroll.closest('.wave-docs-panel')).toBeNull();
+    expect(getComputedStyle(scroll).borderTopWidth).toBe('1px');
+    /*
+     * The panel's outer radius, kept so a table and a code block still read as
+     * two of one family.
+     *
+     * ⚠️ THE TOKEN IS TEXT, NOT PIXELS. `getPropertyValue` hands back
+     * `1.1875rem` — the declaration as written — so comparing it to a computed
+     * `19px` fails against a rule that is correct. Convert, then compare.
+     */
+    const token = getComputedStyle(document.documentElement).getPropertyValue(
+      '--wave-docs-radius-lg',
+    );
+    expect(
+      Number.parseFloat(getComputedStyle(scroll).borderTopLeftRadius),
+    ).toBe(Number.parseFloat(token) * 16);
+
+    const rows = scroll.querySelectorAll('tbody tr');
+    const second = rows[1];
+    if (!(second instanceof HTMLElement)) throw new Error('need two rows');
+
+    // The divider is a border on the row, so the row's box is the divider's
+    // span: it reaches the table's full width rather than stopping at a card.
+    const table = scroll.querySelector('table') as HTMLElement;
+    expect(second.getBoundingClientRect().width).toBeCloseTo(
+      table.getBoundingClientRect().width,
+      0,
     );
   });
 

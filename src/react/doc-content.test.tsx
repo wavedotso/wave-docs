@@ -275,10 +275,5 @@ describe('markdown components', () => {
     );
     expect(html).toContain('aria-label="Table"');
     expect(html).toContain('tabindex="0"');
-    // And the frame around it, which is what makes a table, a code block and
-    // "where to go next" read as three of one thing.
-    expect(html).toContain(
-      `<div class="${TABLE_FRAME_CLASSES.frame.join(' ')}"`,
-    );
   });
 });
