@@ -296,12 +296,25 @@ function focusSelectors(rules: readonly StyleRule[]): string[] {
 }
 
 /**
- * Focus rules whose indicator is drawn by a different rule: the search input's
- * ring lives on the row around it, because a ring on a borderless full-width
+ * Focus rules whose indicator is not an outline in the rule itself.
+ *
+ * The input's own `outline: none` is covered by the row around it, which is
+ * where a ring would have to be drawn — one around a borderless full-width
  * input reads as an error state.
+ *
+ * ⚠️ AND THE ROW ITSELF IS HERE NOW, WHICH IS A DELIBERATE TRADE. A text input
+ * matches `:focus-visible` whenever it is focused, however focus arrived — that
+ * is the spec — and the dialog focuses its input the moment it opens. So an
+ * accent ring there was never a state; it was the field's permanent appearance,
+ * and it stopped the field looking like the bordered grey control the reader
+ * clicked to reach it. What indicates focus instead is the caret: the
+ * platform's own indication for a text box, present the whole time, and the
+ * thing a reader looks for to see where typing goes. The edge still changes to
+ * `border-strong`, so the appearance is not static either.
  */
 const INDICATOR_ELSEWHERE: ReadonlySet<string> = new Set([
   '.wave-docs-search-input:focus',
+  '.wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible)',
 ]);
 
 const RULES = readRules(sheet);
@@ -914,14 +927,35 @@ describe('focus indicators', () => {
     expect(declared).toContain('.wave-docs-prose .shiki:focus-visible');
   });
 
-  it('puts the search input ring on the row around it', () => {
-    // Every computed property of `.wave-docs-search-input` was byte-identical
-    // focused and unfocused, and the comment's premise — that the dialog frame
-    // is the indicator — was a static 1.31:1 border that does not change on
-    // focus.
-    expect(declared).toContain(
-      '.wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible)',
+  /**
+   * ⚠️ THE FIELD DARKENS ITS EDGE ON FOCUS RATHER THAN DRAWING A RING, AND THE
+   * REASON IS THAT IT COULD NEVER PUT ONE DOWN.
+   *
+   * A text input matches `:focus-visible` whenever it is focused, and this
+   * dialog focuses its input on open — so an accent ring was the field's
+   * permanent appearance rather than a state, and the field could not look like
+   * the bordered grey trigger the reader clicked. The caret is the indicator; a
+   * static border was the answer this replaced and indicated nothing, so the
+   * edge still has to *change*.
+   */
+  it("changes the search field's edge on focus rather than ringing it", () => {
+    const rule = RULES.find(
+      (candidate) =>
+        candidate.prelude ===
+        '.wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible)',
     );
+    expect(rule, 'the field has no focus rule at all').toBeDefined();
+
+    const block = readBlock(sheet, rule?.at ?? 0);
+    expect(block).toContain('border-color: var(--wave-docs-border-strong)');
+    expect(block).not.toContain('outline:');
+
+    // And the resting edge is a different colour, or nothing changes.
+    const base = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-search-input-row {'),
+    );
+    expect(base).toContain('border: 1px solid var(--wave-docs-border)');
   });
 
   /**
@@ -974,42 +1008,41 @@ describe('focus indicators', () => {
 
   /**
    * ⚠️ THE ACTIVE RESULT IS MARKED BY MORE THAN ITS TINT, AND WHAT CARRIES THAT
-   * HAS BEEN THREE THINGS.
+   * HAS BEEN FOUR THINGS.
    *
    * Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one — so
-   * the active class is the only indication of where the keyboard is. It was a
-   * 2px accent ring, which read as a component borrowed from somewhere else and
-   * came and went as a reader arrowed. It was briefly the trigger's border pair,
-   * which meant bordering *every* row to make one edge legible — a list turned
-   * into a stack of cards. It is a tint and an ink now.
+   * the active class is the only indication of where the keyboard is. A 2px
+   * accent ring read as a component borrowed from somewhere else and came and
+   * went as a reader arrowed. The trigger's border pair meant bordering *every*
+   * row to make one edge legible, turning a list into a stack of cards. An
+   * accent tint was the same colour family as the field above it. It is the
+   * table header's grey now.
    *
-   * ⚠️ AND THE INK IS THE PART THAT KEEPS THE STATE PERCEIVABLE. A tint alone is
-   * 1.12:1, under the 3:1 WCAG 1.4.11 asks of a state indicator; `accent` on
-   * `accent-subtle` is 4.60:1 light and 6.30:1 dark, which is text contrast
-   * rather than non-text and is the pair the sidebar's current-page row ships.
-   * What this forbids is the tint being left to carry the state alone.
+   * ⚠️ AND `bg-subtle` ON `bg` IS ABOUT 1.02:1, SO THE TINT IS A HINT AND NOT
+   * AN INDICATOR. The marker going `fg-subtle` to `fg` is the part that carries
+   * the state — text contrast rather than non-text, and the sidebar's own
+   * hover. What this forbids is the tint being left to carry it alone.
    */
   it('marks the active search result with more than a tint', () => {
     const active = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-search-result-active {'),
     );
-    expect(active).toContain('background: var(--wave-docs-accent-subtle)');
+    expect(active).toContain('background: var(--wave-docs-bg-subtle)');
 
     const ink = RULES.filter(
       (rule) =>
         rule.prelude.includes('.wave-docs-search-result-active') &&
-        rule.prelude.includes('.wave-docs-search-result-heading'),
+        rule.prelude.includes('.wave-docs-search-result-icon'),
     );
-    expect(ink, 'the active heading takes no accent ink').toHaveLength(1);
+    expect(ink, 'the active marker takes no ink of its own').toHaveLength(1);
     expect(readBlock(sheet, ink[0]?.at ?? 0)).toContain(
-      'color: var(--wave-docs-accent)',
+      'color: var(--wave-docs-fg)',
     );
 
     /*
      * A row is a list item and its state is a colour; the field above it is a
-     * control and wears the trigger's border. Bordering rows to mark one of
-     * them is what turned the list into a stack of cards.
+     * control and wears the trigger's border.
      */
     const base = readBlock(sheet, sheet.indexOf('.wave-docs-search-result {'));
     expect(base).not.toContain('border:');

@@ -15,22 +15,40 @@ returns without opening anything. The one place that needed teaching is the
 arrow keys: they wrap modulo the list, and `(-1 - 1 + n) % n` is the *second to
 last*, so Up from a fresh query landed one short of the end.
 
-**The active row is a tint and an ink**, easing on the same 150ms the sidebar's
-rows use. Moving the pointer over a result activates it, so hovering *is* this
-state; there is no second rule for it.
+**The active row is the table header's grey**, easing on the same 150ms the
+sidebar's rows use. Moving the pointer over a result activates it, so hovering
+*is* this state; there is no second rule for it.
 
-It was a 2px accent ring, and briefly the trigger's border pair. The ring read as
-a component borrowed from somewhere else, and one that comes and goes as a reader
-arrows is worse than one that never moves; the border pair meant bordering
-*every* row to make one edge legible, which turns a list into a stack of cards. A
-row is a list item and its state is a colour — the field above it is a control,
-and that is what wears the trigger's border.
+It has been four things: a 2px accent ring, which read as a component borrowed
+from somewhere else and came and went as a reader arrowed; the trigger's border
+pair, which meant bordering *every* row to make one edge legible and turned a
+list into a stack of cards; an accent tint, which was the same colour family as
+the field above it. A row is a list item and its state is a colour — the field is
+a control, and that is what wears the trigger's border.
 
-⚠️ THE INK IS NOT DECORATION, IT IS WHAT KEEPS THE STATE PERCEIVABLE. A tint
-alone is 1.12:1 light and 1.19:1 dark, under the 3:1 WCAG 1.4.11 asks of a state
-indicator. `accent` on `accent-subtle` is 4.60:1 / 6.30:1 — text contrast rather
-than non-text, and the same pair the sidebar's current-page row has always
-shipped. What must not happen is the tint carrying this alone.
+⚠️ `bg-subtle` ON `bg` IS ABOUT 1.02:1, SO THE TINT IS A HINT AND NOT AN
+INDICATOR. The marker going `fg-subtle` to `fg` is the part that carries the
+state — text contrast rather than non-text, and the sidebar's own hover. What
+must not happen is the tint being left to carry it alone.
+
+## The field stops drawing a ring it could never put down
+
+⚠️ A TEXT INPUT MATCHES `:focus-visible` WHENEVER IT IS FOCUSED, HOWEVER FOCUS
+ARRIVED — that is the spec, not a heuristic — and this dialog focuses its input
+the moment it opens. So the accent ring was not a state, it was the field's
+permanent appearance, and it stopped the field looking like the bordered grey
+control the reader clicked to get there.
+
+The edge darkens to `--wave-docs-border-strong` instead, which is what the
+trigger does under the pointer, so the field is the trigger in both of its
+states.
+
+⚠️ AND THE INDICATOR IS NOT LOST WITH IT, BECAUSE A TEXT FIELD HAS ONE OF ITS
+OWN. The caret is the platform's focus indication for a text box, it is in this
+field the whole time the dialog is open, and it is what a reader looks for to see
+where typing goes. That is a different argument from the one this rule used to
+reject: "the dialog frame is the indicator" was a *static* border that looked
+identical focused and unfocused, and indicated nothing. This edge changes.
 
 ## The list fades at both edges
 

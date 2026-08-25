@@ -3968,16 +3968,29 @@
     background: var(--wave-docs-bg-subtle);
   }
 
-  /* The ring belongs to the row, not the input. A 2px ring drawn around a
-   * borderless full-width input reads as an error state, and the previous
-   * answer — "the dialog frame is the indicator" — was a static 1.31:1 border
-   * that looks identical focused and unfocused (WCAG 2.4.7 wants a change of
-   * appearance, 1.4.11 wants 3:1; `accent` on `bg` is 5.16:1 / 7.50:1).
-   * `outline-offset: -2px` draws it inward, because the dialog clips with
-   * `overflow: hidden` and an outward ring would be sliced off. */
+  /*
+   * ⚠️ THE FIELD DARKENS ITS EDGE ON FOCUS — IT DOES NOT DRAW AN ACCENT RING,
+   * AND IT CANNOT, BECAUSE IT COULD NEVER PUT ONE DOWN.
+   *
+   * A text input matches `:focus-visible` whenever it is focused, however
+   * focus arrived — that is the spec, not a heuristic — and this dialog focuses
+   * its input the moment it opens. So a 2px accent ring here is not a state, it
+   * is the field's permanent appearance, and the field stops looking like the
+   * bordered grey control the reader clicked to get here.
+   *
+   * ⚠️ AND THE INDICATOR IS NOT LOST WITH IT, BECAUSE A TEXT FIELD HAS ONE OF
+   * ITS OWN. The caret is the platform's focus indication for a text box, it is
+   * in this field the whole time the dialog is open, and it is the thing a
+   * reader looks for when they want to know where typing goes. That is a
+   * different argument from the one this rule used to reject — "the dialog
+   * frame is the indicator" was a *static* border that looked identical focused
+   * and unfocused, indicating nothing.
+   *
+   * The edge still changes, to the same `border-strong` the trigger takes under
+   * the pointer, so the field is the trigger in both of its states.
+   */
   .wave-docs-search-input-row:has(.wave-docs-search-input:focus-visible) {
-    outline: 2px solid var(--wave-docs-accent);
-    outline-offset: -2px;
+    border-color: var(--wave-docs-border-strong);
   }
 
   .wave-docs-search-input {
@@ -4212,20 +4225,18 @@
    * field above wears the trigger's border because the field is a control; a
    * row is a list item, and its state is a colour.
    *
-   * ⚠️ THE INK IS NOT DECORATION — IT IS WHAT KEEPS THE STATE PERCEIVABLE. A
-   * tint alone is 1.12:1 light and 1.19:1 dark, under the 3:1 WCAG 1.4.11 asks
-   * of a state indicator. `accent` on `accent-subtle` is 4.60:1 / 6.30:1, which
-   * is text contrast rather than non-text, and is the same pair the sidebar's
-   * current-page row has always shipped. What must not happen is the tint going
-   * back to carrying this alone.
+   * ⚠️ THE MARKER'S INK IS NOT DECORATION — IT IS WHAT KEEPS THE STATE
+   * PERCEIVABLE. `bg-subtle` on `bg` is about 1.02:1, so the tint is a hint and
+   * not an indicator; the marker going `fg-subtle` to `fg` is the part that
+   * carries it, which is text contrast rather than non-text and is the
+   * sidebar's own hover. What must not happen is the tint being left alone.
    */
   .wave-docs-search-result-active {
-    background: var(--wave-docs-accent-subtle);
+    background: var(--wave-docs-bg-subtle);
   }
 
-  .wave-docs-search-result-active .wave-docs-search-result-heading,
   .wave-docs-search-result-active .wave-docs-search-result-icon {
-    color: var(--wave-docs-accent);
+    color: var(--wave-docs-fg);
   }
 
   /*
