@@ -51,6 +51,16 @@ two literals that must agree are two literals that drift. The gradient is radial
 the shape the table and the search list use — strongest against the edge it
 belongs to rather than a flat ramp across the band.
 
+⚠️ AND THE NAV'S FADE IS A LENGTH, NOT A PERCENTAGE OF THE SCROLL. The table's
+keyframes shape their fade in percentages, which are percentages of the
+container's *total* scroll range — fine on a table, wrong on a navigation. A nav
+with 1000px of scroll turns the same `2%…8%` into 20px…80px, so the shadow spends
+eighty pixels of scrolling arriving at full strength, which reads exactly like it
+is moving with the content rather than pinned to the edge. `animation-range: 0
+1rem` makes it the same short distance whatever the nav's height, identical on a
+six-page site and a three-hundred-page one, with plain fades for keyframes
+because the shaping now lives in the range.
+
 ⚠️ THE SCROLLBAR IS HIDDEN ONLY WHERE THE SHADOW EXISTS. Both live in the same
 `@supports (animation-timeline: scroll())`, so Firefox — where scroll-driven
 animations have not shipped — keeps the thin bar rather than losing the bar and

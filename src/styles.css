@@ -3440,12 +3440,51 @@
       animation-fill-mode: both;
     }
 
+    /*
+     * ⚠️ THE RANGE IS A LENGTH, NOT THE WHOLE SCROLL — AND THAT IS WHAT STOPS
+     * THIS RAMPING WHILE THE READER SCROLLS.
+     *
+     * `wave-docs-scroll-shadow-start` shapes its fade in *percentages*, which
+     * are percentages of the container's total scroll range. That is fine on a
+     * table, which scrolls a few hundred pixels; on a navigation it is not. A
+     * nav with 1000px of scroll turns the same `2%…8%` into 20px…80px, so the
+     * shadow spends eighty pixels of scrolling getting to full strength —
+     * arriving gradually, which reads exactly like it is moving with the
+     * content rather than pinned to the edge.
+     *
+     * A fixed `1rem` makes it the same short distance whatever the nav's
+     * height: present almost at once, and identical on a six-page site and a
+     * three-hundred-page one. The keyframes are plain fades because the shaping
+     * now lives in the range.
+     */
     .wave-docs-layout__sidebar-nav::before {
-      animation-name: wave-docs-scroll-shadow-start;
+      animation-name: wave-docs-scroll-shadow-appear;
+      animation-range: 0 1rem;
     }
 
     .wave-docs-layout__sidebar-nav::after {
-      animation-name: wave-docs-scroll-shadow-end;
+      animation-name: wave-docs-scroll-shadow-vanish;
+      animation-range: calc(100% - 1rem) 100%;
+    }
+  }
+
+  /* Absent at the start edge, present as soon as it is not. */
+  @keyframes wave-docs-scroll-shadow-appear {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  /* Present until the end edge is reached. */
+  @keyframes wave-docs-scroll-shadow-vanish {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
     }
   }
 
