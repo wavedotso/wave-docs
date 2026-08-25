@@ -286,7 +286,22 @@ export function SearchDialog({
    * not itself cause a render.
    */
   const movedByKeyboard = useRef(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  /*
+   * ⚠️ `-1` IS "NOTHING SELECTED", AND IT IS THE STARTING STATE ON PURPOSE.
+   *
+   * Typing used to light the first result the instant it arrived, so a reader
+   * watching the list saw a row change under them for something they had not
+   * chosen — and on this package's own accent that read as a decision already
+   * made. Selection is now something the reader does: an arrow key, or the
+   * pointer moving over a row.
+   *
+   * ⚠️ AND EVERY GUARD FOR IT WAS ALREADY THERE, WHICH IS WHY THIS IS ONE
+   * NUMBER. `hits[-1]` is `undefined`, so `activeHit` is undefined, so no
+   * `aria-activedescendant` is written and Enter returns without opening
+   * anything. The one place that needed teaching is the arrow keys, which
+   * wrap modulo the list and would otherwise land on the second-to-last.
+   */
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [status, setStatus] = useState<IndexStatus>('idle');
   /**
    * The trigger's shortcut, split rather than held as one string.
@@ -474,7 +489,7 @@ export function SearchDialog({
     if (isOpen) return;
     setQuery('');
     setHits([]);
-    setActiveIndex(0);
+    setActiveIndex(-1);
   }, [isOpen]);
 
   useEffect(() => {
@@ -483,7 +498,7 @@ export function SearchDialog({
     // the index, no search, no results. The status line says why.
     if (trimmed.length < minQueryLength) {
       setHits([]);
-      setActiveIndex(0);
+      setActiveIndex(-1);
       setVisibleCount(pageSize);
       return;
     }
@@ -496,7 +511,7 @@ export function SearchDialog({
           setStatus('ready');
           // Every match, uncapped. `visibleCount` decides what is rendered.
           setHits(index.search(trimmed).map(toSearchHit).filter(isSearchHit));
-          setActiveIndex(0);
+          setActiveIndex(-1);
           setVisibleCount(pageSize);
         },
         () => {
@@ -625,7 +640,17 @@ export function SearchDialog({
       event.preventDefault();
       const delta = event.key === 'ArrowDown' ? 1 : -1;
       movedByKeyboard.current = true;
-      setActiveIndex((index) => (index + delta + hits.length) % hits.length);
+      setActiveIndex((index) => {
+        /*
+         * ⚠️ FROM "NOTHING SELECTED" THE WRAP IS WRONG, AND ONLY UPWARDS.
+         * `(-1 + 1 + n) % n` is 0, so ArrowDown already lands on the first
+         * row — but `(-1 - 1 + n) % n` is `n - 2`, which is the *second to
+         * last*. A reader pressing Up from a fresh query expects the end of
+         * the list, not one before it.
+         */
+        if (index < 0) return delta > 0 ? 0 : hits.length - 1;
+        return (index + delta + hits.length) % hits.length;
+      });
       return;
     }
     /*

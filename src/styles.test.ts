@@ -972,16 +972,37 @@ describe('focus indicators', () => {
     }
   });
 
+  /**
+   * ⚠️ THE ACTIVE RESULT IS MARKED BY MORE THAN ITS TINT, AND WHAT CARRIES
+   * THAT CHANGED.
+   *
+   * Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one — so
+   * the active class is the only indication of where the keyboard is. It used
+   * to be a 2px accent outline, on the argument that a tint alone is 1.12:1
+   * and WCAG 1.4.11 asks 3:1 of a state indicator. The ring is gone because it
+   * read as a component borrowed from somewhere else; the *ink* carries it
+   * now, which is what the sidebar's current-page row has always done —
+   * `accent` on `accent-subtle`, 4.60:1 light and 6.30:1 dark.
+   *
+   * What this forbids is the tint going back to carrying the state alone.
+   */
   it('marks the active search result with more than a tint', () => {
-    // Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one —
-    // so the active class is the only indication of where the keyboard is, and
-    // `.wave-docs-search-result-link:focus-visible` was dead CSS.
     const active = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-search-result-active {'),
     );
-    expect(active).toContain('outline: 2px solid var(--wave-docs-accent)');
-    expect(active).toContain('outline-offset: -2px');
+    expect(active).toContain('background: var(--wave-docs-accent-subtle)');
+
+    const ink = RULES.filter(
+      (rule) =>
+        rule.prelude.includes('.wave-docs-search-result-active') &&
+        rule.prelude.includes('.wave-docs-search-result-heading'),
+    );
+    expect(ink, 'the active heading takes no accent ink').toHaveLength(1);
+    expect(readBlock(sheet, ink[0]?.at ?? 0)).toContain(
+      'color: var(--wave-docs-accent)',
+    );
+
     expect(sheet).not.toContain('.wave-docs-search-result-link:focus-visible');
   });
 });

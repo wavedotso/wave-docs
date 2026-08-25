@@ -70,7 +70,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | | At most |
 | --- | --- |
 | Everything the quick start ships, gzipped | 14.8 KB |
-| Search dialog and router wiring | 9.7 KB |
+| Search dialog and router wiring | 9.8 KB |
 | Navigation: one sidebar, open and closed | 3.1 KB |
 | Table of contents | 1 KB |
 | Copy-button runtime | 1.1 KB |

@@ -341,11 +341,35 @@ describe('SearchDialog', () => {
   });
 
   describe('keyboard selection', () => {
+    /**
+     * ⚠️ NOTHING IS SELECTED UNTIL THE READER SELECTS IT, AND THE FIRST ROW
+     * USED TO LIGHT UP THE INSTANT RESULTS ARRIVED.
+     *
+     * A row changing under a reader for something they had not chosen reads as
+     * a decision already made. `activeIndex` starts at `-1`, `hits[-1]` is
+     * `undefined`, and every guard that existed for "no results yet" already
+     * covers it: no `aria-activedescendant` is written, and Enter opens
+     * nothing.
+     */
+    it('selects nothing until a key or a pointer says so', async () => {
+      const { user, trigger } = renderDialog();
+      const input = await search(user, trigger, 'install');
+      const options = screen.getAllByRole('option');
+      expect(options.length).toBeGreaterThan(1);
+
+      expect(input).not.toHaveAttribute('aria-activedescendant');
+      for (const option of options) {
+        expect(option).toHaveAttribute('aria-selected', 'false');
+      }
+    });
+
     it('tracks the selected option in aria-activedescendant', async () => {
       const { user, trigger } = renderDialog();
       const input = await search(user, trigger, 'install');
       const options = screen.getAllByRole('option');
       expect(options.length).toBeGreaterThan(1);
+
+      await user.keyboard('{ArrowDown}');
 
       expect(input).toHaveAttribute('aria-activedescendant', options[0]?.id);
       expect(options[0]).toHaveAttribute('aria-selected', 'true');
@@ -355,6 +379,24 @@ describe('SearchDialog', () => {
       expect(input).toHaveAttribute('aria-activedescendant', options[1]?.id);
       expect(options[1]).toHaveAttribute('aria-selected', 'true');
       expect(options[0]).toHaveAttribute('aria-selected', 'false');
+    });
+
+    /**
+     * ⚠️ UP FROM "NOTHING SELECTED" IS THE END OF THE LIST, AND THE MODULO
+     * ARITHMETIC ALONE GETS IT WRONG. `(-1 - 1 + n) % n` is `n - 2` — the
+     * second to last — which is why the arrow handler special-cases `-1`.
+     */
+    it('reaches the last result with one Up from a fresh query', async () => {
+      const { user, trigger } = renderDialog();
+      const input = await search(user, trigger, 'install');
+      const options = screen.getAllByRole('option');
+
+      await user.keyboard('{ArrowUp}');
+
+      expect(input).toHaveAttribute(
+        'aria-activedescendant',
+        options[options.length - 1]?.id,
+      );
     });
 
     it('wraps at both ends of the list', async () => {
@@ -377,6 +419,9 @@ describe('SearchDialog', () => {
       // `keyboard` matches exactly one record, so the href is unambiguous.
       await search(user, trigger, 'keyboard');
 
+      // Nothing is selected until the reader selects it, so Enter alone opens
+      // nothing — the arrow is the choice.
+      await user.keyboard('{ArrowDown}');
       await user.keyboard('{Enter}');
 
       expect(navigate).toHaveBeenCalledWith('/docs/guide/search#shortcuts');
@@ -843,6 +888,12 @@ describe('SearchDialog', () => {
       );
 
       expect(screen.getAllByRole('option')).toHaveLength(1);
+      /*
+       * Two, not one: the first lands on the row already rendered, because
+       * nothing is selected until a key says so. The second is the one that
+       * walks past the window.
+       */
+      await user.keyboard('{ArrowDown}');
       await user.keyboard('{ArrowDown}');
 
       await waitFor(() => {
@@ -1088,6 +1139,7 @@ describe('SearchDialog', () => {
 
       expect(fetchMock).toHaveBeenCalledWith(FR_INDEX_URL);
       expect(screen.getAllByRole('option')).toHaveLength(1);
+      await user.keyboard('{ArrowDown}');
       await user.keyboard('{Enter}');
       expect(navigate).toHaveBeenCalledWith('/fr/docs/guide/install');
     });

@@ -104,6 +104,8 @@ describe('DocsSearch', () => {
     render(<DocsSearch indexUrl={INDEX_URL} />);
 
     await search(user);
+    // Nothing is selected until the reader selects it.
+    await user.keyboard('{ArrowDown}');
     await user.keyboard('{Enter}');
 
     expect(push).toHaveBeenCalledWith('/docs/guide/search#shortcuts');
