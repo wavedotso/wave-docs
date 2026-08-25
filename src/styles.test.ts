@@ -491,6 +491,60 @@ describe('the copy button', () => {
   });
 });
 
+describe('the radius tiers', () => {
+  /**
+   * ⚠️ WHICH RADIUS A BOX TAKES IS DECIDED BY WHAT KIND OF BOX IT IS, NOT BY
+   * HOW BIG IT HAPPENS TO BE — AND THE BLOCK TIER WAS SPLIT.
+   *
+   * Callouts, images and embeds sat at the base radius while a code frame and a
+   * table sat at `-lg`, which was 19px. Two blocks a paragraph apart disagreed
+   * by eleven pixels, and a table read as aggressively round next to the
+   * callout above it. 19 was measured off a reference site, which is a fine way
+   * to pick a number and a bad way to pick a system.
+   *
+   * This is the list. A new block in the reading flow belongs on it; a new
+   * *control* does not, and that is the distinction to defend.
+   */
+  it.each([
+    '.wave-docs-callout',
+    '.wave-docs-image',
+    '.wave-docs-youtube',
+    '.wave-docs-prose pre:not(.shiki)',
+    '.wave-docs-table-scroll',
+    '.wave-docs-panel',
+  ])('gives %s the block radius', (selector) => {
+    const block = readBlock(sheet, sheet.indexOf(`${selector} {`));
+    expect(block).toContain('border-radius: var(--wave-docs-radius-lg)');
+  });
+
+  /**
+   * The panel's inset surface is the frame minus the frame's padding, or the
+   * corners run at different curvatures and the surface reads as pasted onto
+   * the frame rather than set into it. `12 - 4 = 8` is the base radius, which
+   * is why there is no token of its own for it any more: a
+   * `--wave-docs-radius-panel` whose only job is to be another token minus a
+   * constant is a number that can drift from its own definition.
+   */
+  it('derives the panel surface from the frame rather than declaring it', () => {
+    const body = readBlock(sheet, sheet.indexOf('.wave-docs-panel__body {'));
+    expect(body).toContain('border-radius: var(--wave-docs-radius)');
+    expect(sheet).not.toContain('--wave-docs-radius-panel');
+
+    const frame = Number.parseFloat(
+      /--wave-docs-radius-lg:\s*([\d.]+)rem/.exec(sheet)?.[1] ?? '0',
+    );
+    const surface = Number.parseFloat(
+      /--wave-docs-radius:\s*([\d.]+)rem/.exec(sheet)?.[1] ?? '0',
+    );
+    const padding = Number.parseFloat(
+      /\.wave-docs-panel\s*\{[^}]*padding:\s*([\d.]+)rem/.exec(sheet)?.[1] ??
+        '0',
+    );
+
+    expect(frame - padding).toBeCloseTo(surface, 4);
+  });
+});
+
 describe('the cascade contract', () => {
   it('declares nothing outside a @layer', () => {
     const top = RULES.filter((rule) => rule.depth === 0);

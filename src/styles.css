@@ -142,14 +142,33 @@
      * no shadow, so the dark ramp deepens it rather than reusing it. */
     --wave-docs-shadow: oklch(0 0 0 / 0.3);
 
+    /*
+     * Three radii, and which one a box takes is decided by what kind of box it
+     * is rather than by how big it happens to be.
+     *
+     * `-sm` (6px) is inline: a `<kbd>`, an inline `<code>` chip, a small
+     * control, a focus ring drawn around one of those.
+     *
+     * The base (8px) is controls and overlays — a button, the search trigger,
+     * the search dialog — and the panel's *inset surface*, which is the same
+     * number for a reason: the frame is 12px and holds 4px of padding, so
+     * `12 - 4 = 8` and the card's corner is concentric with the frame's. A
+     * `--wave-docs-radius-panel` used to hold that value separately; it was one
+     * token whose only job was to be another token minus the padding.
+     *
+     * `-lg` (12px) is every block in the reading flow: a callout, an image, a
+     * video, a table, a code frame framed or not, and the panel's outer edge.
+     *
+     * ⚠️ THAT LAST GROUP WAS SPLIT, AND THAT IS WHAT THIS FIXES. Callouts,
+     * images and embeds sat at the base radius while a code frame sat at 19px,
+     * so two blocks a paragraph apart disagreed by eleven pixels. 19 was
+     * measured off developers.uniswap.org, which is a fine way to pick a number
+     * and a bad way to pick a *system*: it made a table read as aggressively
+     * round next to the callout above it.
+     */
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
-    /* The panel's outer corner: 19px, and its surface is 15px inside 4px of
-     * padding. Measured off developers.uniswap.org rather than derived — the
-     * arithmetic (19 - 4 = 15) is the same rule this file already followed,
-     * which is how the numbers were checked rather than guessed. */
-    --wave-docs-radius-lg: 1.1875rem;
-    --wave-docs-radius-panel: 0.9375rem;
+    --wave-docs-radius-lg: 0.75rem;
     /* The shell. These five plus `--wave-docs-measure` are the whole settable
      * layout surface; the gutter and the drawer width are literals, because each
      * appears once and an ordinary override is already the cleanest tool for
@@ -700,7 +719,7 @@
   .wave-docs-image {
     max-width: 100%;
     height: auto;
-    border-radius: var(--wave-docs-radius);
+    border-radius: var(--wave-docs-radius-lg);
   }
 
   /* Inline code only. `.shiki` owns everything inside a `<pre>`. */
@@ -1426,7 +1445,7 @@
   .wave-docs-prose pre:not(.shiki) {
     padding: 1rem 1.125rem;
     border: 1px solid var(--wave-docs-border);
-    border-radius: var(--wave-docs-radius);
+    border-radius: var(--wave-docs-radius-lg);
     background-color: var(--wave-docs-code-block-bg);
     overflow-x: auto;
     font-family: var(--wave-docs-font-mono);
@@ -1532,7 +1551,7 @@
     padding: 0.875rem 1rem;
     border: 1px solid color-mix(in oklab, var(--callout-accent) 35%, transparent);
     border-inline-start: 3px solid var(--callout-accent);
-    border-radius: var(--wave-docs-radius);
+    border-radius: var(--wave-docs-radius-lg);
     background: var(--callout-bg);
   }
 
@@ -1585,7 +1604,7 @@
     position: relative;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    border-radius: var(--wave-docs-radius);
+    border-radius: var(--wave-docs-radius-lg);
     background: oklch(0 0 0);
   }
 
@@ -2164,7 +2183,9 @@
   .wave-docs-panel__body {
     /* See the radius note above: outer minus this box's inset. */
     border: 1px solid var(--wave-docs-border);
-    border-radius: var(--wave-docs-radius-panel);
+    /* The frame minus its padding: 12 - 4 = 8, which is the base radius. See
+     * the token block for why that is one number and not two. */
+    border-radius: var(--wave-docs-radius);
     /*
      * ⚠️ THE DEFAULT LIVES IN THE FALLBACK, NOT IN A DECLARATION ON
      * `.wave-docs-panel` — AND THAT IS THE WHOLE FIX, TWICE OVER.
