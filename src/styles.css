@@ -2251,7 +2251,18 @@
     margin: 0;
     min-width: 0;
     color: var(--wave-docs-fg);
-    font-size: 0.875rem;
+    /*
+     * ⚠️ THE TABLE HEADER'S SIZE, DELIBERATELY — they are the same kind of
+     * thing and a page shows both. This and a `<th>` are the label a reader's
+     * eye lands on before the content under it, and 14px against the table's
+     * 15px read as two different levels rather than as one. `styles.test.ts`
+     * pins the pair, because two literals that have to agree are two literals
+     * that drift.
+     *
+     * The weight does not follow. A panel title names the block; a column
+     * header names a column inside one, so the title sits one step heavier.
+     */
+    font-size: 0.9375rem;
     font-weight: 650;
     letter-spacing: -0.005em;
   }

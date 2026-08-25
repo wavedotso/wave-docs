@@ -491,6 +491,45 @@ describe('the copy button', () => {
   });
 });
 
+describe('the label sizes', () => {
+  /**
+   * ⚠️ A PANEL TITLE AND A COLUMN HEADER ARE THE SAME SIZE, AND A PAGE SHOWS
+   * BOTH.
+   *
+   * "Where to go next" and `Enforced by` are the same kind of thing: the label
+   * a reader's eye lands on before the content under it. At 14px against the
+   * table's 15px they read as two different levels rather than as one.
+   *
+   * Pinned rather than tokenised: one shared value across two components does
+   * not earn a token, but two literals that have to agree are two literals that
+   * drift, so this is the thing that notices.
+   */
+  it('sizes a panel title like a column header', () => {
+    const title = readBlock(sheet, sheet.indexOf('.wave-docs-panel__title {'));
+    const table = readBlock(sheet, sheet.indexOf('.wave-docs-table {'));
+
+    const size = (block: string): string | undefined =>
+      /font-size:\s*([^;]+);/.exec(block)?.[1]?.trim();
+
+    expect(size(title)).toBeDefined();
+    expect(size(title)).toBe(size(table));
+  });
+
+  /**
+   * The weight does not follow. A panel title names the block; a column header
+   * names a column inside one, so the title sits one step heavier.
+   */
+  it('keeps the title a step heavier than the header', () => {
+    const title = readBlock(sheet, sheet.indexOf('.wave-docs-panel__title {'));
+    const header = readBlock(sheet, sheet.indexOf('.wave-docs-table th {'));
+
+    const weight = (block: string): number =>
+      Number.parseInt(/font-weight:\s*(\d+)/.exec(block)?.[1] ?? '0', 10);
+
+    expect(weight(title)).toBeGreaterThan(weight(header));
+  });
+});
+
 describe('the radius tiers', () => {
   /**
    * ⚠️ WHICH RADIUS A BOX TAKES IS DECIDED BY WHAT KIND OF BOX IT IS, NOT BY
