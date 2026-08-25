@@ -2185,7 +2185,6 @@
     .wave-docs-search-result-icon {
       transition:
         background-color 150ms ease-out,
-        border-color 150ms ease-out,
         color 150ms ease-out;
     }
 
@@ -4121,14 +4120,32 @@
     flex: 1 1 auto;
     overflow-y: auto;
     /*
-     * Bordered rows need air between them, or two adjacent edges read as one
-     * doubled line. A column with a gap rather than margins on the rows: a gap
-     * does not collapse, and does not appear above the first row, which is
-     * where the field's own margin already pays.
+     * ⚠️ A MASK ON THE SCROLLPORT, WHICH IS WHY IT DOES NOT SCROLL WITH THE
+     * ROWS. A mask paints against the element's own box, so these two stops
+     * stay at the top and bottom edges of the *port* while the content travels
+     * under them — which is the whole point: the row being cut off is the one
+     * that fades.
+     *
+     * ⚠️ LINEAR, NOT RADIAL. A radial gradient fades outward from a centre, so
+     * the corners of the list would go before its edges did; the cut being
+     * softened here is a horizontal line at the top and another at the bottom,
+     * and that is what a linear stop pair draws.
+     *
+     * ⚠️ AND IT IS UNCONDITIONAL, WHICH IS THE ONE THING TO KNOW ABOUT IT. CSS
+     * cannot ask "is there anything above this to scroll to" — the table's
+     * shadow answers that with a scroll-driven animation, whose timeline goes
+     * inactive when there is no overflow. A mask has no equivalent, so the
+     * first and last rows carry a little of this even at rest. At `1.25rem`
+     * against a row nearer three times that, what it costs is the top pixel or
+     * two of a heading and what it buys is that no row is ever guillotined.
      */
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 1.25rem,
+      #000 calc(100% - 1.25rem),
+      transparent 100%
+    );
     /*
      * ⚠️ NO PADDING ON TOP, BECAUSE THE FIELD'S MARGIN IS ALREADY THAT GAP.
      * Both paid it, so the space between the input and the first result was
@@ -4177,27 +4194,8 @@
     display: none;
   }
 
-  /*
-   * ⚠️ EVERY ROW IS THE SAME OBJECT AS THE FIELD ABOVE IT — light ground, grey
-   * edge — AND THE ACTIVE ONE DARKENS ITS EDGE RATHER THAN GAINING A RING.
-   *
-   * This is the trigger's own pair of states: `--wave-docs-border` at rest and
-   * `--wave-docs-border-strong` under the pointer. A reader clicks a bordered,
-   * filled control, lands in a bordered, filled field, and picks from a list of
-   * bordered, filled rows; nothing in the dialog is a different kind of thing
-   * from anything else in it.
-   *
-   * ⚠️ THE EDGE IS A CHANGE, NOT A CONTRAST CARRIER, AND THAT IS WORTH WRITING
-   * DOWN. `border-strong` on `bg-subtle` is about 1.9:1 — under the 3:1 WCAG
-   * 1.4.11 asks of a state indicator — so the marker carries the rest: it goes
-   * from `fg-subtle` to `fg`, which is the sidebar's own hover and is text
-   * contrast rather than non-text. What must not happen is the edge being left
-   * to do this alone.
-   */
   .wave-docs-search-result {
-    border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius-sm);
-    background: var(--wave-docs-bg-subtle);
   }
 
   /*
@@ -4206,25 +4204,28 @@
    * Pointer and keyboard land on the same state: moving over a row activates
    * it, so hovering *is* this.
    *
-   * ⚠️ IT IS THE SIDEBAR'S CURRENT-PAGE ROW, AND IT WAS A 2px ACCENT OUTLINE.
-   * The tint plus an accent ink is how every other selected row in this
-   * package reads; a ring around one of them read as a different component
-   * borrowed from somewhere else.
+   * ⚠️ A TINT AND AN INK, AND NO EDGE IN ANY STATE. It was a 2px accent ring,
+   * and briefly the trigger's border pair. The ring read as a component
+   * borrowed from somewhere else and one that comes and goes as a reader
+   * arrows is worse than one that never moves; bordering *every* row to make
+   * the active one's edge legible turned a list into a stack of cards. The
+   * field above wears the trigger's border because the field is a control; a
+   * row is a list item, and its state is a colour.
    *
-   * ⚠️ AND DROPPING THE RING DOES NOT DROP THE CONTRAST, BECAUSE THE INK
-   * REPLACES IT. The comment here used to argue the ring was load-bearing: a
-   * tint alone is 1.12:1 and WCAG 1.4.11 asks 3:1 of a state indicator. The
-   * heading turning `accent` is the indicator now — 4.60:1 light and 6.30:1
-   * dark against the tint it sits on — which is text contrast rather than
-   * non-text, and is the same pair the sidebar has always shipped. What must
-   * not happen is the tint going back to carrying this alone.
+   * ⚠️ THE INK IS NOT DECORATION — IT IS WHAT KEEPS THE STATE PERCEIVABLE. A
+   * tint alone is 1.12:1 light and 1.19:1 dark, under the 3:1 WCAG 1.4.11 asks
+   * of a state indicator. `accent` on `accent-subtle` is 4.60:1 / 6.30:1, which
+   * is text contrast rather than non-text, and is the same pair the sidebar's
+   * current-page row has always shipped. What must not happen is the tint going
+   * back to carrying this alone.
    */
   .wave-docs-search-result-active {
-    border-color: var(--wave-docs-border-strong);
+    background: var(--wave-docs-accent-subtle);
   }
 
+  .wave-docs-search-result-active .wave-docs-search-result-heading,
   .wave-docs-search-result-active .wave-docs-search-result-icon {
-    color: var(--wave-docs-fg);
+    color: var(--wave-docs-accent);
   }
 
   /*

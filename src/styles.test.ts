@@ -973,41 +973,46 @@ describe('focus indicators', () => {
   });
 
   /**
-   * ⚠️ THE ACTIVE RESULT IS MARKED BY MORE THAN ONE THING, AND WHAT CARRIES IT
-   * HAS CHANGED TWICE.
+   * ⚠️ THE ACTIVE RESULT IS MARKED BY MORE THAN ITS TINT, AND WHAT CARRIES THAT
+   * HAS BEEN THREE THINGS.
    *
    * Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one — so
    * the active class is the only indication of where the keyboard is. It was a
-   * 2px accent ring, on the argument that a tint alone is 1.12:1 against 3:1 of
-   * WCAG 1.4.11; a ring that comes and goes as a reader arrows is worse than
-   * one that never moves, so it went. It is the trigger's own pair of states
-   * now — `border` at rest, `border-strong` when active.
+   * 2px accent ring, which read as a component borrowed from somewhere else and
+   * came and went as a reader arrowed. It was briefly the trigger's border pair,
+   * which meant bordering *every* row to make one edge legible — a list turned
+   * into a stack of cards. It is a tint and an ink now.
    *
-   * ⚠️ AND THAT EDGE IS ABOUT 1.9:1, SO IT IS A CHANGE RATHER THAN A CONTRAST
-   * CARRIER. The marker going `fg-subtle` to `fg` is what keeps the state
-   * perceivable — text contrast rather than non-text, and the sidebar's own
-   * hover. This pins both halves: the edge alone is not enough, and neither is
-   * the ink.
+   * ⚠️ AND THE INK IS THE PART THAT KEEPS THE STATE PERCEIVABLE. A tint alone is
+   * 1.12:1, under the 3:1 WCAG 1.4.11 asks of a state indicator; `accent` on
+   * `accent-subtle` is 4.60:1 light and 6.30:1 dark, which is text contrast
+   * rather than non-text and is the pair the sidebar's current-page row ships.
+   * What this forbids is the tint being left to carry the state alone.
    */
   it('marks the active search result with more than a tint', () => {
-    const base = readBlock(sheet, sheet.indexOf('.wave-docs-search-result {'));
-    expect(base).toContain('border: 1px solid var(--wave-docs-border)');
-
     const active = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-search-result-active {'),
     );
-    expect(active).toContain('border-color: var(--wave-docs-border-strong)');
+    expect(active).toContain('background: var(--wave-docs-accent-subtle)');
 
     const ink = RULES.filter(
       (rule) =>
         rule.prelude.includes('.wave-docs-search-result-active') &&
-        rule.prelude.includes('.wave-docs-search-result-icon'),
+        rule.prelude.includes('.wave-docs-search-result-heading'),
     );
-    expect(ink, 'the active marker takes no ink of its own').toHaveLength(1);
+    expect(ink, 'the active heading takes no accent ink').toHaveLength(1);
     expect(readBlock(sheet, ink[0]?.at ?? 0)).toContain(
-      'color: var(--wave-docs-fg)',
+      'color: var(--wave-docs-accent)',
     );
+
+    /*
+     * A row is a list item and its state is a colour; the field above it is a
+     * control and wears the trigger's border. Bordering rows to mark one of
+     * them is what turned the list into a stack of cards.
+     */
+    const base = readBlock(sheet, sheet.indexOf('.wave-docs-search-result {'));
+    expect(base).not.toContain('border:');
 
     expect(sheet).not.toContain('.wave-docs-search-result-link:focus-visible');
   });

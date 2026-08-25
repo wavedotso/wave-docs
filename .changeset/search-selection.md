@@ -15,23 +15,36 @@ returns without opening anything. The one place that needed teaching is the
 arrow keys: they wrap modulo the list, and `(-1 - 1 + n) % n` is the *second to
 last*, so Up from a fresh query landed one short of the end.
 
-**Every row in the dialog is the same object as the trigger that opened it.**
-A reader clicks a bordered, filled control, lands in a bordered, filled field,
-and picks from a list of bordered, filled rows. The active one darkens its edge —
-`--wave-docs-border` to `--wave-docs-border-strong`, which is the trigger's own
-pair of states — on the same 150ms easing the sidebar's rows use. Moving the
-pointer over a result activates it, so hovering *is* this state; there is no
-second rule for it.
+**The active row is a tint and an ink**, easing on the same 150ms the sidebar's
+rows use. Moving the pointer over a result activates it, so hovering *is* this
+state; there is no second rule for it.
 
-It was a 2px accent ring, briefly an accent tint. The ring read as a component
-borrowed from somewhere else, and one that comes and goes as a reader arrows is
-worse than one that never moves.
+It was a 2px accent ring, and briefly the trigger's border pair. The ring read as
+a component borrowed from somewhere else, and one that comes and goes as a reader
+arrows is worse than one that never moves; the border pair meant bordering
+*every* row to make one edge legible, which turns a list into a stack of cards. A
+row is a list item and its state is a colour — the field above it is a control,
+and that is what wears the trigger's border.
 
-⚠️ THE EDGE IS A CHANGE, NOT A CONTRAST CARRIER. `border-strong` on `bg-subtle`
-is about 1.9:1, under the 3:1 WCAG 1.4.11 asks of a state indicator — so the
-marker carries the rest, going `fg-subtle` to `fg`, which is text contrast rather
-than non-text and is the sidebar's own hover. What must not happen is the edge
-being left to do this alone.
+⚠️ THE INK IS NOT DECORATION, IT IS WHAT KEEPS THE STATE PERCEIVABLE. A tint
+alone is 1.12:1 light and 1.19:1 dark, under the 3:1 WCAG 1.4.11 asks of a state
+indicator. `accent` on `accent-subtle` is 4.60:1 / 6.30:1 — text contrast rather
+than non-text, and the same pair the sidebar's current-page row has always
+shipped. What must not happen is the tint carrying this alone.
+
+## The list fades at both edges
+
+A mask on the scrollport, so the row being cut off is the one that softens. It
+does not travel with the content: a mask paints against the element's own box, so
+the two stops stay at the top and bottom of the *port* while the rows move under
+them.
+
+⚠️ IT IS UNCONDITIONAL, WHICH IS THE ONE THING TO KNOW. CSS cannot ask "is there
+anything above this to scroll to" — the table's shadow answers that with a
+scroll-driven animation whose timeline goes inactive when nothing overflows, and
+a mask has no equivalent. So the first and last rows carry a little of it at
+rest. At `1.25rem` against a row nearer three times that, it costs the top pixel
+or two of a heading and buys never guillotining one.
 
 ## The field, and the gap under it
 
