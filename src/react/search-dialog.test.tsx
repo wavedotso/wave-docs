@@ -609,7 +609,14 @@ describe('SearchDialog', () => {
       // heading printed directly above it, so showing it would spend the line
       // restating line one — and on a real site it is the part that pushes the
       // route past the ellipsis.
-      expect(location?.textContent).toBe('/docs/guide/install');
+      /*
+       * ⚠️ A BREADCRUMB, NOT A ROUTE — the segments joined by `›` rather than
+       * by slashes. Same fact, and it reads as the trail it is instead of as a
+       * URL a reader has to parse. Safe here only because the line is
+       * `aria-hidden`: more than one screen reader pronounces the character,
+       * which is why `spokenName` joins with commas instead.
+       */
+      expect(location?.textContent).toBe('docs › guide › install');
       // The link still carries it, which is what makes the hit a deep link.
       expect(option.querySelector('a')?.getAttribute('href')).toBe(
         '/docs/guide/install#peer-dependencies',
@@ -646,7 +653,7 @@ describe('SearchDialog', () => {
 
       expect(
         lead.querySelector('.wave-docs-search-result-location')?.textContent,
-      ).toBe('/docs/guide/install');
+      ).toBe('docs › guide › install');
     });
 
     it('gives every row a second line, so the list is not ragged', async () => {
@@ -666,7 +673,7 @@ describe('SearchDialog', () => {
         // Present, and always the same kind of thing. The defect this replaced
         // was a slot that held a page name under one row and an address under
         // the next.
-        expect(location?.textContent).toMatch(/^\/docs\//);
+        expect(location?.textContent).toMatch(/^docs › /);
       }
     });
 

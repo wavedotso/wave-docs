@@ -911,20 +911,32 @@ function SearchResultOption({
 
   const body = (
     <>
-      <span className="wave-docs-search-result-heading">{hit.heading}</span>
       {/*
-       * ⚠️ `aria-hidden`, AND THE NAME BELOW SAYS SOMETHING ELSE. A route read
-       * aloud is punctuation, one character at a time —
-       * "slash docs slash styling hash layout dash tokens" — which is worse
-       * than useless as a result's name. The visible line is a sighted
-       * reader's affordance for "where does this land"; the announced name
-       * answers the same question in words.
+       * ⚠️ WHICH GLYPH IS READ OFF THE `href`, NOT OFF THE INDEX. A record with
+       * an anchor is a section within a page and one without is the page
+       * itself — that is what `buildSearchIndex` means by its lead record — so
+       * the distinction is already in the link and needs no field of its own.
        *
-       * Not a WCAG 2.5.3 problem: the visible label a speech-input user would
-       * say is the heading, and the heading opens the accessible name.
+       * Decorative: the heading beside it says what the row is, and `#` read
+       * aloud before every second result is noise.
        */}
-      <span className="wave-docs-search-result-location" aria-hidden="true">
-        {toDisplayPath(hit.href)}
+      <ResultIcon section={hit.href.includes('#')} />
+      <span className="wave-docs-search-result-text">
+        <span className="wave-docs-search-result-heading">{hit.heading}</span>
+        {/*
+         * ⚠️ `aria-hidden`, AND THE NAME BELOW SAYS SOMETHING ELSE. A route read
+         * aloud is punctuation, one character at a time —
+         * "slash docs slash styling hash layout dash tokens" — which is worse
+         * than useless as a result's name. The visible line is a sighted
+         * reader's affordance for "where does this land"; the announced name
+         * answers the same question in words.
+         *
+         * Not a WCAG 2.5.3 problem: the visible label a speech-input user would
+         * say is the heading, and the heading opens the accessible name.
+         */}
+        <span className="wave-docs-search-result-location" aria-hidden="true">
+          {toDisplayPath(hit.href)}
+        </span>
       </span>
     </>
   );
@@ -1207,7 +1219,20 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
  */
 function toDisplayPath(href: string): string {
   const hash = href.indexOf('#');
-  return hash === -1 ? href : href.slice(0, hash);
+  const route = hash === -1 ? href : href.slice(0, hash);
+  /*
+   * ⚠️ A BREADCRUMB, NOT A ROUTE, AND THE SEPARATOR IS THE WHOLE DIFFERENCE.
+   * The segments are already a trail from the site's root to the page; slashes
+   * make them read as a URL a reader has to parse, and `›` makes them read as
+   * the thing they are.
+   *
+   * ⚠️ AND `›` IS SAFE *HERE* BECAUSE THIS LINE IS `aria-hidden`. More than one
+   * screen reader pronounces it, which is exactly why `spokenName` below joins
+   * with commas instead — the two lines carry the same fact in the form each
+   * audience can use, and the character that suits one ruins the other.
+   */
+  const segments = route.split('/').filter(Boolean);
+  return segments.length === 0 ? '/' : segments.join(' › ');
 }
 
 /**
@@ -1225,6 +1250,45 @@ function toDisplayPath(href: string): string {
  * A page's own record carries `heading === title` and no ancestors, so its name
  * is the heading alone — "Styling, Styling" is not a path, it is a stutter.
  */
+/**
+ * A page or a section, as one Lucide glyph.
+ *
+ * ⚠️ THE PATHS ARE WRITTEN OUT RATHER THAN IMPORTED FROM THE SIDEBAR, WHICH
+ * HAS THE SAME PAGE ICON. `NAV_ICON_PATHS` lives in a different client
+ * component, and importing across the two would pull the whole navigation
+ * tree into the search dialog's bundle to reuse one string. The duplication is
+ * two path strings; the alternative is kilobytes.
+ */
+const RESULT_ICON_PATHS = {
+  page: [
+    'M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z',
+    'M14 2v4a2 2 0 0 0 2 2h4',
+  ],
+  section: ['M4 9h16', 'M4 15h16', 'm10 3-2 18', 'm16 3-2 18'],
+} as const;
+
+function ResultIcon({ section }: { section: boolean }): ReactNode {
+  return (
+    <svg
+      className="wave-docs-search-result-icon"
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {RESULT_ICON_PATHS[section ? 'section' : 'page'].map((d) => (
+        <path key={d} d={d} />
+      ))}
+    </svg>
+  );
+}
+
 function spokenName(hit: SearchHit): string {
   if (hit.ancestors.length === 0 && hit.heading === hit.title) {
     return hit.heading;
