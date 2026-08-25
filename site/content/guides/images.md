@@ -156,5 +156,3 @@ Every image carries the `wave-docs-image` class: `max-width: 100%`,
 [Components](../reference/components.md) covers the props the injected image
 accepts; [Configuration](../reference/configuration.md) lists `imageResolver`
 beside every other option.
-
-Next: [Search](./search.md).

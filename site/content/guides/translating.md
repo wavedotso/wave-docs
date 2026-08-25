@@ -140,5 +140,3 @@ table.
 > way shipped `aria-label="On this page"`, a visible `Back to top`,
 > `aria-label="Tip"` on every callout and `Copy code` on every fence, in
 > English, whatever language it was written in.
-
-Next: [Plugins](./plugins.md).

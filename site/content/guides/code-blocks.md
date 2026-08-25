@@ -192,5 +192,3 @@ kilobytes of client JavaScript with its own CVE history, behind an option most
 sites never set. A `rehypePlugins` entry sees excluded fences before they are
 disguised, and sees every code block the same way — see
 [Plugins](./plugins.md).
-
-Next: [Images](./images.md).

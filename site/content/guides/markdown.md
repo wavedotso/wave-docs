@@ -154,5 +154,3 @@ For an element markdown has no syntax for, add a rehype plugin that emits it and
 a component to render it. Both slots are in [Plugins](./plugins.md).
 
 Fenced code has enough behaviour to need a page of its own.
-
-Next: [Code blocks](./code-blocks.md).

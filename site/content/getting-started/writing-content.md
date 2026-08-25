@@ -150,5 +150,3 @@ Fix the YAML block at the top of that file, or the `frontmatterSchema` in your d
 `frontmatterSchema` sits beside every other option in
 [Configuration](../reference/configuration.md), and the codes this validation
 throws are listed in [Errors](../reference/errors.md).
-
-Next: [Navigation](./navigation.md).

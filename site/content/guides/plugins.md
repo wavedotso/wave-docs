@@ -112,5 +112,3 @@ Everything else the route accepts — `langs`, `themes`, `highlighter`,
 `excludeLangs`, `linkResolver`, `imageResolver`, and the
 [`labels`](./translating.md) — is in
 [Configuration](../reference/configuration.md).
-
-Next: [Configuration](../reference/configuration.md).

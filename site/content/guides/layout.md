@@ -222,5 +222,3 @@ to nothing. Render no element rather than an empty one.
 
 The widths themselves — 16rem of sidebar, 15rem of table of contents — are
 tokens. [Theming](./theming.md) is where to change them.
-
-Next: [Translating the chrome](./translating.md).

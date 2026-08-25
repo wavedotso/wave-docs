@@ -149,5 +149,3 @@ likely to change. `resolveMarkdownLink` survived, from `render`: six public
 names became one, and it is the only one a `linkResolver` author cannot
 hand-roll. What that policy does and does not promise is
 [Stability](./stability.md).
-
-Next: [Components](./components.md).

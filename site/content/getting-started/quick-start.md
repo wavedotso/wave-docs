@@ -141,5 +141,3 @@ and no layout CSS of your own. This site is built from the same five.
 
 Every failure this package raises carries a `DocsErrorCode`, and
 [Errors](../reference/errors.md) lists each one with its fix.
-
-Next: [Writing content](./writing-content.md).

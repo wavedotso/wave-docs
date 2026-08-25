@@ -155,5 +155,3 @@ the changelog under **Project**;
 [CHANGELOG.md](https://github.com/wavedotso/wave-docs/blob/main/CHANGELOG.md)
 is the same file on GitHub. Every page of this site is built by the package it
 documents, so the promises above are under test on every commit.
-
-Next: [Internals](../internals.md).

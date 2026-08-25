@@ -140,5 +140,3 @@ previewing with drafts on is exactly the mode where the group is not empty.
 Nav nodes are ordinary data. `DocNavNode` is the union of `page`, `group`,
 `separator` and `link`, and a shell that wants to render them itself takes them
 as props — see [Layout](../guides/layout.md).
-
-Next: [Markdown](../guides/markdown.md).

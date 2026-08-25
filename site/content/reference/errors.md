@@ -124,5 +124,3 @@ spread. Error objects look exactly as they did, and are branchable.
 In a build log a failure reads as one paragraph — the package, the file, the
 line, what was written, what it resolved to, and what to do about it.
 [Links](../guides/links.md) prints one in full.
-
-Next: [Stability](./stability.md).

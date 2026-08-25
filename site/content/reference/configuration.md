@@ -265,5 +265,3 @@ is a crawl error. Both functions are safe to call from `next.config.ts`, which
 loads this entry point outside the Next runtime. Where each one lives is
 [Entry points](./entry-points.md); what a failure means is
 [Errors](./errors.md).
-
-Next: [Entry points](./entry-points.md).

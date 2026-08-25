@@ -136,5 +136,3 @@ machine-independent. `size-budget.json` holds a second, looser ceiling per
 entry with a note explaining what to do when it is hit — and a build fails if
 the table above ever promises worse than that file enforces.
 [Internals](../internals.md) has the reasoning behind the budgets.
-
-Next: [Quick start](./quick-start.md).

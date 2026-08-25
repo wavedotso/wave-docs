@@ -172,5 +172,3 @@ the components themselves are listed in
 for it — nearly every rule in the sheet is scoped under that class, and dropping
 it leaves a page whose code blocks keep their syntax colours and lose everything
 else, which reads as a design choice rather than as a mistake.
-
-Next: [Layout](./layout.md).

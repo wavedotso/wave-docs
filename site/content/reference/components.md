@@ -313,5 +313,3 @@ failing the page — [Images](../guides/images.md) has that path in full.
 > were documented as surviving into the optimising branch while the adapter
 > destructured a fixed list without them; they are declared members now rather
 > than a promise the code could not keep.
-
-Next: [Errors](./errors.md).

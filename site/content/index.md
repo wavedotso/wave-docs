@@ -124,5 +124,3 @@ defect every consumer will hit. So this site is held to a hard zero: no
 stylesheet, no inline layout style, no wrapper between the shell and the page.
 Anything it needs and cannot have is a bug report against the package, filed by
 construction rather than by goodwill.
-
-Next: [Installation](./getting-started/installation.md).

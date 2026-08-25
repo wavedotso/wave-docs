@@ -157,5 +157,3 @@ crawl error — and dates each from the file's mtime.
 discards it — every canonical and every sitemap entry would then point somewhere
 that 404s. Put the path in `basePath`, which does take multiple segments; the rest
 is in [Configuration](../reference/configuration.md).
-
-Next: [Theming](./theming.md).
