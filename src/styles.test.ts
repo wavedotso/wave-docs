@@ -985,13 +985,33 @@ describe('tables', () => {
     expect(documented).toMatch(/intrinsic/);
   });
 
-  /** With `border-collapse: collapse` the border belongs to the table, so it
-   * scrolls out from under a sticky header. */
-  it('holds the header down with a shadow rather than a border', () => {
+  /**
+   * ⚠️ NO RULE AND NO TINT UNDER THE HEADER, AND IT HAD BOTH.
+   *
+   * It was `--wave-docs-bg-subtle` — which is the panel frame's own tone, so
+   * inside the frame it painted a band of the frame's colour immediately
+   * within the surface's border — plus a `box-shadow: inset 0 -1px 0`, making
+   * three horizontal lines inside about six pixels. Weight is what says
+   * "header", the same way "where to go next" gives its title neither.
+   *
+   * ⚠️ AND IF A RULE EVER COMES BACK IT MUST NOT BE `border-block-end`. With
+   * `border-collapse: collapse` the border belongs to the table rather than to
+   * the cell, so it scrolls out from under a sticky header instead of staying
+   * with it — which is why the thing that was here was a shadow.
+   */
+  it('gives the header neither a rule nor a tint', () => {
     const head = readBlock(sheet, sheet.indexOf('.wave-docs-table thead th {'));
     expect(head).toContain('position: sticky');
-    expect(head).toContain('box-shadow: inset');
+    expect(head).not.toContain('box-shadow');
     expect(head).not.toContain('border-block-end');
+    expect(head).not.toContain('bg-subtle');
+    /*
+     * The ground itself stays, and is not decoration: a sticky cell with a
+     * transparent background shows the rows travelling underneath it the
+     * moment anything gives this table a height to scroll in — which a host
+     * constraining the panel can do without touching this file.
+     */
+    expect(head).toContain('background:');
   });
 
   /**
