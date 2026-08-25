@@ -1,6 +1,12 @@
 ---
 title: Every label
 description: One page that renders every string this package can be asked to translate.
+next:
+  - question: What came before
+    href: /docs/before
+  - question: Something off-site
+    href: https://example.com
+    title: Elsewhere
 ---
 
 A page whose only job is to contain one of everything a label names, so a test

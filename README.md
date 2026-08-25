@@ -203,6 +203,7 @@ Every component takes data as props, and every module that imports from `next/*`
 | `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
 | `DocsHero` | `react/hero` | A landing page's header. `title`, `description`, `actions`, `Link`, `externalLabel`. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation`. `icons` controls the marker column — see [Sidebar icons](#sidebar-icons) |
+| `DocsNextSteps` | `react/next-steps` | "Where to go next": a question per row and the page that answers it. `docs.Page` renders it when a page declares `next` |
 | `DocsPager` | `react/pager` | Links to the pages either side of this one. `docs.Page` renders it; `pager: false` on the route omits it |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
@@ -214,6 +215,40 @@ Every component takes data as props, and every module that imports from `next/*`
 | `createMarkdownComponents` | `react/markdown-components` | The element → component map. `defaultMarkdownComponents` is the unwired one |
 
 `DocsToc`'s `rootMargin` is the `IntersectionObserver` margin that decides how far above the viewport a heading counts as current; the default keeps the highlight on the section you are reading rather than the one about to arrive. `topLabel` is the back-to-top link at the end — it fades in once the reader is about a third of a screen down and fades out again on the way back, on a scroll timeline rather than a scroll listener, so the component ships no extra bytes to do it. Where that timeline cannot run — an engine without scroll-driven animations, a page too short to scroll, or a host that scrolls an inner pane rather than the document — the link is simply always there.
+
+### Where to go next
+
+A sidebar is a structure; this is a router. It says *why* a reader would go somewhere, which no tree of titles can. A page opts in from its frontmatter:
+
+```yaml
+---
+title: How it fits together
+next:
+  - question: How a person is recognised across servers
+    href: ./identity.md
+  - question: What happens when the network fails
+    href: ./delivery.md
+  - question: Where the source lives
+    href: https://github.com/example/repo
+    title: GitHub
+---
+```
+
+| Field | Type | What it is |
+| --- | --- | --- |
+| `question` | `string` | What the reader might want to know. The row's left half |
+| `href` | `string` | Where the answer is. Checked against the same allowlist as every other link |
+| `title` | `string` | The link's text. Defaults to the destination's title **in the navigation** |
+
+**The link text comes from the navigation**, so renaming a page updates every block pointing at it — the same source the sidebar and the pager read. Name a `title` only where the tree cannot answer: an external link, or a page kept out of the navigation. An `href` that resolves to neither stops the build and says which of the two fixes to reach for, rather than rendering a URL where a sentence should be.
+
+It renders above the pager: this is the semantic answer, the pager is the linear one.
+
+It wears **the panel** — a framed block with a header and an inset surface, styled by `.wave-docs-panel`, `.wave-docs-panel__header`, `.wave-docs-panel__title`, `.wave-docs-panel__actions` and `.wave-docs-panel__body`. That is a shared primitive rather than this component's furniture, so a code frame can wear it next without a second copy of the same rules. The two radii are not independent: the inner one is the outer minus the panel's padding, or the corners run at different curvatures and the surface reads as pasted onto the frame instead of set into it. `--wave-docs-radius-lg` is picked so the arithmetic lands on `--wave-docs-radius`.
+
+The panel also exports `--wave-docs-panel-inset` for anything placed inside `__body`: the header's title sits at the frame's padding, but body content sits at that padding *plus the body's own border*, so the two columns miss each other by a pixel per border unless the inset is used.
+
+`DocsNextSteps` takes `steps` (each with `question`, `href` and a resolved `title`), plus `heading`, `Link`, `externalLabel` and `className`. The heading defaults to `'Where to go next'` and is `whereNext` in `labels`. Under a 40rem container the question and its answer stack instead of sharing a row.
 
 ### The pager
 

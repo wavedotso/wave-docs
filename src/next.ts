@@ -64,8 +64,9 @@ import type {
 } from './highlighter.js';
 import { DocContent } from './react/doc-content.js';
 import { DocsHero } from './react/hero.js';
-import { neighbours } from './nav-order.js';
+import { neighbours, readingOrder, stepTitle } from './nav-order.js';
 import { DocsPager } from './react/pager.js';
+import { DocsNextSteps } from './react/next-steps.js';
 import type { DocsLinkComponent } from './react/markdown-components.js';
 /*
  * Type-only because only the type is wanted here; the erasure is not doing
@@ -1187,6 +1188,33 @@ export function createDocsRoute<
     });
   };
 
+  /**
+   * A page's `next` rows with their link text filled in.
+   *
+   * ⚠️ THE ERROR IS THE POINT. Falling back to the href renders a URL where a
+   * sentence should be, on a page that builds cleanly — so an unresolvable row
+   * stops the build and names both fixes.
+   */
+  async function resolveNextSteps(
+    doc: RenderedDoc<TFrontmatter>,
+  ): Promise<Array<{ question: string; href: string; title: string }>> {
+    const stops = readingOrder(await requestScopedSource.nav());
+    return (doc.frontmatter.next ?? []).map((step) => {
+      const title = stepTitle(stops, step);
+      if (title === undefined) {
+        throw docsError(
+          'invalid-frontmatter',
+          `${doc.href}: the "next" entry pointing at "${step.href}" ` +
+            'has no title, and no page in the navigation owns that route. ' +
+            'Point it at a page in the tree, or give the entry its own ' +
+            '`title` — which is what an external link or a page kept out of ' +
+            'the navigation needs.',
+        );
+      }
+      return { question: step.question, href: step.href, title };
+    });
+  }
+
   async function renderRoute(segments: string[]): Promise<ReactNode> {
     const doc = await getPage(segments);
     if (doc === undefined) {
@@ -1265,6 +1293,24 @@ export function createDocsRoute<
           components: { ...components, ...options.components },
           ...(copyLabels === undefined ? {} : { labels: copyLabels }),
         }),
+        /*
+         * "Where to go next", when the page declared it — above the pager,
+         * because the two answer different questions and this one is the
+         * reader's: *what do you want to know?* against *what comes after this
+         * page?*. Mintlify puts them in the same order.
+         */
+        (doc.frontmatter.next?.length ?? 0) === 0
+          ? null
+          : createElement(DocsNextSteps, {
+              steps: await resolveNextSteps(doc),
+              Link: link,
+              ...(routeLabels?.whereNext === undefined
+                ? {}
+                : { heading: routeLabels.whereNext }),
+              ...(routeLabels?.externalLink === undefined
+                ? {}
+                : { externalLabel: routeLabels.externalLink }),
+            }),
         /*
          * The pager, inside `<main>` and after the prose.
          *

@@ -1139,3 +1139,277 @@ describe('the untouched sidebar grip', () => {
     expect(fill === 'var(--wave-docs-accent)' || fill === accent).toBe(lit);
   });
 });
+/**
+ * The "where to go next" block, which is one object and has to look like one.
+ */
+describe('where to go next', () => {
+  function mountNext(shellWidth: number): void {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    document.body.innerHTML = `
+      <div class="wave-docs-shell" style="width: ${shellWidth}px">
+        <div class="wave-docs-layout">
+          <div class="wave-docs-layout__sidebar">
+            <div class="wave-docs-layout__sidebar-nav" tabindex="-1"></div>
+            <button type="button" class="wave-docs-layout__sidebar-trigger"></button>
+          </div>
+          <div class="wave-docs-layout__main">
+            <article class="wave-docs-prose"><p>A paragraph of prose.</p></article>
+            <section class="wave-docs-panel wave-docs-next" aria-labelledby="h">
+              <div class="wave-docs-panel__header">
+                <h2 class="wave-docs-panel__title" id="h">Where to go next</h2>
+              </div>
+              <ul class="wave-docs-panel__body wave-docs-next__list">
+                <li class="wave-docs-next__item">
+                  <span class="wave-docs-next__question">How a person is recognised across every server they play on</span>
+                  <a class="wave-docs-next__answer" href="/a">Identity</a>
+                </li>
+                <li class="wave-docs-next__item">
+                  <span class="wave-docs-next__question">Why a character is not a person</span>
+                  <a class="wave-docs-next__answer" href="/b">Characters</a>
+                </li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function edges(selector: string): [number, number] {
+    const el = document.querySelector(selector);
+    if (!(el instanceof HTMLElement)) throw new Error(`no ${selector}`);
+    const box = el.getBoundingClientRect();
+    return [box.left, box.right];
+  }
+
+  it('lines its questions up with its heading', async () => {
+    mountNext(1400);
+    await resize(1600);
+
+    const title = document
+      .querySelector('.wave-docs-panel__title')
+      ?.getBoundingClientRect().left;
+    const question = document
+      .querySelector('.wave-docs-next__question')
+      ?.getBoundingClientRect().left;
+    if (title === undefined || question === undefined)
+      throw new Error('no rows');
+
+    expect(Math.abs(question - title)).toBeLessThan(1);
+  });
+
+  it('shares both edges with the prose', async () => {
+    mountNext(1400);
+    await resize(1600);
+
+    const [proseStart, proseEnd] = edges('.wave-docs-prose > p');
+    const [blockStart, blockEnd] = edges('.wave-docs-next');
+    expect(Math.abs(blockStart - proseStart)).toBeLessThan(1);
+    expect(Math.abs(blockEnd - proseEnd)).toBeLessThan(1);
+  });
+
+  /**
+   * ⚠️ ONE FRAME, HAIRLINES BETWEEN — the rows are the same question asked
+   * several ways, and separate bordered boxes say several unrelated things.
+   * The rule is a *top* border on every row but the first: `:last-child` leaves
+   * a doubled line the moment anything is appended to the list.
+   */
+  it('divides the rows without boxing each one', async () => {
+    mountNext(1400);
+    await resize(1600);
+
+    const rows = [...document.querySelectorAll('.wave-docs-next__item')];
+    expect(rows).toHaveLength(2);
+
+    const first = getComputedStyle(rows[0] as Element);
+    const second = getComputedStyle(rows[1] as Element);
+    expect(first.borderTopWidth, 'the first row has a line above it').toBe(
+      '0px',
+    );
+    expect(Number.parseFloat(second.borderTopWidth)).toBeGreaterThan(0);
+    expect(first.borderBottomWidth, 'rows are boxed, not divided').toBe('0px');
+  });
+
+  /**
+   * ⚠️ A CONTAINER QUERY, AND THE CONTAINER IS THE SHELL. A host can hand this
+   * a narrow box on a wide monitor, where a `@media` query would keep the
+   * two-column row and squeeze a sentence-length question into nothing.
+   */
+  it.each([
+    [1400, 'row'],
+    [560, 'column'],
+  ])('at a %ipx shell each row is a %s', async (shellWidth, direction) => {
+    mountNext(shellWidth);
+    // Viewport far wider than the shell: only the container may decide.
+    await resize(1600);
+
+    expect(
+      getComputedStyle(
+        document.querySelector('.wave-docs-next__item') as Element,
+      ).flexDirection,
+    ).toBe(direction);
+  });
+});
+/**
+ * The panel: a framed block with a header and an inset surface.
+ *
+ * Tested on its own rather than through the one component wearing it, because
+ * the point of it is that a code frame can wear it next — and the thing that
+ * decays when two components each keep their own copy is exactly the geometry
+ * below.
+ */
+describe('the panel', () => {
+  function mountPanel(): void {
+    document.head.querySelector('#wave-docs-styles')?.remove();
+    const style = document.createElement('style');
+    style.id = 'wave-docs-styles';
+    style.textContent = styles;
+    document.head.append(style);
+
+    document.body.innerHTML = `
+      <section class="wave-docs-panel">
+        <div class="wave-docs-panel__header">
+          <h2 class="wave-docs-panel__title">Quick start</h2>
+          <div class="wave-docs-panel__actions"><span>Agent skills</span></div>
+        </div>
+        <div class="wave-docs-panel__body"><p>Content.</p></div>
+      </section>`;
+  }
+
+  const px = (value: string): number => Number.parseFloat(value);
+
+  /**
+   * ⚠️ THE TWO RADII ARE NOT INDEPENDENT NUMBERS. A rounded box inside a
+   * rounded box only looks right when the inner radius is the outer one minus
+   * the gap between them; anything else runs the corners at different
+   * curvatures and the inner box reads as pasted onto the frame rather than set
+   * into it. The tokens are picked so the arithmetic lands on one of them —
+   * `1rem` outer minus `0.5rem` of padding is `--wave-docs-radius`.
+   */
+  it('sets its surface into the frame with concentric corners', async () => {
+    mountPanel();
+    await resize(1280);
+
+    const outer = getComputedStyle(
+      document.querySelector('.wave-docs-panel') as Element,
+    );
+    const inner = getComputedStyle(
+      document.querySelector('.wave-docs-panel__body') as Element,
+    );
+
+    expect(px(outer.paddingLeft)).toBeGreaterThan(0);
+    expect(px(outer.borderTopLeftRadius) - px(outer.paddingLeft)).toBe(
+      px(inner.borderTopLeftRadius),
+    );
+  });
+
+  /** The frame and the surface are different colours, or there is no frame. */
+  it('separates the surface from the frame around it', async () => {
+    mountPanel();
+    await resize(1280);
+
+    const outer = getComputedStyle(
+      document.querySelector('.wave-docs-panel') as Element,
+    );
+    const inner = getComputedStyle(
+      document.querySelector('.wave-docs-panel__body') as Element,
+    );
+    expect(inner.backgroundColor).not.toBe(outer.backgroundColor);
+  });
+
+  /**
+   * ⚠️ THE HEADER SITS IN THE FRAME'S PADDING, WITH NO RULE OF ITS OWN. The
+   * inset surface below already draws the line between them, so a border here
+   * is a second one a pixel away from the first.
+   */
+  it('draws no line under the header', async () => {
+    mountPanel();
+    await resize(1280);
+
+    const header = getComputedStyle(
+      document.querySelector('.wave-docs-panel__header') as Element,
+    );
+    expect(px(header.borderBottomWidth)).toBe(0);
+  });
+
+  /**
+   * ⚠️ THE BODY'S CONTENT AND THE TITLE ARE ON DIFFERENT COLUMNS BY DEFAULT,
+   * AND THE GAP IS ONE BORDER. The title sits at the frame's padding; anything
+   * inside the body sits at that padding *plus the body's own border*, so the
+   * two miss each other by a pixel per border. Measured on the site before the
+   * panel exported an inset: the rows started 9px right of the heading above
+   * them, which appears in no rule and reads as a design decision.
+   */
+  it('offers an inset that lines body content up with the title', async () => {
+    mountPanel();
+    await resize(1280);
+
+    const panel = document.querySelector('.wave-docs-panel');
+    const body = document.querySelector('.wave-docs-panel__body');
+    const title = document.querySelector('.wave-docs-panel__title');
+    const header = document.querySelector('.wave-docs-panel__header');
+    if (!(panel instanceof HTMLElement) || !(body instanceof HTMLElement)) {
+      throw new Error('no panel');
+    }
+    if (!(title instanceof HTMLElement) || !(header instanceof HTMLElement)) {
+      throw new Error('no header');
+    }
+
+    const inset = getComputedStyle(panel)
+      .getPropertyValue('--wave-docs-panel-inset')
+      .trim();
+    expect(inset, 'the panel exports no inset').not.toBe('');
+
+    // Applied the way a component wearing the panel would apply it.
+    const child = document.createElement('p');
+    child.style.margin = '0';
+    child.style.paddingInline = inset;
+    child.textContent = 'Aligned?';
+    body.replaceChildren(child);
+
+    expect(
+      Math.abs(
+        child.getBoundingClientRect().left +
+          px(getComputedStyle(child).paddingLeft) -
+          title.getBoundingClientRect().left,
+      ),
+    ).toBeLessThan(1);
+
+    /*
+     * ⚠️ AND THE CORRECTION BELONGS TO THE PANEL, NOT TO WHOEVER WEARS IT. The
+     * exported value is what a component writes verbatim; the *header* adds the
+     * body's border to its own padding so the two columns meet. Bake the
+     * subtraction into the token instead and the header has to know about it
+     * too — which is how this broke once already, when the header's padding
+     * moved and the token did not.
+     *
+     * Compared in resolved pixels, because `getPropertyValue` hands back the
+     * token's own text — `0.5rem` — and a rem is not a pixel.
+     */
+    expect(
+      px(getComputedStyle(child).paddingLeft),
+      'the header does not carry the border correction',
+    ).toBe(px(getComputedStyle(header).paddingLeft) - 1);
+  });
+
+  it('keeps the title and its controls on one row, apart', async () => {
+    mountPanel();
+    await resize(1280);
+
+    const title = document
+      .querySelector('.wave-docs-panel__title')
+      ?.getBoundingClientRect();
+    const actions = document
+      .querySelector('.wave-docs-panel__actions')
+      ?.getBoundingClientRect();
+    if (title === undefined || actions === undefined)
+      throw new Error('no header');
+
+    expect(actions.left).toBeGreaterThan(title.right);
+    expect(Math.abs(actions.top - title.top)).toBeLessThan(title.height);
+  });
+});

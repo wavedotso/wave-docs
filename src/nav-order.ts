@@ -91,3 +91,21 @@ export function neighbours(
     ...(next === undefined ? {} : { next }),
   };
 }
+
+/**
+ * A step's link text: the one it named, or the navigation's name for the page.
+ *
+ * ⚠️ A THROW, NOT A FALLBACK TO THE HREF. A row reading "Where this runs and
+ * what that buys → /docs/infrastructure" is a URL where a sentence should be,
+ * and it renders perfectly — nothing else in the pipeline would notice. The
+ * frontmatter is authored and the author is right there, so the build stops and
+ * says which page and which of the two fixes to reach for.
+ */
+export function stepTitle(
+  stops: NavStop[],
+  step: { href: string; title?: string | undefined },
+): string | undefined {
+  if (step.title !== undefined) return step.title;
+  const here = normalize(step.href);
+  return stops.find((stop) => normalize(stop.href) === here)?.title;
+}

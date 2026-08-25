@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { neighbours, readingOrder } from './nav-order.js';
+import { neighbours, readingOrder, stepTitle } from './nav-order.js';
 import type { DocNavNode } from './types.js';
 
 const nav: DocNavNode[] = [
@@ -109,5 +109,34 @@ describe('neighbours', () => {
 
   it('gives an empty tree no pager either', () => {
     expect(neighbours([], '/docs')).toEqual({});
+  });
+});
+
+describe('stepTitle', () => {
+  const stops = readingOrder(nav);
+
+  it("takes the navigation's name for a page in the tree", () => {
+    expect(stepTitle(stops, { href: '/docs/api/auth' })).toBe('Auth');
+  });
+
+  it('prefers a title the author wrote', () => {
+    expect(
+      stepTitle(stops, { href: '/docs/api/auth', title: 'Signing in' }),
+    ).toBe('Signing in');
+  });
+
+  it('treats a trailing slash as the same page', () => {
+    expect(stepTitle(stops, { href: '/docs/api/auth/' })).toBe('Auth');
+  });
+
+  /**
+   * ⚠️ `undefined`, SO THE CALLER CAN THROW. Falling back to the href renders a
+   * URL where a sentence should be — "Where this runs and what that buys →
+   * /docs/infrastructure" — on a page that builds cleanly, and nothing else in
+   * the pipeline would notice.
+   */
+  it('resolves nothing for an href the tree does not own', () => {
+    expect(stepTitle(stops, { href: 'https://example.com' })).toBeUndefined();
+    expect(stepTitle(stops, { href: '/docs/draft' })).toBeUndefined();
   });
 });

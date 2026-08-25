@@ -71,6 +71,23 @@ export const docFrontmatterSchema = z.object({
    * a marker that silently falls back. */
   icon: z.string().min(1).exactOptional(),
   /*
+   * "Where to go next". `isSafeHref` for the same reason `actions` carries it:
+   * frontmatter is the one door into an `<a href>` that markdown's own checks
+   * do not cover, so a `javascript:` entry would be rendered verbatim.
+   */
+  next: z
+    .array(
+      z.object({
+        question: z.string().min(1),
+        href: z
+          .string()
+          .min(1)
+          .refine(isSafeHref, 'must be a safe URL (no javascript: or data:)'),
+        title: z.string().min(1).exactOptional(),
+      }),
+    )
+    .exactOptional(),
+  /*
    * ⚠️ `isSafeHref` HERE AND NOT IN THE COMPONENT. Every other href this
    * package renders arrives through markdown and is checked on the way in;
    * these arrive through frontmatter, which is the one door that bypassed it.

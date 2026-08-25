@@ -75,6 +75,19 @@ export interface DocFrontmatter {
    */
   order?: number | undefined;
   /**
+   * "Where to go next": a question, and the page that answers it.
+   *
+   * Declaring it renders a block at the foot of the page, above the pager. The
+   * two are not the same thing and both belong there — this is the *semantic*
+   * answer ("what do you want to know?"), the pager is the *linear* one ("what
+   * comes after this page?").
+   *
+   * A table would do the same job and does it worse: a screen reader announces
+   * "table, 2 columns, 7 rows" for what is a list of links with descriptions,
+   * and two columns of sentence-length questions are cramped on a phone.
+   */
+  next?: DocNextStep[] | undefined;
+  /**
    * Sidebar marker for this page, as a name the *consumer* resolves.
    *
    * A name and not a component, because frontmatter is data: it is authored by
@@ -154,6 +167,24 @@ export interface DocFile<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
 /* -------------------------------------------------------------------------
  * Navigation
  * ---------------------------------------------------------------------- */
+
+/**
+ * One row of a page's "where to go next" block.
+ *
+ * ⚠️ `title` IS OPTIONAL BECAUSE THE NAVIGATION ALREADY KNOWS IT. An `href`
+ * pointing at a page in the tree takes that page's own name, so renaming it
+ * updates every block that points at it — the same reasoning as the pager's
+ * ordering. Name it here only where the tree cannot answer: an external link,
+ * or a page kept out of the navigation.
+ */
+export interface DocNextStep {
+  /** What the reader might want to know. The row's left half. */
+  question: string;
+  /** Where the answer is. */
+  href: string;
+  /** The link's text. Defaults to the destination's title in the navigation. */
+  title?: string | undefined;
+}
 
 /** A link to a documentation page. */
 export interface DocNavPage {

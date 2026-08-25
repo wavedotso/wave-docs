@@ -111,6 +111,10 @@
     "./react/pager": {
       "types": "./dist/react/pager.d.ts",
       "default": "./dist/react/pager.js"
+    },
+    "./react/next-steps": {
+      "types": "./dist/react/next-steps.d.ts",
+      "default": "./dist/react/next-steps.js"
     }
   },
   "files": [

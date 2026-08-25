@@ -90,6 +90,13 @@ export interface DocsLabels {
    * The direction, not the destination: the page's own title is the name, and
    * these two words are what say which way it lies.
    */
+  /**
+   * The "where to go next" block's heading. Defaults to `'Where to go next'`.
+   *
+   * A page opts into that block with `next` in its frontmatter; this is the one
+   * string the package supplies for it, and the questions are the author's.
+   */
+  whereNext?: string | undefined;
   previousPage?: string | undefined;
   /** The same for the next page. Defaults to `'Next'`. */
   nextPage?: string | undefined;
@@ -200,6 +207,7 @@ export const DOCS_LABEL_KEYS = [
   'youtubeHide',
   'copyCode',
   'copyCodeFrom',
+  'whereNext',
   'previousPage',
   'nextPage',
   'pagination',

@@ -7,6 +7,15 @@ actions:
     href: /getting-started/quick-start
   - label: Why hast
     href: /internals
+next:
+  - question: How to get it into a Next app
+    href: /getting-started/installation
+  - question: What the five files actually do
+    href: /getting-started/quick-start
+  - question: How a directory becomes a section
+    href: /getting-started/navigation
+  - question: Which decisions are hard to reverse
+    href: /internals
 ---
 
 Point `@waveso/docs` at a folder of `.md` files and you get a documentation

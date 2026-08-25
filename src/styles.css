@@ -144,6 +144,12 @@
 
     --wave-docs-radius: 0.5rem;
     --wave-docs-radius-sm: 0.375rem;
+    /* The panel's outer corner: 19px, and its surface is 15px inside 4px of
+     * padding. Measured off developers.uniswap.org rather than derived — the
+     * arithmetic (19 - 4 = 15) is the same rule this file already followed,
+     * which is how the numbers were checked rather than guessed. */
+    --wave-docs-radius-lg: 1.1875rem;
+    --wave-docs-radius-panel: 0.9375rem;
     /* The shell. These five plus `--wave-docs-measure` are the whole settable
      * layout surface; the gutter and the drawer width are literals, because each
      * appears once and an ordinary override is already the cleanest tool for
@@ -394,6 +400,7 @@
   .wave-docs-toc,
   .wave-docs-skip-link,
   .wave-docs-hero,
+  .wave-docs-next,
   .wave-docs-pager,
   .wave-docs-layout__sidebar,
   .wave-docs-search-trigger,
@@ -1884,6 +1891,196 @@
       transition:
         opacity 150ms ease-out,
         color 150ms ease-out;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Panel
+ *
+ * A framed block with a header and an inset surface: the outer card names the
+ * thing and carries its controls, the inner one holds the content.
+ *
+ * Its own section because it is not one component's furniture — "where to go
+ * next" is the first thing to wear it and a code frame is the next, and two
+ * copies of the same three rules is how they drift apart.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  /*
+   * ⚠️ THE TWO RADII ARE NOT INDEPENDENT NUMBERS. A rounded box inside a
+   * rounded box only looks right when the inner radius is the outer one minus
+   * the gap between them — otherwise the corners run at different curvatures
+   * and the inner box reads as *pasted onto* the frame rather than set into it.
+   *
+   * The tokens are chosen so that arithmetic lands on one of them: `1rem` outer
+   * minus `0.5rem` of padding is `0.5rem`, which is `--wave-docs-radius`. Change
+   * the padding and the body's radius has to move with it.
+   */
+  .wave-docs-panel {
+    /* 4px. The frame is a hairline of surface around the body, not a margin. */
+    padding: 0.25rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius-lg);
+    background: var(--wave-docs-bg-subtle);
+    /*
+     * ⚠️ THE INSET THE BODY'S CONTENT USES, AND IT IS NOT THE SAME NUMBER AS
+     * THE HEADER'S. The title sits at the frame's padding; anything inside the
+     * body sits at the frame's padding *plus the body's own border*, so the two
+     * columns miss each other by a pixel per border. Measured before this: the
+     * rows of "where to go next" started 9px right of the heading above them —
+     * a number that appears in no rule, and looks like a design decision.
+     *
+     * Exported rather than repeated, because the next component to wear the
+     * panel has to make the same subtraction and will not think to — and the
+     * correction is applied to the *header* below rather than baked in here, so
+     * a component wearing the panel writes the clean value and the panel keeps
+     * its own arithmetic to itself.
+     */
+    --wave-docs-panel-inset: 1rem;
+  }
+
+  /*
+   * The header lives in the frame's padding rather than in a band of its own:
+   * the inset surface below is what draws the line between them, so a border
+   * here would be a second one.
+   */
+  .wave-docs-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    /*
+     * ⚠️ THE `+ 1px` IS THE BODY'S BORDER, AND IT IS WHAT PUTS THE TITLE ON THE
+     * SAME COLUMN AS THE CONTENT BELOW IT. The title's box starts at the
+     * frame's padding; the body's content starts at that padding plus the
+     * body's own border, so equal insets miss each other by exactly one border.
+     * Derived rather than written out, so moving `--wave-docs-panel-inset`
+     * moves both.
+     */
+    padding-block: 0.5rem;
+    padding-inline: calc(var(--wave-docs-panel-inset) + 1px);
+  }
+
+  .wave-docs-panel__title {
+    margin: 0;
+    min-width: 0;
+    color: var(--wave-docs-fg);
+    font-size: 0.875rem;
+    font-weight: 650;
+    letter-spacing: -0.005em;
+  }
+
+  /* Whatever the header's right-hand controls turn out to be — a copy button, a
+   * language switcher — they are quiet next to the title. */
+  .wave-docs-panel__actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--wave-docs-fg-subtle);
+    font-size: 0.8125rem;
+  }
+
+  .wave-docs-panel__body {
+    /* See the radius note above: outer minus this box's inset. */
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius-panel);
+    background: var(--wave-docs-bg);
+    /* The frame already clips to its own corners; this keeps a child's square
+     * corner — a table, a `<pre>` — from poking through the inner one. */
+    overflow: hidden;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Where to go next
+ *
+ * A question per row and the page that answers it, from a page's `next`
+ * frontmatter. Emitted by `docs.Page` above the pager.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  /*
+   * One block, not a stack of cards. The rows belong to each other — they are
+   * the same question asked seven ways — and seven bordered boxes says seven
+   * unrelated things. One frame with hairlines between reads as a table of
+   * routes, which is what it is.
+   *
+   * The measure and the centring, both: this belongs to the prose, and the
+   * pager below it learned that the hard way.
+   */
+  .wave-docs-next {
+    max-width: var(--wave-docs-measure);
+    margin-inline: auto;
+    margin-block-start: 3rem;
+  }
+
+  .wave-docs-next__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /*
+   * ⚠️ THE RULE IS A TOP BORDER ON EVERY ROW BUT THE FIRST, NOT A BOTTOM ONE ON
+   * EVERY ROW BUT THE LAST. `:last-child` is the wrong hook here: the list is
+   * authored, and a `:last-child` rule leaves a doubled line under the final
+   * row the moment anything is appended to it — including by a consumer's own
+   * CSS. `+` says "between", which is the thing being described.
+   */
+  .wave-docs-next__item {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    /* The inline half is the panel's, so a question lines up with the heading
+     * above it — see `--wave-docs-panel-inset`. */
+    padding: 1rem var(--wave-docs-panel-inset);
+  }
+
+  .wave-docs-next__item + .wave-docs-next__item {
+    border-block-start: 1px solid var(--wave-docs-border);
+  }
+
+  /*
+   * ⚠️ `min-width: 0` ON THE QUESTION, WHICH IS WHAT LETS IT WRAP. A flex item
+   * floors at its content's min-content width, so a sentence-length question
+   * pushes the answer off the row's inline end instead of taking two lines.
+   */
+  .wave-docs-next__question {
+    min-width: 0;
+    color: var(--wave-docs-fg-muted);
+  }
+
+  .wave-docs-next__answer {
+    flex: none;
+    color: var(--wave-docs-accent);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .wave-docs-next__answer:hover {
+    text-decoration: underline;
+  }
+
+  .wave-docs-next__answer:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: 2px;
+    border-radius: var(--wave-docs-radius-sm);
+  }
+
+  /*
+   * ⚠️ A CONTAINER QUERY, AND THE CONTAINER IS THE SHELL — the same reasoning
+   * as every other breakpoint in this file. Two columns of sentence-length
+   * questions are cramped in a narrow *box*, which a host can hand us on a
+   * 1920px monitor.
+   */
+  @container wave-docs (max-width: 40rem) {
+    .wave-docs-next__item {
+      flex-direction: column;
+      align-items: start;
+      gap: 0.25rem;
     }
   }
 }
