@@ -15,33 +15,39 @@ returns without opening anything. The one place that needed teaching is the
 arrow keys: they wrap modulo the list, and `(-1 - 1 + n) % n` is the *second to
 last*, so Up from a fresh query landed one short of the end.
 
-**The active row is the sidebar's current-page row.** It was a 2px accent
-outline, which read as a component borrowed from somewhere else; it is a tint
-plus accent ink now, easing on the same 150ms the sidebar's rows use. Moving the
-pointer over a result activates it, so hovering *is* this state — there is no
+**Every row in the dialog is the same object as the trigger that opened it.**
+A reader clicks a bordered, filled control, lands in a bordered, filled field,
+and picks from a list of bordered, filled rows. The active one darkens its edge —
+`--wave-docs-border` to `--wave-docs-border-strong`, which is the trigger's own
+pair of states — on the same 150ms easing the sidebar's rows use. Moving the
+pointer over a result activates it, so hovering *is* this state; there is no
 second rule for it.
 
-⚠️ DROPPING THE RING DOES NOT DROP THE CONTRAST, BECAUSE THE INK REPLACES IT.
-The old comment argued the ring was load-bearing: a tint alone is 1.12:1 and
-WCAG 1.4.11 asks 3:1 of a state indicator. The heading turning `accent` is the
-indicator now — 4.60:1 light, 6.30:1 dark against the tint it sits on — which is
-the same pair the sidebar has always shipped. What must not come back is the
-tint carrying the state alone.
+It was a 2px accent ring, briefly an accent tint. The ring read as a component
+borrowed from somewhere else, and one that comes and goes as a reader arrows is
+worse than one that never moves.
+
+⚠️ THE EDGE IS A CHANGE, NOT A CONTRAST CARRIER. `border-strong` on `bg-subtle`
+is about 1.9:1, under the 3:1 WCAG 1.4.11 asks of a state indicator — so the
+marker carries the rest, going `fg-subtle` to `fg`, which is text contrast rather
+than non-text and is the sidebar's own hover. What must not happen is the edge
+being left to do this alone.
 
 ## The field, and the gap under it
 
-**No border, a fill instead.** A bordered field inside a bordered dialog is two
-frames a few pixels apart for one control — and the border was what forced the
-`calc(0.75rem - 1px)` padding it used to pay, since content inside a bordered box
-starts a border further in. No border, no correction, and the padding is a round
-number again.
+**The field is the trigger, expanded.** Same border, same fill, same radius. It
+was a border with no fill — two frames a few pixels apart — and briefly a fill
+with no border, which is a tinted band rather than a control. The trigger has
+always been both, and both together are what reads as a field.
 
-**Its radius is the token the result rows take.** It was
-`calc(var(--wave-docs-radius) - 0.375rem)` — concentric with the dialog, and a
-number nothing else in the file used, so the field and the rows six pixels below
-it rounded differently. Every inset box in this dialog is a small control on the
-`-sm` tier, and them agreeing with *each other* is what a reader sees; agreeing
-with the frame is arithmetic only a measurement finds.
+⚠️ THE PADDING IS NOT COPIED WITH THEM. The trigger pays `calc(0.5rem - 1px)`
+because it is a compact control in a sidebar; the field pays
+`calc(0.75rem - 1px)` because its glyph has to land on the column the results
+and the footer sit on. The `- 1px` is the border either way — content inside a
+bordered box starts a border further in.
+
+The field takes the base radius and the result rows take `-sm`, which is the tier
+system doing what it says: both are controls, and a result row is a list item.
 
 ⚠️ AND THE GAP UNDER THE FIELD WAS PAID TWICE. The field's margin and the result
 list's top padding both contributed, so the space between the input and the first
