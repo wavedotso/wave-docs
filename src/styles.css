@@ -4519,6 +4519,19 @@
     text-overflow: ellipsis;
     color: var(--wave-docs-fg-subtle);
     font-family: var(--wave-docs-font-mono);
+    /*
+     * ⚠️ `word-spacing`, BECAUSE A THINNER SPACE CHARACTER CANNOT WORK HERE.
+     *
+     * The separator is ` › `, and in a monospace face every glyph advances one
+     * cell — a U+2009 thin space would occupy exactly as much room as U+0020,
+     * or fall out of the mono face entirely and render at a different width
+     * from every other gap on the line. `word-spacing` adjusts the advance
+     * added at each separator instead, which is independent of the cell.
+     *
+     * Only the separators move: a route segment is a slug, so these are the
+     * only spaces on the line.
+     */
+    word-spacing: -0.15em;
     /* Smaller than the trail was: a monospace face reads larger at the same
      * size, and this line is a reference rather than something to read. */
     font-size: 0.6875rem;

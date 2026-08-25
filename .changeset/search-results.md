@@ -24,6 +24,14 @@ more than one screen reader pronounces the character, which is exactly why
 `spokenName` joins with commas instead. The two lines carry the same fact in the
 form each audience can use.
 
+⚠️ AND THE SEPARATOR IS TIGHTENED WITH `word-spacing`, NOT A THINNER SPACE
+CHARACTER. The line is monospace, where every glyph advances one cell — a U+2009
+thin space would take exactly as much room as U+0020, or drop out of the mono
+face and render at a different width from every other gap on the line.
+`word-spacing` adjusts the advance added at each separator instead, which is
+independent of the cell, and a route segment is a slug so those are the only
+spaces it can touch.
+
 ## The scrollbar is hidden, and it cannot be conditional
 
 ⚠️ THERE IS NO CSS WAY TO SHOW A SCROLLBAR ONLY WHILE SCROLLING. That behaviour
