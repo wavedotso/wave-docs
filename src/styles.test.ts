@@ -525,23 +525,88 @@ describe('the radius tiers', () => {
    * `--wave-docs-radius-panel` whose only job is to be another token minus a
    * constant is a number that can drift from its own definition.
    */
-  it('derives the panel surface from the frame rather than declaring it', () => {
-    const body = readBlock(sheet, sheet.indexOf('.wave-docs-panel__body {'));
-    expect(body).toContain('border-radius: var(--wave-docs-radius)');
+  /**
+   * ⚠️ THE TIERS ARE DERIVED FROM ONE ROOT, WHICH IS THE OVERRIDE POINT.
+   *
+   * A host already running `@waveso/ui` writes `--wave-docs-radius-base:
+   * var(--radius)` and the whole scale follows their app. Three separate
+   * literals would be three chances to break the concentric arithmetic and
+   * three lines for that host to keep in step by hand.
+   */
+  it('derives every tier from the root rather than declaring three numbers', () => {
+    const root = readBlock(sheet, sheet.indexOf(':root {'));
+
+    expect(root).toContain('--wave-docs-radius-base:');
+    for (const tier of ['--wave-docs-radius-sm:', '--wave-docs-radius-lg:']) {
+      const line = root.slice(root.indexOf(tier));
+      expect(line.slice(0, line.indexOf(';'))).toContain(
+        'var(--wave-docs-radius-base)',
+      );
+    }
+    expect(root).toContain('--wave-docs-radius: var(--wave-docs-radius-base)');
+
+    // One token whose only job was to be another token minus a constant.
     expect(sheet).not.toContain('--wave-docs-radius-panel');
+  });
 
-    const frame = Number.parseFloat(
-      /--wave-docs-radius-lg:\s*([\d.]+)rem/.exec(sheet)?.[1] ?? '0',
-    );
-    const surface = Number.parseFloat(
-      /--wave-docs-radius:\s*([\d.]+)rem/.exec(sheet)?.[1] ?? '0',
-    );
-    const padding = Number.parseFloat(
-      /\.wave-docs-panel\s*\{[^}]*padding:\s*([\d.]+)rem/.exec(sheet)?.[1] ??
-        '0',
-    );
+  /**
+   * ⚠️ THE PANEL'S PADDING IS THE STEP TOKEN, NOT A LITERAL THAT MATCHES IT.
+   *
+   * The inset surface takes the base radius and the frame takes `-lg`, which is
+   * the base plus one step — so the two corners are concentric only while the
+   * padding *is* that step. As `4px` they agree today and drift the first time
+   * anyone retunes the scale, including the squircle bump below. The pixels are
+   * measured in the browser tier; this is the construction.
+   */
+  it('pays the panel its padding out of the same step the tiers use', () => {
+    const panel = readBlock(sheet, sheet.indexOf('.wave-docs-panel {'));
+    expect(panel).toContain('padding: var(--wave-docs-radius-step)');
+  });
 
-    expect(frame - padding).toBeCloseTo(surface, 4);
+  /**
+   * ⚠️ A SQUIRCLE READS TIGHTER, SO THE ROOT MOVES — AND ONLY THE ROOT.
+   *
+   * `@waveso/ui` bumps `--radius` under the same `@supports`, to the same
+   * value, and the two have to agree or a page running both shows two corners.
+   * Every tier is a `calc()` off the root and the padding is the step, so the
+   * arithmetic survives the bump untouched.
+   */
+  it('moves only the root when squircles are live', () => {
+    const at = RULES.find((rule) =>
+      rule.prelude.includes('corner-shape: squircle'),
+    );
+    expect(at, 'no @supports for corner-shape').toBeDefined();
+
+    const block = readBlock(sheet, at?.at ?? 0);
+    expect(block).toContain('--wave-docs-radius-base:');
+    expect(block).not.toContain('--wave-docs-radius-sm:');
+    expect(block).not.toContain('--wave-docs-radius-lg:');
+  });
+
+  /**
+   * ⚠️ THE SQUIRCLE RULE IS SCOPED TO ELEMENTS THIS PACKAGE OWNS, NOT `*`.
+   *
+   * `@waveso/ui` can say `*` because it is the application's own stylesheet.
+   * This one is mounted inside somebody else's page, and a bare `*` would
+   * reshape every corner the host drew — the same trespass as claiming `html`
+   * or `body`, which this file already refuses.
+   */
+  it('shapes only its own corners', () => {
+    /*
+     * Leaf rules only. `readBlock` on an at-rule returns everything nested
+     * inside it, so `@layer components` "contains" `corner-shape` and the
+     * first spelling of this test failed on the layer that holds the rule.
+     */
+    const selectors = RULES.filter((rule) => {
+      if (rule.prelude.startsWith('@')) return false;
+      const block = readBlock(sheet, rule.at);
+      return block.includes('corner-shape:') && block.indexOf('{', 1) === -1;
+    }).flatMap((rule) => splitSelectors(rule.prelude));
+
+    expect(selectors.length).toBeGreaterThan(0);
+    for (const selector of selectors) {
+      expect(selector, `${selector} is not ours`).toMatch(/wave-docs-/);
+    }
   });
 });
 

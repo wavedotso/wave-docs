@@ -235,19 +235,22 @@ describe('tables', () => {
     expect(scroll.closest('.wave-docs-panel')).toBeNull();
     expect(getComputedStyle(scroll).borderTopWidth).toBe('1px');
     /*
-     * The panel's outer radius, kept so a table and a code block still read as
-     * two of one family.
+     * The block radius, asserted against a panel's outer edge rather than
+     * against the token — a table and a framed block are the same tier, and
+     * two computed corners agreeing is the thing a reader actually sees.
      *
-     * ⚠️ THE TOKEN IS TEXT, NOT PIXELS. `getPropertyValue` hands back
-     * `1.1875rem` — the declaration as written — so comparing it to a computed
-     * `19px` fails against a rule that is correct. Convert, then compare.
+     * ⚠️ `getPropertyValue` CANNOT ANSWER THIS. A custom property is not
+     * computed to pixels: it hands back the declaration as written, and every
+     * tier is a `calc()` off one root now.
      */
-    const token = getComputedStyle(document.documentElement).getPropertyValue(
-      '--wave-docs-radius-lg',
-    );
-    expect(
-      Number.parseFloat(getComputedStyle(scroll).borderTopLeftRadius),
-    ).toBe(Number.parseFloat(token) * 16);
+    const tableRadius = getComputedStyle(scroll).borderTopLeftRadius;
+    const probe = document.createElement('div');
+    probe.className = 'wave-docs-panel';
+    document.querySelector('.wave-docs-prose')?.append(probe);
+
+    expect(Number.parseFloat(tableRadius)).toBeGreaterThan(0);
+    expect(tableRadius).toBe(getComputedStyle(probe).borderTopLeftRadius);
+    probe.remove();
 
     const rows = scroll.querySelectorAll('tbody tr');
     const second = rows[1];
@@ -1351,8 +1354,16 @@ describe('the panel', () => {
    * rounded box only looks right when the inner radius is the outer one minus
    * the gap between them; anything else runs the corners at different
    * curvatures and the inner box reads as pasted onto the frame rather than set
-   * into it. The tokens are picked so the arithmetic lands on one of them —
-   * `1rem` outer minus `0.5rem` of padding is `--wave-docs-radius`.
+   * into it. The frame takes `-lg`, the surface takes the base, and `-lg` is
+   * the base plus one step — which is also what the frame pays as padding.
+   *
+   * ⚠️ AND THIS IS THE ONLY TIER THAT CAN STILL ASSERT IT. `styles.test.ts`
+   * checked the same arithmetic by regexing three `rem` literals out of the
+   * token block; the tiers are `calc()` off one root now, so the regex matched
+   * nothing, both sides defaulted to zero, and `0 - 0` passed while asserting
+   * nothing at all. Computed pixels cannot go vacuous that way — and they are
+   * also where the squircle bump is visible, since this engine has
+   * `corner-shape` and the numbers here are the bumped ones.
    */
   it('sets its surface into the frame with concentric corners', async () => {
     mountPanel();

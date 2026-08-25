@@ -247,18 +247,28 @@ describe('the copy button once it is live', () => {
           figure.getBoundingClientRect().top,
       ).toBe(0);
       /*
-       * And the surface is the outer box now, so it takes the outer radius.
+       * And the surface is the outer box now, so it takes the block radius —
+       * asserted against a *framed* fence's outer edge rather than against the
+       * token.
        *
-       * ⚠️ THE TOKEN IS TEXT, NOT PIXELS. `getPropertyValue` returns the
-       * declaration as written — `1.1875rem` — so comparing it to a computed
-       * `19px` fails against a rule that is correct.
+       * ⚠️ `getPropertyValue` CANNOT ANSWER THIS. A custom property is not
+       * computed to pixels, so it hands back the declaration as written — and
+       * the tiers are `calc()` off one root now, so what comes back is
+       * `calc(var(--wave-docs-radius-base) + var(--wave-docs-radius-step))`.
+       * An earlier spelling parsed that as a number and got `NaN`. Comparing
+       * two computed corners is also the stronger claim: the two blocks agree,
+       * which is the thing the reader actually sees.
        */
-      const token = getComputedStyle(document.documentElement).getPropertyValue(
-        '--wave-docs-radius-lg',
-      );
-      expect(
-        Number.parseFloat(getComputedStyle(surface).borderTopLeftRadius),
-      ).toBe(Number.parseFloat(token) * 16);
+      const unframed = getComputedStyle(surface).borderTopLeftRadius;
+
+      document.body.innerHTML = '';
+      mount(frame({ title: 'a.ts' }));
+      const framed = getComputedStyle(
+        document.querySelector('.wave-docs-code') as HTMLElement,
+      ).borderTopLeftRadius;
+
+      expect(Number.parseFloat(unframed)).toBeGreaterThan(0);
+      expect(unframed).toBe(framed);
     }
   });
 

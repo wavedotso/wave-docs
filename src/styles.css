@@ -143,32 +143,50 @@
     --wave-docs-shadow: oklch(0 0 0 / 0.3);
 
     /*
-     * Three radii, and which one a box takes is decided by what kind of box it
-     * is rather than by how big it happens to be.
+     * ⚠️ ONE ROOT AND THREE TIERS, DERIVED — AND THE NUMBERS ARE `@waveso/ui`'s.
      *
-     * `-sm` (6px) is inline: a `<kbd>`, an inline `<code>` chip, a small
-     * control, a focus ring drawn around one of those.
+     * A site running both this package and the component library should not
+     * have two radius scales a few pixels apart, and the way to guarantee that
+     * is to take theirs rather than to keep ours in step by hand. `--radius`
+     * there is `0.625rem` with `--radius-sm/md/lg` at `calc(root ∓ --spacing)`;
+     * this is the same construction with the step written out, because
+     * `--spacing` is Tailwind's and this package does not depend on Tailwind.
      *
-     * The base (8px) is controls and overlays — a button, the search trigger,
-     * the search dialog — and the panel's *inset surface*, which is the same
-     * number for a reason: the frame is 12px and holds 4px of padding, so
-     * `12 - 4 = 8` and the card's corner is concentric with the frame's. A
-     * `--wave-docs-radius-panel` used to hold that value separately; it was one
-     * token whose only job was to be another token minus the padding.
+     * ⚠️ AND THE ROOT IS THE OVERRIDE POINT, WHICH IS THE WHOLE REASON IT
+     * EXISTS. A host already running `@waveso/ui` writes one line —
+     * `--wave-docs-radius-base: var(--radius)` — and the docs follow their
+     * app's corners, including any theme that moves them. Overriding three
+     * tokens separately is three chances to break the concentric arithmetic
+     * below.
      *
-     * `-lg` (12px) is every block in the reading flow: a callout, an image, a
-     * video, a table, a code frame framed or not, and the panel's outer edge.
+     * Which tier a box takes is decided by what *kind* of box it is, never by
+     * how big it happens to be:
      *
-     * ⚠️ THAT LAST GROUP WAS SPLIT, AND THAT IS WHAT THIS FIXES. Callouts,
-     * images and embeds sat at the base radius while a code frame sat at 19px,
+     *   `-sm`   inline chips, small controls, and focus rings drawn on those
+     *   base    controls, overlays, and the panel's inset surface
+     *   `-lg`   every block in the reading flow, and the panel's outer edge
+     *
+     * ⚠️ THE BLOCK TIER WAS SPLIT BEFORE THIS. Callouts, images and video
+     * embeds sat at the base radius while a code frame and a table sat at 19px,
      * so two blocks a paragraph apart disagreed by eleven pixels. 19 was
-     * measured off developers.uniswap.org, which is a fine way to pick a number
-     * and a bad way to pick a *system*: it made a table read as aggressively
-     * round next to the callout above it.
+     * measured off a reference site, which is a fine way to pick a number and a
+     * bad way to pick a system.
      */
-    --wave-docs-radius: 0.5rem;
-    --wave-docs-radius-sm: 0.375rem;
-    --wave-docs-radius-lg: 0.75rem;
+    --wave-docs-radius-base: 0.625rem;
+    /*
+     * The step between tiers, and the panel's padding is the same number
+     * *by construction* below rather than by coincidence: the panel's inset
+     * surface has to be its frame's radius minus its own padding, or the two
+     * corners run at different curvatures.
+     */
+    --wave-docs-radius-step: 0.25rem;
+    --wave-docs-radius-sm: calc(
+      var(--wave-docs-radius-base) - var(--wave-docs-radius-step)
+    );
+    --wave-docs-radius: var(--wave-docs-radius-base);
+    --wave-docs-radius-lg: calc(
+      var(--wave-docs-radius-base) + var(--wave-docs-radius-step)
+    );
     /* The shell. These five plus `--wave-docs-measure` are the whole settable
      * layout surface; the gutter and the drawer width are literals, because each
      * appears once and an ordinary override is already the cleanest tool for
@@ -242,6 +260,25 @@
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
+  /*
+   * ⚠️ A SQUIRCLE READS TIGHTER THAN A CIRCULAR ARC AT THE SAME RADIUS, so
+   * where `corner-shape` is live the root moves up to restore the roundness
+   * the numbers were chosen for. `@waveso/ui` does the same, to the same
+   * value, and the two have to agree or a page running both shows two
+   * different corners on the same screen.
+   *
+   * Only the root moves. Every tier is a `calc()` off it and the panel's
+   * padding is the step, so the concentric arithmetic survives untouched — and
+   * a browser without squircles keeps the original scale rather than a scale
+   * tuned for a shape it cannot draw.
+   */
+  @supports (corner-shape: squircle) {
+    :root {
+      --wave-docs-radius-base: 1rem;
+    }
+  }
+
+
   @media (prefers-color-scheme: dark) {
     :root[data-theme='system'] {
       color-scheme: dark;
@@ -732,6 +769,49 @@
     font-size: 0.875em;
     /* Long identifiers must not push the whole column sideways. */
     overflow-wrap: break-word;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Squircle corners
+ *
+ * `corner-shape` draws every `border-radius` as a continuous superellipse
+ * rather than a circular arc — softer, and what `@waveso/ui` renders — and
+ * degrades to ordinary rounding where it is unsupported. Chrome has it today;
+ * Safari and Firefox do not, so this is an enhancement and never a dependency.
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  @supports (corner-shape: squircle) {
+    /*
+     * ⚠️ SCOPED TO ELEMENTS THIS PACKAGE OWNS, AND NOT `*`.
+     *
+     * `@waveso/ui` can say `*` because it is the application's own stylesheet.
+     * This one is mounted inside somebody else's page, and a bare `*` would
+     * reshape every corner the host drew — the same class of trespass as
+     * claiming `html` or `body`, which this file already refuses.
+     *
+     * The attribute pair matches our classes wherever they sit in a class
+     * list. The prose elements are named separately because they are the
+     * markdown author's tags rather than ours: an inline `<code>` chip, a
+     * `<kbd>`, an excluded `<pre>`. They are rounded by rules scoped to
+     * `.wave-docs-prose`, so they are ours to shape.
+     */
+    :is([class^='wave-docs-'], [class*=' wave-docs-']),
+    .wave-docs-prose :is(code, kbd, pre) {
+      corner-shape: squircle;
+    }
+
+    /*
+     * ⚠️ PILLS AND DOTS OPT BACK OUT. A squircle at `9999px` is a lozenge with
+     * flattened ends rather than a pill, and a squircled dot is a rounded
+     * square. Both are pseudo-elements, which `[class]` selectors cannot
+     * reach, so they are named.
+     */
+    .wave-docs-layout__sidebar-trigger::before,
+    .wave-docs-layout__sidebar-trigger::after {
+      corner-shape: round;
+    }
   }
 }
 
@@ -2103,8 +2183,15 @@
    * the padding and the body's radius has to move with it.
    */
   .wave-docs-panel {
-    /* 4px. The frame is a hairline of surface around the body, not a margin. */
-    padding: 0.25rem;
+    /*
+     * ⚠️ THE STEP, NOT A LITERAL `4px` THAT HAPPENS TO MATCH IT. The inset
+     * surface below takes the base radius and this frame takes `-lg`, which is
+     * the base plus one step — so the surface's corner is concentric with the
+     * frame's only while this padding *is* that step. Written as the token, a
+     * host moving `--wave-docs-radius-base` keeps both true; written as `4px`,
+     * the two drift the first time anyone retunes the scale.
+     */
+    padding: var(--wave-docs-radius-step);
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius-lg);
     background: var(--wave-docs-bg-subtle);

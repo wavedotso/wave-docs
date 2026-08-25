@@ -721,6 +721,48 @@ your own `:root`, after the import:
 }
 ```
 
+### Corners
+
+Three tiers, all derived from one root, so a box's radius is decided by what
+*kind* of box it is rather than by how big it happens to be.
+
+| Token | What takes it |
+| --- | --- |
+| `--wave-docs-radius-sm` | Inline chips, small controls, and focus rings drawn on those |
+| `--wave-docs-radius` | Controls, overlays, and the panel's inset surface |
+| `--wave-docs-radius-lg` | Every block in the reading flow, and the panel's outer edge |
+
+**Retune all three from one line.** `--wave-docs-radius-base` is the root and
+the other three are `calc()` off it, so a host already running `@waveso/ui`
+points this package at their scale and every corner follows — including any
+theme that moves it:
+
+```css
+:root {
+  --wave-docs-radius-base: var(--radius);
+}
+```
+
+The numbers are `@waveso/ui`'s to begin with. A page running both should not
+show two radius scales a few pixels apart, and taking theirs is how that is
+guaranteed rather than kept in step by hand.
+
+⚠️ **`--wave-docs-radius-step` is not decoration.** The panel's inset surface
+takes the base radius and its frame takes `--wave-docs-radius-lg`, which is the
+base plus one step — so the two corners are concentric only while the frame's
+*padding* is that same step, which is why it is paid out of the token rather
+than written as `4px`. Move the root and both stay true; hard-code the padding
+and they drift the first time anyone retunes the scale.
+
+Where the browser supports `corner-shape`, every corner this package draws
+becomes a squircle and the root moves up, because a squircle reads tighter than
+a circular arc at the same radius. `@waveso/ui` makes the same move to the same
+value. Elsewhere it is an ordinary rounded corner at the original scale — an
+enhancement, never a dependency. The shaping is scoped to elements this package
+owns rather than applied with `*`: this stylesheet is mounted inside somebody
+else's page, and reshaping the host's corners is the same trespass as claiming
+`html`.
+
 That works because **everything this stylesheet declares lives in a `@layer`** —
 `theme` for the tokens, `base` for element resets, `components` for the classes
 — and unlayered CSS outranks every layer regardless of specificity.
