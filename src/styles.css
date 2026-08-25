@@ -3913,16 +3913,37 @@
     box-shadow: 0 24px 48px -12px var(--wave-docs-shadow);
   }
 
+  /*
+   * ⚠️ A FIELD SET INTO THE DIALOG, AND IT WAS A FULL-BLEED BAND WITH TWO
+   * ROUNDED CORNERS AND A RULE UNDER IT.
+   *
+   * Flush to the frame it could only round the corners it shared with the
+   * dialog, so it read as part of the chrome rather than as the one control in
+   * it. Inset by the same margin the results list uses, it is a box like they
+   * are, and the rule under it is redundant — the gap does that work.
+   *
+   * ⚠️ AND THE `- 1px` IS THIS BOX'S OWN BORDER, WHICH IS WHAT PUTS ITS GLYPH
+   * ON THE SAME COLUMN AS EVERYTHING ELSE. Content inside a bordered box starts
+   * a border further in than content inside an unbordered one, so equal padding
+   * misses by exactly that. The same subtraction `--wave-docs-panel-inset`
+   * documents, for the same reason.
+   */
   .wave-docs-search-input-row {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    padding: 0.75rem;
-    border-block-end: 1px solid var(--wave-docs-border);
-    /* Matches the dialog's corners, so the focus ring below traces them
-     * instead of poking out of the rounded frame. */
-    border-start-start-radius: var(--wave-docs-radius);
-    border-start-end-radius: var(--wave-docs-radius);
+    margin: 0.375rem;
+    padding: 0.5rem calc(0.75rem - 1px);
+    border: 1px solid var(--wave-docs-border);
+    /*
+     * ⚠️ THE DIALOG'S RADIUS MINUS THE GAP TO IT, NOT THE DIALOG'S RADIUS. A
+     * rounded box inset inside a rounded box is concentric only at
+     * `outer - gap`; equal radii run the two corners at different curvatures
+     * six pixels apart, and the field reads as pasted onto the dialog rather
+     * than set into it. The same rule `.wave-docs-panel` follows, written out
+     * here because the gap is a margin rather than the parent's padding.
+     */
+    border-radius: calc(var(--wave-docs-radius) - 0.375rem);
   }
 
   /* The ring belongs to the row, not the input. A 2px ring drawn around a
@@ -3973,7 +3994,18 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 0.5rem 0.75rem;
+    /*
+     * ⚠️ THE COLUMN EVERY OTHER ROW IN THIS DIALOG LINES UP ON, AND IT IS THE
+     * ANCHOR RATHER THAN A FOLLOWER. The key caps are the one row whose left
+     * edge is a drawn object, so the input's glyph and the results' text are
+     * measured to it: `0.375rem` of inset plus `0.75rem` of padding is the same
+     * 18px this pays in one go.
+     *
+     * Boxes, not ink. A cap's arrow sits its own border and `0.4em` of padding
+     * inside the cap, so aligning the *glyphs* would put every other row on a
+     * column that moves whenever the footer's font size does.
+     */
+    padding: 0.5rem 1.125rem;
     border-block-start: 1px solid var(--wave-docs-border);
     color: var(--wave-docs-fg-subtle);
     font-size: 0.75rem;
@@ -4093,7 +4125,9 @@
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
-    padding: 0.5rem 0.625rem;
+    /* The list pays `0.375rem` around this, so `0.75rem` here lands the heading
+     * on the dialog's 18px column. See the footer, which is the anchor. */
+    padding: 0.5rem 0.75rem;
     border-radius: var(--wave-docs-radius-sm);
     color: var(--wave-docs-fg);
     text-decoration: none;
