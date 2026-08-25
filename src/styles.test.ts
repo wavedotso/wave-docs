@@ -1011,19 +1011,31 @@ describe('tables', () => {
    * the cell, so it scrolls out from under a sticky header instead of staying
    * with it — which is why the thing that was here was a shadow.
    */
-  it('gives the header neither a rule nor a tint', () => {
+  it('puts the header on the frame, and the card at the body', () => {
     const head = readBlock(sheet, sheet.indexOf('.wave-docs-table thead th {'));
-    expect(head).toContain('position: sticky');
+    // The frame's own ground: this row is the panel's header slot, reached
+    // from the other side because `<thead>` cannot leave the `<table>`.
+    expect(head).toContain('--wave-docs-bg-subtle');
     expect(head).not.toContain('box-shadow');
     expect(head).not.toContain('border-block-end');
-    expect(head).not.toContain('bg-subtle');
     /*
-     * The ground itself stays, and is not decoration: a sticky cell with a
-     * transparent background shows the rows travelling underneath it the
-     * moment anything gives this table a height to scroll in — which a host
-     * constraining the panel can do without touching this file.
+     * Painted rather than transparent: a sticky cell with no background shows
+     * the rows travelling underneath it the moment anything gives this table a
+     * height to scroll in.
      */
-    expect(head).toContain('background:');
+    expect(head).toContain('position: sticky');
+
+    /*
+     * ⚠️ THE CARD IS THE CELLS, BECAUSE A `tbody` CANNOT BE ONE. Measured in a
+     * real engine, both ways: the separated model does not paint a row-group
+     * border at all, and the collapsing model paints it square. A cell is an
+     * ordinary box and takes a radius in either.
+     */
+    const corner = readBlock(
+      sheet,
+      sheet.indexOf('.wave-docs-table tbody tr:first-child'),
+    );
+    expect(corner).toContain('radius');
   });
 
   /**

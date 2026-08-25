@@ -802,6 +802,25 @@
   .wave-docs-table-frame {
     /* The surface scrolls rather than clipping. See `.wave-docs-panel__body`. */
     --wave-docs-panel-overflow: auto;
+    /*
+     * ⚠️ THE SURFACE IS NOT THE CARD HERE — THE `tbody`'s CELLS ARE.
+     *
+     * Everywhere else the panel's body *is* the white card, and the header sits
+     * above it on the frame's band. A table cannot do that: `<thead>` cannot
+     * leave the `<table>`, because the columns have to share one table layout.
+     *
+     * So the surface goes transparent and edgeless, the header row takes the
+     * frame's own ground, and the card is drawn by the body cells — which are
+     * ordinary boxes and take a `border-radius` in both table models. (A border
+     * on the `tbody` itself does not work, and that is worth writing down: in
+     * the separated model row-group borders are not painted at all, and in the
+     * collapsing model they are painted square. Measured, both.)
+     *
+     * The 1px edge is kept and made transparent rather than removed, so the
+     * concentric arithmetic the panel documents stays true and nothing shifts.
+     */
+    --wave-docs-panel-surface: transparent;
+    --wave-docs-panel-edge: transparent;
   }
 
   .wave-docs-table-scroll:focus-visible {
@@ -1024,26 +1043,20 @@
     top: 0;
     z-index: 1;
     /*
-     * ⚠️ THE SURFACE'S OWN GROUND, NOT A TINT — AND IT WAS `--wave-docs-bg-subtle`.
+     * ⚠️ THE FRAME'S GROUND, WHICH IS WHAT PUTS THIS ROW ON THE BAND.
      *
-     * It has to be opaque, because rows scroll underneath a sticky header and
-     * a transparent one shows them through. It must not be *tinted*: inside
-     * the panel the subtle ramp is the frame's colour, so a tinted header drew
-     * a band of the frame's tone immediately inside the surface's border —
-     * border, band, border within about six pixels, which reads as a doubled
-     * frame rather than as a header.
+     * This is the header slot. "Where to go next" gets one by putting a
+     * `<div>` above the card; a table cannot, because `<thead>` cannot leave
+     * the `<table>` and keep its columns. So the card starts at the `tbody`
+     * instead, and the header row is left sitting on the frame — same picture,
+     * arrived at from the other side.
      *
-     * Weight and the rule below it are what say "header", the same way "where
-     * to go next" divides its rows and tints none of them.
+     * Painted rather than left transparent: a sticky cell with no background
+     * shows the rows travelling underneath it the moment anything gives this
+     * table a height to scroll in, which a host constraining the panel can do
+     * without touching this file.
      */
-    /*
-     * ⚠️ THE GROUND STAYS, AND IT IS NOT DECORATION. It is the surface's own
-     * colour, so there is nothing to see — but a sticky cell with a
-     * transparent background shows the rows travelling underneath it the
-     * moment anything gives this table a height to scroll in, which a host
-     * constraining the panel can do without touching this file.
-     */
-    background: var(--wave-docs-panel-surface, var(--wave-docs-bg));
+    background: var(--wave-docs-bg-subtle);
   }
 
   .wave-docs-table :is(th, td) {
@@ -1052,12 +1065,41 @@
     vertical-align: top;
   }
 
-  /* A row header in the first column, which is opaque for the same reason and
-   * distinguished the same way. */
   .wave-docs-table th {
-    background: var(--wave-docs-panel-surface, var(--wave-docs-bg));
     font-weight: 600;
     white-space: nowrap;
+  }
+
+  /*
+   * ⚠️ THE CARD, DRAWN BY THE CELLS — because a `tbody` cannot be one.
+   *
+   * A row group takes no border in either table model: the separated model does
+   * not paint one at all, the collapsing model paints it square. A *cell* is an
+   * ordinary box and takes a radius in both, so the four corner cells round the
+   * card and the rest of it is a run of white.
+   */
+  .wave-docs-table tbody :is(th, td) {
+    background: var(--wave-docs-bg);
+  }
+
+  .wave-docs-table tbody tr:first-child :is(th, td):first-child {
+    border-start-start-radius: var(--wave-docs-radius-panel);
+  }
+
+  .wave-docs-table tbody tr:first-child :is(th, td):last-child {
+    border-start-end-radius: var(--wave-docs-radius-panel);
+  }
+
+  /*
+   * The bottom corners are the card's too, and not the surface's: the surface
+   * around it is transparent and edgeless now, so nothing else would close it.
+   */
+  .wave-docs-table tbody tr:last-child :is(th, td):first-child {
+    border-end-start-radius: var(--wave-docs-radius-panel);
+  }
+
+  .wave-docs-table tbody tr:last-child :is(th, td):last-child {
+    border-end-end-radius: var(--wave-docs-radius-panel);
   }
 
   /*
@@ -2126,7 +2168,7 @@
 
   .wave-docs-panel__body {
     /* See the radius note above: outer minus this box's inset. */
-    border: 1px solid var(--wave-docs-border);
+    border: 1px solid var(--wave-docs-panel-edge, var(--wave-docs-border));
     border-radius: var(--wave-docs-radius-panel);
     /*
      * ⚠️ THE DEFAULT LIVES IN THE FALLBACK, NOT IN A DECLARATION ON
