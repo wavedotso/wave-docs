@@ -33,13 +33,23 @@ inactive timeline is what makes it conditional: a nav that fits shows nothing,
 because a scroll timeline with no scrollable overflow does not apply and the base
 `opacity: 0` wins.
 
-⚠️ AND THE STICKY INSETS ARE NEGATIVE, BY THE NAV'S OWN BLOCK PADDING. A sticky
-child of a scroll container is constrained to the *content* box rather than the
-scrollport, so `top: 0` pinned the band 32px down the panel, floating over the
-search trigger instead of sitting on the panel's edge. Found by painting it red
-and reading the pixels back. The padding is a custom property now, because the
-overlays have to cancel exactly it and two literals that must agree are two
-literals that drift.
+⚠️ AND THE STICKY INSET IS NEGATIVE BY THE NAV'S BLOCK PADDING, WITH A MATCHING
+START MARGIN — TWO HALVES OF ONE FIX. A sticky child of a scroll container is
+constrained to the *content* box rather than the scrollport, so `top: 0` pinned
+the band 32px down the panel, floating over the search trigger instead of sitting
+on its edge. Found by painting it red and reading the pixels back.
+
+The margin is the other half: sticky only holds an element once scrolling would
+carry it past the threshold, so laid out at the content-box top the band began
+32px *below* the edge and slid up over the first 32px of scroll — visible, and
+moving, exactly while its opacity was ramping in. Pulled up by the same padding,
+its resting place already is the threshold: pinned from the first pixel, never
+moving. Measured identical pixel rows at scrollTop 20, 90 and max.
+
+The padding is a custom property now, because the overlays cancel exactly it and
+two literals that must agree are two literals that drift. The gradient is radial,
+the shape the table and the search list use — strongest against the edge it
+belongs to rather than a flat ramp across the band.
 
 ⚠️ THE SCROLLBAR IS HIDDEN ONLY WHERE THE SHADOW EXISTS. Both live in the same
 `@supports (animation-timeline: scroll())`, so Firefox — where scroll-driven
