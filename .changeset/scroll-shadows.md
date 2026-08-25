@@ -28,10 +28,22 @@ tall: measured 255/255 at the top edge with the nav scrolled — declared,
 computed, and invisible.
 
 So the nav's shadows are sticky overlays instead, the way the table's are and for
-the reason its comment gives, with opacity driven by `scroll(nearest block)`. An
-inactive timeline is what makes it conditional: a nav that fits shows nothing,
-because a scroll timeline with no scrollable overflow does not apply and the base
-`opacity: 0` wins.
+the reason its comment gives, with opacity driven by a **named** scroll timeline
+on the nav.
+
+⚠️ NAMED, BECAUSE `scroll(nearest block)` WAS A REAL BUG RATHER THAN A TIDIER
+SPELLING. `nearest` means the nearest ancestor *scroll container*, and a box is
+only one when it actually has scrollable overflow. This nav is a screen tall and
+on most sites its tree fits — measured `scrollHeight - clientHeight === 0` at
+1440×900 on this very site — so `nearest` walked straight past it and found the
+document, which always scrolls. The shadow was keyed to the *page*: it faded in
+as a reader scrolled the article, on a navigation with nothing hidden, while the
+sticky panel was still travelling to its pinned position. Appearing and moving at
+once.
+
+Named, it can only be this element's own scroll, and the inactive-timeline rule
+then does the right thing for free: a nav that fits declares a timeline with no
+range, the animation does not apply, and `opacity: 0` wins.
 
 ⚠️ AND THE STICKY INSET IS NEGATIVE BY THE NAV'S BLOCK PADDING, WITH A MATCHING
 START MARGIN — TWO HALVES OF ONE FIX. A sticky child of a scroll container is

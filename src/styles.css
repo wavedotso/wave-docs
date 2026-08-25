@@ -3433,9 +3433,33 @@
       display: none;
     }
 
+    /*
+     * ⚠️ A NAMED TIMELINE, AND `scroll(nearest block)` WAS A REAL BUG RATHER
+     * THAN A TIDIER SPELLING.
+     *
+     * `nearest` means the nearest ancestor *scroll container*, and a box is
+     * only one when it actually has scrollable overflow. This nav is a screen
+     * tall and on most sites its tree fits — measured `scrollHeight -
+     * clientHeight === 0` at 1440×900 on this very site — so `nearest` walked
+     * straight past it and found the document, which always scrolls.
+     *
+     * The result was the shadow keyed to the *page*: it faded in as the reader
+     * scrolled the article, on a navigation with nothing hidden, while the
+     * sticky panel was still travelling to its pinned position. Appearing and
+     * moving at once, which is precisely what it looked like.
+     *
+     * Named, it can only ever be this element's own scroll. And the
+     * inactive-timeline rule then does the right thing for free: a nav that
+     * fits declares a timeline with no scroll range, the animation does not
+     * apply, and `opacity: 0` wins.
+     */
+    .wave-docs-layout__sidebar-nav {
+      scroll-timeline: --wave-docs-sidebar-nav-scroll block;
+    }
+
     .wave-docs-layout__sidebar-nav::before,
     .wave-docs-layout__sidebar-nav::after {
-      animation-timeline: scroll(nearest block);
+      animation-timeline: --wave-docs-sidebar-nav-scroll;
       animation-timing-function: linear;
       animation-fill-mode: both;
     }
