@@ -28,6 +28,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { CODE_ICON_PATHS, CODE_ICON_STATES } from './code-frame.js';
 
 const STYLESHEET = path.join(import.meta.dirname, 'styles.css');
 
@@ -410,6 +411,19 @@ describe('the dark ramp', () => {
 });
 
 describe('the copy button', () => {
+  /*
+   * By prelude rather than by `indexOf`, because the built sheet wraps a long
+   * selector across lines and a `toContain` on the spelling here fails against
+   * a rule that is present and correct. `readRules` collapses the whitespace
+   * for exactly this.
+   */
+  const iconRule = (state: string, icon: string) =>
+    RULES.find(
+      (rule) =>
+        rule.prelude.includes(`[data-copied='${state}']`) &&
+        rule.prelude.includes(`[data-state='${icon}']`),
+    );
+
   /**
    * Both states the runtime writes have a rule, not just the happy one.
    *
@@ -425,36 +439,55 @@ describe('the copy button', () => {
    * it is here, because the two halves fail independently and each looks
    * correct on its own.
    */
-  it.each(['true', 'false'])(
-    'gives data-copied="%s" a visible treatment',
-    (state) => {
-      const selector = `.wave-docs-code__copy[data-copied='${state}']`;
-      expect(sheet).toContain(`${selector} {`);
+  it.each([
+    ['true', 'copied'],
+    ['false', 'failed'],
+  ])('gives data-copied="%s" a visible treatment', (state, icon) => {
+    const selector = `.wave-docs-code__copy[data-copied='${state}']`;
+    expect(sheet).toContain(`${selector} {`);
 
-      const block = readBlock(sheet, sheet.indexOf(`${selector} {`));
-      // A colour, so the button changes rather than merely carrying an
-      // attribute — and a `::after` glyph, so the change is not colour alone
-      // (WCAG 1.4.1).
-      expect(block).toMatch(/color:/);
-      expect(sheet).toContain(`${selector}::after`);
-    },
-  );
+    const block = readBlock(sheet, sheet.indexOf(`${selector} {`));
+    // A colour, so the button changes rather than merely carrying an
+    // attribute — and its own icon, so the change is not colour alone
+    // (WCAG 1.4.1).
+    expect(block).toMatch(/color:/);
+    expect(
+      iconRule(state, icon),
+      `no rule shows the ${icon} icon`,
+    ).toBeDefined();
+  });
+
+  /**
+   * ⚠️ `display`, NOT `visibility`, AND THE DIFFERENCE IS A REAL DEFECT.
+   *
+   * The button is `visibility: hidden` until the runtime attaches — which is
+   * what keeps a reader with no JavaScript from meeting a control that does
+   * nothing, and keeps it out of the tab order. `visibility` inherits, so an
+   * icon rule setting it back to `visible` would draw a glyph inside a button
+   * that is supposed to be invisible. `display` does not inherit.
+   */
+  it('swaps its icons with a property that does not inherit', () => {
+    for (const [state, icon] of [
+      ['true', 'copied'],
+      ['false', 'failed'],
+    ] as const) {
+      const rule = iconRule(state, icon);
+      if (rule === undefined) throw new Error(`no rule for ${icon}`);
+
+      const shown = readBlock(sheet, rule.at);
+      expect(shown).toContain('display:');
+      expect(shown).not.toContain('visibility:');
+    }
+  });
 
   it('tells the two states apart by more than colour', () => {
     // Success is a tick and failure a cross; identical glyphs would make the
     // pair distinguishable only by hue.
-    const tick = readBlock(
-      sheet,
-      sheet.indexOf(".wave-docs-code__copy[data-copied='true']::after"),
-    );
-    const cross = readBlock(
-      sheet,
-      sheet.indexOf(".wave-docs-code__copy[data-copied='false']::after"),
-    );
-
-    expect(tick).toContain('content:');
-    expect(cross).toContain('content:');
-    expect(tick).not.toBe(cross);
+    expect(CODE_ICON_PATHS.check).not.toEqual(CODE_ICON_PATHS.x);
+    // And all three states draw something, so none of them is a blank button.
+    for (const [, name] of CODE_ICON_STATES) {
+      expect(CODE_ICON_PATHS[name].length).toBeGreaterThan(0);
+    }
   });
 });
 

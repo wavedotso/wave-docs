@@ -76,6 +76,25 @@ describe('the copy button before the runtime mounts', () => {
     expect(document.activeElement).not.toBe(button());
   });
 
+  it('keeps every state icon out of sight with it', () => {
+    /*
+     * ⚠️ THE REASON THE SWAP BELOW IS `display` AND NOT `visibility`.
+     *
+     * The button is `visibility: hidden` until the runtime attaches, and
+     * `visibility` inherits — so an icon rule setting it back to `visible`
+     * would draw a glyph inside a button that is meant to be invisible, on
+     * every page rendered without JavaScript. `display` does not inherit, so
+     * the button's own rule still governs all three.
+     */
+    mount(frame());
+
+    const icons = document.querySelectorAll('.wave-docs-code__copy-icon');
+    expect(icons).toHaveLength(3);
+    for (const icon of icons) {
+      expect(getComputedStyle(icon).visibility).toBe('hidden');
+    }
+  });
+
   it('becomes visible and focusable once the runtime says so', () => {
     mount(frame());
     document.documentElement.setAttribute(CODE_READY_ATTRIBUTE, '');
@@ -108,6 +127,61 @@ describe('the copy button once it is live', () => {
       document.documentElement.setAttribute(CODE_READY_ATTRIBUTE, '');
 
       await expect.poll(() => getComputedStyle(button()).opacity).toBe('1');
+    }
+  });
+
+  it('draws one icon per state, from the set the rest of the package uses', () => {
+    /*
+     * The button rendered `⧉` and swapped in `✓` and `×` through CSS
+     * `content` — font glyphs, at whatever weight and baseline the resolved
+     * font has, beside a sidebar, a pager and a search dialog that are all
+     * Lucide at `stroke-width: 2`. It read as a different icon set because it
+     * was one.
+     */
+    mount(frame());
+    document.documentElement.setAttribute(CODE_READY_ATTRIBUTE, '');
+
+    const icon = (state: string): HTMLElement =>
+      document.querySelector(
+        `.wave-docs-code__copy-icon[data-state="${state}"]`,
+      ) as unknown as HTMLElement;
+    const shown = (state: string): boolean =>
+      getComputedStyle(icon(state)).display !== 'none';
+
+    const seats: DOMRect[] = [];
+
+    expect([shown('idle'), shown('copied'), shown('failed')]).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    seats.push(icon('idle').getBoundingClientRect());
+
+    button().setAttribute('data-copied', 'true');
+    expect([shown('idle'), shown('copied'), shown('failed')]).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    seats.push(icon('copied').getBoundingClientRect());
+
+    button().setAttribute('data-copied', 'false');
+    expect([shown('idle'), shown('copied'), shown('failed')]).toEqual([
+      false,
+      false,
+      true,
+    ]);
+    seats.push(icon('failed').getBoundingClientRect());
+
+    /*
+     * One grid cell, measured whichever icon is the one on show — comparing a
+     * hidden icon's box to a visible one measures nothing, because
+     * `display: none` reports zeroes. The button must not resize and the glyph
+     * must not shift as the state changes.
+     */
+    for (const seat of seats.slice(1)) {
+      expect(seat.left).toBeCloseTo(seats[0]?.left ?? 0, 1);
+      expect(seat.top).toBeCloseTo(seats[0]?.top ?? 0, 1);
     }
   });
 

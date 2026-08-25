@@ -40,7 +40,12 @@ import type { Plugin } from 'unified';
 import { CONTINUE, SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
 
-import { CODE_COPY_ATTRIBUTE, CODE_FRAME_ATTRIBUTE } from '../code-frame.js';
+import {
+  CODE_COPY_ATTRIBUTE,
+  CODE_FRAME_ATTRIBUTE,
+  CODE_ICON_PATHS,
+  CODE_ICON_STATES,
+} from '../code-frame.js';
 import { parseCodeMeta } from '../code-meta.js';
 
 /** `language-ts` on the `<code>`, already folded to lower case by step 12. */
@@ -214,17 +219,50 @@ function copyButton(label: string): Element {
        */
       'aria-label': label,
     },
-    children: [
-      {
-        type: 'element',
-        tagName: 'span',
-        // Decoration. Kept out of the accessibility tree so the button reads
-        // as its `aria-label`, and out of the search index by the same rule
-        // that drops the heading anchor icons.
-        properties: { 'aria-hidden': 'true' },
-        children: [{ type: 'text', value: '⧉' }],
-      },
-    ],
+    /*
+     * All three states ship in the markup and the stylesheet shows one. There
+     * is no component here to re-render and nothing to hydrate — the runtime
+     * writes one attribute on the button and the swap is CSS.
+     *
+     * Three icons per fence is fifty on a page with fifty of them, and the
+     * repeat is why that is affordable: it is byte-identical every time, which
+     * is the case gzip handles best. The measured cost is in `size-budget`.
+     */
+    children: CODE_ICON_STATES.map(([state, name]) => stateIcon(state, name)),
+  };
+}
+
+/**
+ * One Lucide glyph, as hast.
+ *
+ * Decoration, so it is out of the accessibility tree — the button reads as its
+ * `aria-label` — and out of the search index by the same rule that drops the
+ * heading anchor icons.
+ */
+function stateIcon(state: string, name: keyof typeof CODE_ICON_PATHS): Element {
+  return {
+    type: 'element',
+    tagName: 'svg',
+    properties: {
+      className: ['wave-docs-code__copy-icon'],
+      'data-state': state,
+      'aria-hidden': 'true',
+      focusable: 'false',
+      viewBox: '0 0 24 24',
+      width: '16',
+      height: '16',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: '2',
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+    },
+    children: CODE_ICON_PATHS[name].map((d) => ({
+      type: 'element' as const,
+      tagName: 'path',
+      properties: { d },
+      children: [],
+    })),
   };
 }
 

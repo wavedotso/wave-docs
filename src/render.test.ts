@@ -224,8 +224,21 @@ describe('createDocsRenderer', () => {
     expect(callout === undefined ? '' : toText(callout)).toContain(
       'cannot be undone',
     );
-    // No octicons, no GitHub classes: the React layer owns the presentation.
-    expect(findAll(doc.hast, 'svg')).toEqual([]);
+    /*
+     * No octicons, no GitHub classes: the React layer owns the presentation.
+     *
+     * ⚠️ SCOPED TO THE CALLOUT, AND IT USED TO BE THE WHOLE DOCUMENT. That was
+     * only ever true by accident — nothing else in the pipeline emitted an
+     * `<svg>` — so the day the copy button started drawing Lucide icons rather
+     * than font glyphs, a test about `rehype-github-alerts` failed with a path
+     * from a code frame in its diff.
+     */
+    expect(
+      findAll(
+        { type: 'root', children: callout === undefined ? [] : [callout] },
+        'svg',
+      ),
+    ).toEqual([]);
     expect(findAll(doc.hast, 'blockquote')).toEqual([]);
   });
 

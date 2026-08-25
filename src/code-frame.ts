@@ -30,6 +30,48 @@ export const CODE_COPY_ATTRIBUTE = 'data-wave-docs-copy';
 export const CODE_READY_ATTRIBUTE = 'data-wave-docs-code-ready';
 
 /**
+ * The copy button's three icons, as Lucide paths.
+ *
+ * ⚠️ PATHS FROM THE SAME SET AS EVERY OTHER ICON HERE, AND THEY WERE FONT
+ * GLYPHS. The button rendered `⧉` and swapped in `✓` and `×` through CSS
+ * `content` — three characters drawn by whatever font resolved, at whatever
+ * weight and baseline that font has, beside a sidebar, a pager and a search
+ * dialog that are all Lucide at `stroke-width: 2`. It read as a different
+ * icon set because it was one.
+ *
+ * `copy`, `check` and `x`, on the 24×24 grid the rest of the package uses.
+ * Lucide draws its `copy` as a `<rect>` plus a `<path>`; the rect is written
+ * here as the path it is, so a frame's icons are one shape of node and the
+ * builder stays a list of `d` strings — the same shape `NAV_ICON_PATHS` has.
+ */
+export const CODE_ICON_PATHS: Record<'copy' | 'check' | 'x', string[]> = {
+  copy: [
+    'M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z',
+    'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2',
+  ],
+  check: ['M20 6 9 17l-5-5'],
+  x: ['M18 6 6 18', 'm6 6 12 12'],
+};
+
+/**
+ * The three states the button draws, in the order they are emitted.
+ *
+ * `idle` is what a reader sees; the runtime writes `data-copied` on the button
+ * and the stylesheet swaps which of the three is displayed. `display`, not
+ * `visibility`: the button is `visibility: hidden` until the runtime attaches,
+ * and `visibility` inherits — a child setting it back to `visible` would show
+ * an icon inside a button that is meant to be invisible and out of the tab
+ * order.
+ */
+export const CODE_ICON_STATES = [
+  ['idle', 'copy'],
+  ['copied', 'check'],
+  ['failed', 'x'],
+] as const satisfies ReadonlyArray<
+  readonly [string, keyof typeof CODE_ICON_PATHS]
+>;
+
+/**
  * Whether a tree contains a code frame.
  *
  * `DocContent` asks before rendering the runtime, so a page with no fences

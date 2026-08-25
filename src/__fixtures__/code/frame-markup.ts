@@ -19,6 +19,8 @@
  * asserts the plugin emits exactly them — so a rename cannot leave the browser
  * tier measuring a class the pipeline no longer writes.
  */
+import { CODE_ICON_PATHS, CODE_ICON_STATES } from '../../code-frame.js';
+
 export const CODE_FRAME_CLASSES = {
   figure: ['wave-docs-panel', 'wave-docs-code'],
   title: ['wave-docs-code__title'],
@@ -28,6 +30,20 @@ export const CODE_FRAME_CLASSES = {
 } as const;
 
 const attr = (names: readonly string[]): string => names.join(' ');
+
+/**
+ * The three state icons, generated from the same table the plugin builds them
+ * from — so a path or an attribute cannot be right in one tier and stale here.
+ */
+const icons = (): string =>
+  CODE_ICON_STATES.map(
+    ([state, name]) =>
+      `<svg class="wave-docs-code__copy-icon" data-state="${state}" aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${CODE_ICON_PATHS[
+        name
+      ]
+        .map((d) => `<path d="${d}"></path>`)
+        .join('')}</svg>`,
+  ).join('');
 
 export interface CodeFrameMarkupOptions {
   /** The fence's `title="…"`. Omitted for a bare fence. */
@@ -65,7 +81,7 @@ export function codeFrameMarkup(options: CodeFrameMarkupOptions = {}): string {
       lang === undefined ? '' : ` data-lang="${lang}"`
     }>`,
     label,
-    `<button type="button" class="${attr(CODE_FRAME_CLASSES.copy)}" data-wave-docs-copy="" aria-label="${copyLabel}"><span aria-hidden="true">⧉</span></button>`,
+    `<button type="button" class="${attr(CODE_FRAME_CLASSES.copy)}" data-wave-docs-copy="" aria-label="${copyLabel}">${icons()}</button>`,
     `<div class="${attr(CODE_FRAME_CLASSES.body)}">`,
     `<pre class="shiki" tabindex="0"><code>${code}</code></pre>`,
     `</div>`,

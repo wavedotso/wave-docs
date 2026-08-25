@@ -1185,29 +1185,20 @@
     grid-row: 1;
     grid-column: 2;
     /*
-     * ⚠️ `relative`, AND IT IS LOAD-BEARING RATHER THAN TIDY. The tick and the
-     * cross below are `position: absolute`, and this rule used to say
-     * `position: absolute` — which made the button their containing block for
-     * free. Left static, both glyphs would resolve against the figure and draw
-     * in the top-left corner of the code block.
-     */
-    position: relative;
-    /*
      * Optically inset, not aligned to the label's column: a 2rem hit target
      * held 17px off the frame's edge reads as floating in the middle of the
      * row rather than as the control that ends it.
      */
     margin-inline-end: calc(var(--wave-docs-panel-inset) - 0.5rem);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    /* A grid, so the three state icons stack in one cell. */
+    display: grid;
+    place-items: center;
     width: 2rem;
     height: 2rem;
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius-sm);
     background-color: var(--wave-docs-bg);
     color: var(--wave-docs-fg-muted);
-    font-size: 0.875rem;
     cursor: pointer;
     /*
      * ⚠️ HIDDEN UNTIL THE RUNTIME SAYS OTHERWISE, AND THIS IS STRUCTURAL.
@@ -1245,18 +1236,42 @@
 
   /* The success state, swapped by CSS rather than by React: no component owns
    * a button, so there is no state to re-render and nothing to hydrate. */
+  /*
+   * ⚠️ ONE OF THREE ICONS, SWAPPED BY `display` AND NOT BY `visibility`.
+   *
+   * All three ship in the markup — no component owns this button, so there is
+   * no state to re-render and nothing to hydrate; the runtime writes one
+   * attribute and the stylesheet picks.
+   *
+   * `visibility` is the wrong property here and would have been a real defect:
+   * the button is `visibility: hidden` until the runtime attaches, and
+   * `visibility` inherits, so a child setting it back to `visible` shows an
+   * icon inside a button that is meant to be invisible and out of the tab
+   * order. `display` does not inherit, so the button's own rule still wins.
+   */
+  .wave-docs-code__copy-icon {
+    /* Stacked in one cell, so the button does not resize as the state
+     * changes and the glyph does not shift by a pixel between them. */
+    grid-area: 1 / 1;
+  }
+
+  .wave-docs-code__copy-icon:not([data-state='idle']) {
+    display: none;
+  }
+
+  /* The success state, swapped by CSS rather than by React. */
   .wave-docs-code__copy[data-copied='true'] {
     border-color: var(--wave-docs-callout-tip);
     color: var(--wave-docs-callout-tip);
   }
 
-  .wave-docs-code__copy[data-copied='true'] > * {
-    visibility: hidden;
+  .wave-docs-code__copy[data-copied='true'] .wave-docs-code__copy-icon {
+    display: none;
   }
 
-  .wave-docs-code__copy[data-copied='true']::after {
-    content: '\2713';
-    position: absolute;
+  .wave-docs-code__copy[data-copied='true']
+    .wave-docs-code__copy-icon[data-state='copied'] {
+    display: block;
   }
 
   /*
@@ -1269,21 +1284,22 @@
    * phone over `http://192.168.x.x:3000` is not a secure context, so
    * `navigator.clipboard` is undefined and no amount of pressing helps. A
    * silent no-op is the worst possible answer to that.
+   *
+   * A cross, not a warning triangle: it pairs with the tick at the same
+   * stroke weight, and the triangle reads as a page-level alert.
    */
   .wave-docs-code__copy[data-copied='false'] {
     border-color: var(--wave-docs-callout-caution);
     color: var(--wave-docs-callout-caution);
   }
 
-  .wave-docs-code__copy[data-copied='false'] > * {
-    visibility: hidden;
+  .wave-docs-code__copy[data-copied='false'] .wave-docs-code__copy-icon {
+    display: none;
   }
 
-  .wave-docs-code__copy[data-copied='false']::after {
-    /* A cross, not a warning triangle: it pairs with the tick above at the
-     * same weight, and the triangle reads as a page-level alert. */
-    content: '\00d7';
-    position: absolute;
+  .wave-docs-code__copy[data-copied='false']
+    .wave-docs-code__copy-icon[data-state='failed'] {
+    display: block;
   }
 
   /*
