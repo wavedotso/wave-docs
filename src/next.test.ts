@@ -54,7 +54,7 @@ const tempDirs: string[] = [];
 
 /** A throwaway content tree, for cases the shared fixture must not encode. */
 async function makeContentDir(files: Record<string, string>): Promise<string> {
-  const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-next-'));
+  const dir = await mkdtemp(path.join(tmpdir(), 'wave-docs-explore-'));
   tempDirs.push(dir);
   for (const [name, body] of Object.entries(files)) {
     const file = path.join(dir, name);
@@ -1212,7 +1212,7 @@ describe('every label reaches a reader', () => {
     youtubeHide: 'page markup',
     copyCode: 'page markup',
     copyCodeFrom: 'page markup',
-    whereNext: 'page markup',
+    explore: 'page markup',
     previousPage: 'page markup',
     nextPage: 'page markup',
     pagination: 'page markup',
@@ -1257,7 +1257,7 @@ describe('every label reaches a reader', () => {
       youtubeHide: 'L-HIDE {title}',
       copyCode: 'L-COPY',
       copyCodeFrom: 'L-COPY-FROM {title}',
-      whereNext: 'L-WHERE-NEXT',
+      explore: 'L-WHERE-NEXT',
       previousPage: 'L-PREVIOUS',
       nextPage: 'L-NEXT',
       pagination: 'L-PAGINATION',

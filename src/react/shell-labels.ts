@@ -93,10 +93,10 @@ export interface DocsLabels {
   /**
    * The "where to go next" block's heading. Defaults to `'Where to go next'`.
    *
-   * A page opts into that block with `next` in its frontmatter; this is the one
+   * A page opts into that block with `explore` in its frontmatter; this is the one
    * string the package supplies for it, and the questions are the author's.
    */
-  whereNext?: string | undefined;
+  explore?: string | undefined;
   previousPage?: string | undefined;
   /** The same for the next page. Defaults to `'Next'`. */
   nextPage?: string | undefined;
@@ -207,7 +207,7 @@ export const DOCS_LABEL_KEYS = [
   'youtubeHide',
   'copyCode',
   'copyCodeFrom',
-  'whereNext',
+  'explore',
   'previousPage',
   'nextPage',
   'pagination',

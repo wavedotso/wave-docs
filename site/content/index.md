@@ -7,7 +7,7 @@ actions:
     href: /getting-started/quick-start
   - label: Why hast
     href: /internals
-next:
+explore:
   - question: How to get it into a Next app
     href: /getting-started/installation
   - question: What the five files actually do

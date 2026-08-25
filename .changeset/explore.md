@@ -6,7 +6,7 @@
 opts in from its frontmatter:
 
 ```yaml
-next:
+explore:
   - question: How a person is recognised across servers
     href: ./identity.md
   - question: What happens when the network fails
@@ -72,5 +72,20 @@ there: this is the semantic answer, the pager the linear one.
 A real `<h2>` names it, not an `aria-label` — a reader moving by heading would
 pass straight over a region named only by an attribute.
 
-No client JavaScript. New: `DocsNextSteps` at `@waveso/docs/react/next-steps`,
-`next` in frontmatter, and `whereNext` in `labels`.
+## The key is `explore`, and neither `next` nor `steps` would do
+
+`next` is unusable in this package. `src/next.ts` is the Next.js adapter, so
+two files one directory apart would carry the same name for entirely different
+things, and `doc.frontmatter.next` would read like a routing hook rather than
+a block of prose.
+
+`steps` is wrong for a different reason: these rows are a *branch*, not a
+sequence. A reader picks one and ignores the rest, and none of them is first.
+A numbered "1 -> 2 -> 3" component is a real and separate thing worth building
+later, and `steps` is the name it will need.
+
+The rendered heading is still "Where to go next" — `next` in prose is fine,
+it is only the identifier that had to move.
+
+No client JavaScript. New: `DocsExplore` at `@waveso/docs/react/explore`,
+`explore` in frontmatter, and `explore` in `labels`.

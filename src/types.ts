@@ -86,7 +86,7 @@ export interface DocFrontmatter {
    * "table, 2 columns, 7 rows" for what is a list of links with descriptions,
    * and two columns of sentence-length questions are cramped on a phone.
    */
-  next?: DocNextStep[] | undefined;
+  explore?: DocExploreLink[] | undefined;
   /**
    * Sidebar marker for this page, as a name the *consumer* resolves.
    *
@@ -177,7 +177,7 @@ export interface DocFile<TFrontmatter extends DocFrontmatter = DocFrontmatter> {
  * ordering. Name it here only where the tree cannot answer: an external link,
  * or a page kept out of the navigation.
  */
-export interface DocNextStep {
+export interface DocExploreLink {
   /** What the reader might want to know. The row's left half. */
   question: string;
   /** Where the answer is. */

@@ -400,7 +400,7 @@
   .wave-docs-toc,
   .wave-docs-skip-link,
   .wave-docs-hero,
-  .wave-docs-next,
+  .wave-docs-explore,
   .wave-docs-pager,
   .wave-docs-layout__sidebar,
   .wave-docs-search-trigger,
@@ -2010,13 +2010,13 @@
    * The measure and the centring, both: this belongs to the prose, and the
    * pager below it learned that the hard way.
    */
-  .wave-docs-next {
+  .wave-docs-explore {
     max-width: var(--wave-docs-measure);
     margin-inline: auto;
     margin-block-start: 3rem;
   }
 
-  .wave-docs-next__list {
+  .wave-docs-explore__list {
     margin: 0;
     padding: 0;
     list-style: none;
@@ -2029,7 +2029,7 @@
    * row the moment anything is appended to it — including by a consumer's own
    * CSS. `+` says "between", which is the thing being described.
    */
-  .wave-docs-next__item {
+  .wave-docs-explore__item {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
@@ -2039,7 +2039,7 @@
     padding: 1rem var(--wave-docs-panel-inset);
   }
 
-  .wave-docs-next__item + .wave-docs-next__item {
+  .wave-docs-explore__item + .wave-docs-explore__item {
     border-block-start: 1px solid var(--wave-docs-border);
   }
 
@@ -2048,23 +2048,23 @@
    * floors at its content's min-content width, so a sentence-length question
    * pushes the answer off the row's inline end instead of taking two lines.
    */
-  .wave-docs-next__question {
+  .wave-docs-explore__question {
     min-width: 0;
     color: var(--wave-docs-fg-muted);
   }
 
-  .wave-docs-next__answer {
+  .wave-docs-explore__answer {
     flex: none;
     color: var(--wave-docs-accent);
     font-weight: 600;
     text-decoration: none;
   }
 
-  .wave-docs-next__answer:hover {
+  .wave-docs-explore__answer:hover {
     text-decoration: underline;
   }
 
-  .wave-docs-next__answer:focus-visible {
+  .wave-docs-explore__answer:focus-visible {
     outline: 2px solid var(--wave-docs-accent);
     outline-offset: 2px;
     border-radius: var(--wave-docs-radius-sm);
@@ -2077,7 +2077,7 @@
    * 1920px monitor.
    */
   @container wave-docs (max-width: 40rem) {
-    .wave-docs-next__item {
+    .wave-docs-explore__item {
       flex-direction: column;
       align-items: start;
       gap: 0.25rem;

@@ -1159,18 +1159,18 @@ describe('where to go next', () => {
           </div>
           <div class="wave-docs-layout__main">
             <article class="wave-docs-prose"><p>A paragraph of prose.</p></article>
-            <section class="wave-docs-panel wave-docs-next" aria-labelledby="h">
+            <section class="wave-docs-panel wave-docs-explore" aria-labelledby="h">
               <div class="wave-docs-panel__header">
                 <h2 class="wave-docs-panel__title" id="h">Where to go next</h2>
               </div>
-              <ul class="wave-docs-panel__body wave-docs-next__list">
-                <li class="wave-docs-next__item">
-                  <span class="wave-docs-next__question">How a person is recognised across every server they play on</span>
-                  <a class="wave-docs-next__answer" href="/a">Identity</a>
+              <ul class="wave-docs-panel__body wave-docs-explore__list">
+                <li class="wave-docs-explore__item">
+                  <span class="wave-docs-explore__question">How a person is recognised across every server they play on</span>
+                  <a class="wave-docs-explore__answer" href="/a">Identity</a>
                 </li>
-                <li class="wave-docs-next__item">
-                  <span class="wave-docs-next__question">Why a character is not a person</span>
-                  <a class="wave-docs-next__answer" href="/b">Characters</a>
+                <li class="wave-docs-explore__item">
+                  <span class="wave-docs-explore__question">Why a character is not a person</span>
+                  <a class="wave-docs-explore__answer" href="/b">Characters</a>
                 </li>
               </ul>
             </section>
@@ -1194,7 +1194,7 @@ describe('where to go next', () => {
       .querySelector('.wave-docs-panel__title')
       ?.getBoundingClientRect().left;
     const question = document
-      .querySelector('.wave-docs-next__question')
+      .querySelector('.wave-docs-explore__question')
       ?.getBoundingClientRect().left;
     if (title === undefined || question === undefined)
       throw new Error('no rows');
@@ -1207,7 +1207,7 @@ describe('where to go next', () => {
     await resize(1600);
 
     const [proseStart, proseEnd] = edges('.wave-docs-prose > p');
-    const [blockStart, blockEnd] = edges('.wave-docs-next');
+    const [blockStart, blockEnd] = edges('.wave-docs-explore');
     expect(Math.abs(blockStart - proseStart)).toBeLessThan(1);
     expect(Math.abs(blockEnd - proseEnd)).toBeLessThan(1);
   });
@@ -1222,7 +1222,7 @@ describe('where to go next', () => {
     mountNext(1400);
     await resize(1600);
 
-    const rows = [...document.querySelectorAll('.wave-docs-next__item')];
+    const rows = [...document.querySelectorAll('.wave-docs-explore__item')];
     expect(rows).toHaveLength(2);
 
     const first = getComputedStyle(rows[0] as Element);
@@ -1249,7 +1249,7 @@ describe('where to go next', () => {
 
     expect(
       getComputedStyle(
-        document.querySelector('.wave-docs-next__item') as Element,
+        document.querySelector('.wave-docs-explore__item') as Element,
       ).flexDirection,
     ).toBe(direction);
   });

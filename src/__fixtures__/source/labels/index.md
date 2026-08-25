@@ -1,7 +1,7 @@
 ---
 title: Every label
 description: One page that renders every string this package can be asked to translate.
-next:
+explore:
   - question: What came before
     href: /docs/before
   - question: Something off-site

@@ -75,7 +75,7 @@ export const docFrontmatterSchema = z.object({
    * frontmatter is the one door into an `<a href>` that markdown's own checks
    * do not cover, so a `javascript:` entry would be rendered verbatim.
    */
-  next: z
+  explore: z
     .array(
       z.object({
         question: z.string().min(1),

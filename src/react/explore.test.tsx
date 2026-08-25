@@ -9,9 +9,9 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import type { DocsLinkProps } from './markdown-components.js';
-import { DocsNextSteps } from './next-steps.js';
+import { DocsExplore } from './explore.js';
 
-const steps = [
+const links = [
   {
     question: 'How a person is recognised',
     href: '/docs/identity',
@@ -24,9 +24,9 @@ const steps = [
   },
 ];
 
-describe('DocsNextSteps', () => {
+describe('DocsExplore', () => {
   it('pairs each question with the page that answers it', () => {
-    render(<DocsNextSteps steps={steps} />);
+    render(<DocsExplore links={links} />);
 
     expect(screen.getByText('How a person is recognised')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Identity' })).toHaveAttribute(
@@ -41,7 +41,7 @@ describe('DocsNextSteps', () => {
    * links with descriptions, and asks the reader to navigate it by cell.
    */
   it('is a list of links, not a grid of cells', () => {
-    render(<DocsNextSteps steps={steps} />);
+    render(<DocsExplore links={links} />);
 
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
@@ -53,7 +53,7 @@ describe('DocsNextSteps', () => {
    * skims — would pass straight over a region named only by an attribute.
    */
   it('names the region with a heading the reader can land on', () => {
-    render(<DocsNextSteps steps={steps} heading="Para onde ir" />);
+    render(<DocsExplore links={links} heading="Para onde ir" />);
 
     const heading = screen.getByRole('heading', { name: 'Para onde ir' });
     expect(heading).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('DocsNextSteps', () => {
         {children}
       </a>
     );
-    render(<DocsNextSteps steps={steps} Link={Link} />);
+    render(<DocsExplore links={links} Link={Link} />);
 
     const external = screen.getByRole('link', { name: /GitHub/ });
     expect(external).toHaveAttribute('target', '_blank');
@@ -95,7 +95,7 @@ describe('DocsNextSteps', () => {
 
   it('takes the external suffix from a prop, in whatever language', () => {
     render(
-      <DocsNextSteps steps={steps} externalLabel="(abre noutro separador)" />,
+      <DocsExplore links={links} externalLabel="(abre noutro separador)" />,
     );
     expect(
       screen.getByRole('link', { name: /abre noutro separador/ }),
@@ -103,7 +103,7 @@ describe('DocsNextSteps', () => {
   });
 
   it('renders nothing at all with no rows', () => {
-    const { container } = render(<DocsNextSteps steps={[]} />);
+    const { container } = render(<DocsExplore links={[]} />);
     expect(container).toBeEmptyDOMElement();
   });
 });

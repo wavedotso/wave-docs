@@ -203,7 +203,7 @@ Every component takes data as props, and every module that imports from `next/*`
 | `DocContent` | `react/doc-content` | Renders a hast tree, inside `.wave-docs-prose`. Server Component |
 | `DocsHero` | `react/hero` | A landing page's header. `title`, `description`, `actions`, `Link`, `externalLabel`. Server Component |
 | `DocsSidebar` | `react/sidebar` | Takes `pathname` as a prop, not from `next/navigation`. `icons` controls the marker column — see [Sidebar icons](#sidebar-icons) |
-| `DocsNextSteps` | `react/next-steps` | "Where to go next": a question per row and the page that answers it. `docs.Page` renders it when a page declares `next` |
+| `DocsExplore` | `react/explore` | "Where to go next": a question per row and the page that answers it. `docs.Page` renders it when a page declares `explore` |
 | `DocsPager` | `react/pager` | Links to the pages either side of this one. `docs.Page` renders it; `pager: false` on the route omits it |
 | `DocsToc` | `react/toc` | Scrollspy via `IntersectionObserver`. `label`, `topLabel`, `rootMargin`, `className` |
 | `DocsSearch` | `react/next-search` | `SearchDialog`, wired to Next's router. What you want |
@@ -223,7 +223,7 @@ A sidebar is a structure; this is a router. It says *why* a reader would go some
 ```yaml
 ---
 title: How it fits together
-next:
+explore:
   - question: How a person is recognised across servers
     href: ./identity.md
   - question: What happens when the network fails
@@ -248,7 +248,7 @@ It wears **the panel** — a framed block with a header and an inset surface, st
 
 The panel also exports `--wave-docs-panel-inset` for anything placed inside `__body`: the header's title sits at the frame's padding, but body content sits at that padding *plus the body's own border*, so the two columns miss each other by a pixel per border unless the inset is used.
 
-`DocsNextSteps` takes `steps` (each with `question`, `href` and a resolved `title`), plus `heading`, `Link`, `externalLabel` and `className`. The heading defaults to `'Where to go next'` and is `whereNext` in `labels`. Under a 40rem container the question and its answer stack instead of sharing a row.
+`DocsExplore` takes `steps` (each with `question`, `href` and a resolved `title`), plus `heading`, `Link`, `externalLabel` and `className`. The heading defaults to `'Where to go next'` and is `explore` in `labels`. Under a 40rem container the question and its answer stack instead of sharing a row.
 
 ### The pager
 
