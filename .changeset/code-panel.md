@@ -17,12 +17,21 @@ the caption for the matching reason: a `<button>` inside a `<figcaption>`
 contributes its accessible name to the figure's, so `swap.ts` would announce as
 "swap.ts Copy code from swap.ts".
 
-**A fence with no title now shows its language.** One label slot, never both —
-`swap.ts` beside a `ts` badge is the same fact twice, and the filename is the
-more precise half. The badge is `aria-hidden`, which is also what keeps it out of
-the search index: `buildSearchIndex` drops presentational subtrees, and as real
-text it would put a language name into the searchable body of every page
-carrying a fence — the same relevance poisoning `pre` is skipped to avoid.
+⚠️ AND A TITLE IS WHAT DECIDES WHETHER THERE IS A FRAME AT ALL. With one, the
+figure is a panel: a band carrying the filename and the copy button, and the
+code set into a card below it. With none there is nothing to put in a band, so
+the frame flattens away, the surface becomes the block, and the button sits on
+the code — which is what Mintlify does, and what stops an unnamed fence from
+carrying a reserved slot with nothing in it.
+
+A language is not a title for this purpose. A fence declaring `ts` and no
+filename is still an untitled fence, and a band holding a two-letter badge is
+the same empty header with a word in it. `data-lang` stays on the figure for
+anyone selecting on it.
+
+One shape of markup, switched in the stylesheet rather than in the pipeline: two
+markup paths mean two fixtures, and the one that is not on screen is the one
+that rots.
 
 **The copy button no longer hides until you hover.** It faded in on `:hover` or
 `:focus-within` because it was positioned over the code and had nowhere of its

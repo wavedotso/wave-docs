@@ -216,26 +216,69 @@ describe('the copy button once it is live', () => {
     ).toBeLessThan(1);
   });
 
-  it('draws one header row, whatever is in it', () => {
+  it('drops the frame entirely when there is no title', () => {
     /*
-     * With a label the row is the label's height; with none it is the button's,
-     * and those differ by enough that a page mixing titled and untitled fences
-     * shows two header heights. `--wave-docs-panel-header-row` floors it.
+     * ⚠️ A TITLE IS WHAT DECIDES WHETHER THIS BLOCK HAS A FRAME.
+     *
+     * With one the figure is a panel: a band carrying the filename and the copy
+     * button, and the code set into a card below. With none there is nothing to
+     * put in a band, so the frame flattens away, the surface becomes the block,
+     * and the button sits on the code. A band holding only a button is a
+     * reserved slot with nothing in it, which reads as a rendering fault.
+     *
+     * ⚠️ AND A LANGUAGE IS NOT A TITLE. A fence declaring `ts` and no filename
+     * is still an untitled fence; a band holding a two-letter badge is the same
+     * empty header with a word in it.
      */
-    const heights = [{}, { title: 'app/page.tsx' }, { lang: 'json' }].map(
-      (options) => {
-        document.body.innerHTML = '';
-        mount(frame(options));
-        const figure = document.querySelector('.wave-docs-code') as HTMLElement;
-        const surface = document.querySelector(
-          '.wave-docs-code__body',
-        ) as HTMLElement;
-        return (
-          surface.getBoundingClientRect().top -
-          figure.getBoundingClientRect().top
-        );
-      },
-    );
+    for (const options of [{}, { lang: 'json' }]) {
+      document.body.innerHTML = '';
+      mount(frame(options));
+
+      const figure = document.querySelector('.wave-docs-code') as HTMLElement;
+      const surface = document.querySelector(
+        '.wave-docs-code__body',
+      ) as HTMLElement;
+
+      expect(getComputedStyle(figure).borderTopWidth).toBe('0px');
+      expect(getComputedStyle(figure).paddingTop).toBe('0px');
+      // No band: the surface starts where the block does.
+      expect(
+        surface.getBoundingClientRect().top -
+          figure.getBoundingClientRect().top,
+      ).toBe(0);
+      /*
+       * And the surface is the outer box now, so it takes the outer radius.
+       *
+       * ⚠️ THE TOKEN IS TEXT, NOT PIXELS. `getPropertyValue` returns the
+       * declaration as written — `1.1875rem` — so comparing it to a computed
+       * `19px` fails against a rule that is correct.
+       */
+      const token = getComputedStyle(document.documentElement).getPropertyValue(
+        '--wave-docs-radius-lg',
+      );
+      expect(
+        Number.parseFloat(getComputedStyle(surface).borderTopLeftRadius),
+      ).toBe(Number.parseFloat(token) * 16);
+    }
+  });
+
+  it('keeps one band height across every titled fence', () => {
+    // Two filenames of different lengths still draw the same header, so a page
+    // of titled fences does not show two header heights.
+    const heights = [
+      { title: 'a.ts' },
+      { title: 'app/routes/very/long/name.tsx' },
+    ].map((options) => {
+      document.body.innerHTML = '';
+      mount(frame(options));
+      const figure = document.querySelector('.wave-docs-code') as HTMLElement;
+      const surface = document.querySelector(
+        '.wave-docs-code__body',
+      ) as HTMLElement;
+      return (
+        surface.getBoundingClientRect().top - figure.getBoundingClientRect().top
+      );
+    });
 
     expect(new Set(heights).size).toBe(1);
   });
@@ -364,17 +407,15 @@ describe('the frame is one object', () => {
     }
   });
 
-  it('seats the copy button in the header row, above the code', () => {
+  it('seats the copy button in the band, or on the code when there is none', () => {
     /*
-     * The button was positioned against the `<figure>` and is now a grid item
-     * in its first row. Both shapes can put it in the wrong place — absolutely
-     * positioned it hung off the top of an untitled fence; as a grid item, a
-     * missing `grid-row` would drop it into the second row and over the code.
+     * Two variants, two seats. Titled: a grid item in the first row, clear of
+     * the surface. Untitled: absolutely positioned over the code, because there
+     * is no band to sit in.
      */
-    for (const options of [{}, { title: 'app/page.tsx' }]) {
-      document.body.innerHTML = '';
-      mount(frame(options));
-
+    document.body.innerHTML = '';
+    mount(frame({ title: 'app/page.tsx' }));
+    {
       const figure = document.querySelector('.wave-docs-code') as HTMLElement;
       const surface = document.querySelector(
         '.wave-docs-code__body',
@@ -382,15 +423,34 @@ describe('the frame is one object', () => {
       const box = button().getBoundingClientRect();
       const frameBox = figure.getBoundingClientRect();
 
-      // Inside the frame, both edges.
       expect(box.top).toBeGreaterThanOrEqual(frameBox.top);
-      expect(box.bottom).toBeLessThanOrEqual(frameBox.bottom);
-      // And clear of the surface, rather than floating over the code.
+      // Clear of the surface, rather than floating over the code.
       expect(box.bottom).toBeLessThanOrEqual(
         surface.getBoundingClientRect().top,
       );
-      // Held at the frame's end, not adrift in the middle of the row.
       expect(frameBox.right - box.right).toBeLessThan(16);
+    }
+
+    document.body.innerHTML = '';
+    mount(frame());
+    {
+      const figure = document.querySelector('.wave-docs-code') as HTMLElement;
+      const box = button().getBoundingClientRect();
+      const frameBox = figure.getBoundingClientRect();
+
+      // Over the code, and inside the block on both axes.
+      expect(getComputedStyle(button()).position).toBe('absolute');
+      expect(box.top).toBeGreaterThanOrEqual(frameBox.top);
+      expect(box.bottom).toBeLessThanOrEqual(frameBox.bottom);
+      expect(frameBox.right - box.right).toBeLessThan(16);
+      /*
+       * ⚠️ ABOVE THE CODE, NOT UNDER IT. The `<pre>` is a scroll container and
+       * paints its content above a static sibling, so without a `z-index` the
+       * button vanished under a wide line instead of sitting over it.
+       */
+      expect(
+        Number.parseInt(getComputedStyle(button()).zIndex, 10),
+      ).toBeGreaterThan(0);
     }
   });
 

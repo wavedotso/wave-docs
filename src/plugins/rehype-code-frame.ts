@@ -101,6 +101,20 @@ export const rehypeCodeFrame: Plugin<[RehypeCodeFrameOptions?], Root> = (
 
       const children: ElementContent[] = [];
       /*
+       * ⚠️ A TITLE IS WHAT DECIDES WHETHER THIS BLOCK HAS A FRAME AT ALL.
+       *
+       * With one, the figure wears `.wave-docs-panel`: a band carrying the
+       * filename and the copy button, and the code set into a card below it.
+       * With none there is nothing to put in a band, so the stylesheet
+       * flattens the frame away and the button sits on the code itself. One
+       * shape of markup, two looks — the alternative is two markup paths and a
+       * fixture for each.
+       *
+       * The language is not a label for this purpose. A fence that declares
+       * `ts` and no filename is still an untitled fence, and giving it a band
+       * to hold a two-letter badge is the empty-header problem with a word in
+       * it.
+       *
        * ⚠️ THE `<figcaption>` STAYS A DIRECT CHILD OF THE `<figure>`, WHICH IS
        * WHY THIS HAS NO HEADER WRAPPER.
        *
@@ -123,28 +137,6 @@ export const rehypeCodeFrame: Plugin<[RehypeCodeFrameOptions?], Root> = (
           tagName: 'figcaption',
           properties: { className: ['wave-docs-code__title'] },
           children: [{ type: 'text', value: title }],
-        });
-      } else if (language !== undefined) {
-        /*
-         * The language, when the author named no file — one label slot, and a
-         * filename already says what the language is more precisely than the
-         * language does.
-         *
-         * ⚠️ `aria-hidden`, WHICH IS ALSO WHAT KEEPS IT OUT OF THE SEARCH
-         * INDEX. `buildSearchIndex` drops any subtree marked presentational,
-         * so the badge costs the index nothing. As real text it would put
-         * "typescript" or "bash" into the searchable body of every page that
-         * has a fence — the same relevance poisoning `pre` is skipped to
-         * avoid — and a screen reader would read it out ahead of every block.
-         */
-        children.push({
-          type: 'element',
-          tagName: 'span',
-          properties: {
-            className: ['wave-docs-code__lang'],
-            'aria-hidden': 'true',
-          },
-          children: [{ type: 'text', value: language }],
         });
       }
       children.push(

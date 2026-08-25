@@ -1170,27 +1170,58 @@
   }
 
   /*
-   * ⚠️ AND A FENCE WITH NEITHER A TITLE NOR A LANGUAGE GETS NO BAND.
+   * ⚠️ AN UNTITLED FENCE HAS NO FRAME AT ALL, AND THAT IS THE WHOLE RULE.
    *
-   * The floor above exists so titled and untitled fences draw the same header
-   * height — which is right when there is a label and wrong when there is not.
-   * A bare fence has only the copy button, and flooring the row to a label's
-   * height left it as a strip of empty ground with one icon adrift in it.
-   * Dropped to `auto`, the row is the button and nothing else.
+   * With a title the figure is a panel: a band carrying the filename and the
+   * copy button, and the code set into a card below it. With none there is
+   * nothing to put in a band — so the frame flattens away, the surface becomes
+   * the block, and the button sits on the code.
+   *
+   * The language does not count as a title. A fence that declares `ts` and no
+   * filename is still an untitled fence, and a band holding a two-letter badge
+   * is the empty-header problem with a word in it. `data-lang` stays on the
+   * figure for anyone selecting on it.
+   *
+   * One shape of markup, switched here rather than in the pipeline: two markup
+   * paths mean two fixtures, and the one that is not on screen is the one that
+   * rots.
    */
-  .wave-docs-code:not(
-      :has(.wave-docs-code__title, .wave-docs-code__lang)
-    ) {
-    grid-template-rows: auto auto;
+  .wave-docs-code:not(:has(.wave-docs-code__title)) {
+    /* The containing block for the button below. The grid has one child left
+     * in flow, so it has nothing to lay out. */
+    position: relative;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .wave-docs-code:not(:has(.wave-docs-code__title)) .wave-docs-code__body {
+    /* It is the outer box now, so it takes the outer radius. Leaving it at the
+     * card's would round an unframed block more tightly than a framed one. */
+    border-radius: var(--wave-docs-radius-lg);
+  }
+
+  .wave-docs-code:not(:has(.wave-docs-code__title)) .wave-docs-code__copy {
+    /*
+     * On the code rather than beside it. `z-index` because the `<pre>` is a
+     * scroll container and paints its own content above a static sibling; the
+     * button would otherwise disappear under a wide line rather than over it.
+     */
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 0.375rem;
+    inset-inline-end: 0.375rem;
+    margin-inline-end: 0;
   }
 
   /*
-   * The label slot: the fence's `title="…"` where it has one, and its language
-   * otherwise. One or the other and never both — `swap.ts` beside a `ts` badge
+   * The label slot: the fence's `title="…"`, which is the only thing that goes
+   * in it.
+ One or the other and never both — `swap.ts` beside a `ts` badge
    * is the same fact twice, and the filename is the more precise half.
    */
-  .wave-docs-code__title,
-  .wave-docs-code__lang {
+  .wave-docs-code__title {
     grid-row: 1;
     grid-column: 1;
     /* The track is `minmax(0, 1fr)` so a long path can shrink it; these two let

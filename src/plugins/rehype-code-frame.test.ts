@@ -238,68 +238,47 @@ describe('rehypeCodeFrame', () => {
     }
   });
 
-  it('labels an untitled fence with its language, out of the a11y tree', () => {
-    const untitled = figures(doc.hast).filter(
-      (figure) => findAll(figure, 'figcaption').length === 0,
-    );
-
-    // The `JSON` fence gets a badge; the bare one declared no language and so
-    // has nothing to put in the slot.
-    const badges = untitled.flatMap((figure) =>
-      findAll(figure, 'span').filter((node) =>
-        Array.isArray(node.properties.className)
-          ? node.properties.className.includes(CODE_FRAME_CLASSES.lang[0])
-          : false,
-      ),
-    );
-
-    expect(badges).toHaveLength(1);
-    expect(toText(badges[0] as Element)).toBe('json');
+  it('gives an untitled fence no label at all', () => {
     /*
-     * ⚠️ `aria-hidden`, WHICH IS ALSO WHAT KEEPS IT OUT OF THE SEARCH INDEX.
-     * `buildSearchIndex` drops presentational subtrees, so this costs the
-     * index nothing. As real text it would put a language name into the
-     * searchable body of every page carrying a fence.
+     * ⚠️ A TITLE IS WHAT DECIDES WHETHER THE BLOCK HAS A FRAME, AND THE
+     * LANGUAGE IS NOT A LABEL FOR THAT PURPOSE.
+     *
+     * An untitled fence briefly carried a language badge in the header band —
+     * `md`, `json`. But a fence that declares `ts` and no filename is still an
+     * untitled fence, and giving it a band to hold a two-letter badge is the
+     * empty-header problem with a word in it. The stylesheet flattens the frame
+     * away instead, and the copy button sits on the code.
      */
-    expect(badges[0]?.properties['aria-hidden']).toBe('true');
+    for (const figure of figures(doc.hast)) {
+      const captions = findAll(figure, 'figcaption');
+      if (captions.length > 0) continue;
+
+      // A button and a surface, and nothing else with text in it.
+      const spans = findAll(figure, 'span').filter(
+        (node) =>
+          Array.isArray(node.properties.className) &&
+          node.properties.className.some(
+            (name) => typeof name === 'string' && name.startsWith('wave-docs-'),
+          ),
+      );
+      expect(spans).toHaveLength(0);
+      // The language is still on the figure, for anyone selecting on it.
+      expect(figure.properties['data-lang']).not.toBe('');
+    }
   });
 
-  it('gives a titled fence no language badge, because the name says it', () => {
+  it('gives a titled fence its filename, and the language only as data', () => {
     const titled = figures(doc.hast).find(
       (figure) => findAll(figure, 'figcaption').length > 0,
     );
     if (titled === undefined) throw new Error('expected a titled figure');
 
-    // One label slot. `app/page.tsx` beside a `ts` badge is the same fact
-    // twice, and the filename is the more precise half.
-    const badges = findAll(titled, 'span').filter((node) =>
-      Array.isArray(node.properties.className)
-        ? node.properties.className.includes(CODE_FRAME_CLASSES.lang[0])
-        : false,
+    expect(toText(findAll(titled, 'figcaption')[0] as Element)).toBe(
+      'app/page.tsx',
     );
-
-    expect(badges).toHaveLength(0);
-    // The language is still on the figure, for anyone selecting on it.
+    // `app/page.tsx` beside a `ts` badge is the same fact twice, and the
+    // filename is the more precise half.
     expect(titled.properties['data-lang']).toBe('ts');
-  });
-
-  it('carries the folded language, and none for a bare fence', () => {
-    /*
-     * ` ```JSON ` yields `json`, because step 12 folds the class before this
-     * runs. A consumer writing `[data-lang="JSON"]` would otherwise get a
-     * selector that silently never matches — and their fence is spelled that
-     * way in their editor and on GitHub.
-     */
-    const langs = figures(doc.hast).map(
-      (figure) => figure.properties['data-lang'],
-    );
-
-    expect(langs).toContain('ts');
-    expect(langs).toContain('json');
-    expect(langs).not.toContain('JSON');
-    // A bare fence declares nothing, so the attribute is absent rather than
-    // `"text"` — which keeps a published badge rule free of an exception.
-    expect(langs).toContain(undefined);
   });
 
   it('splices no nested root into the tree', async () => {

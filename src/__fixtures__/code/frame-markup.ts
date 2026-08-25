@@ -24,7 +24,6 @@ import { CODE_ICON_PATHS, CODE_ICON_STATES } from '../../code-frame.js';
 export const CODE_FRAME_CLASSES = {
   figure: ['wave-docs-panel', 'wave-docs-code'],
   title: ['wave-docs-code__title'],
-  lang: ['wave-docs-code__lang'],
   copy: ['wave-docs-code__copy'],
   body: ['wave-docs-panel__body', 'wave-docs-code__body'],
 } as const;
@@ -57,9 +56,10 @@ export interface CodeFrameMarkupOptions {
 }
 
 /**
- * ⚠️ THE LABEL SLOT HOLDS ONE OF THE TWO, NEVER BOTH. A title is a filename,
- * and a filename says what the language is more precisely than the language
- * does — `swap.ts` next to a `ts` badge is the same fact twice.
+ * ⚠️ A TITLE IS WHAT DECIDES WHETHER THE BLOCK HAS A FRAME. With one, the
+ * figure is a panel: a band with the filename and the copy button, and the
+ * code in a card below. With none the stylesheet flattens the frame away and
+ * the button sits on the code. The markup is the same either way.
  */
 export function codeFrameMarkup(options: CodeFrameMarkupOptions = {}): string {
   const {
@@ -70,11 +70,9 @@ export function codeFrameMarkup(options: CodeFrameMarkupOptions = {}): string {
   } = options;
 
   const label =
-    title !== undefined
-      ? `<figcaption class="${attr(CODE_FRAME_CLASSES.title)}">${title}</figcaption>`
-      : lang !== undefined
-        ? `<span class="${attr(CODE_FRAME_CLASSES.lang)}" aria-hidden="true">${lang}</span>`
-        : '';
+    title === undefined
+      ? ''
+      : `<figcaption class="${attr(CODE_FRAME_CLASSES.title)}">${title}</figcaption>`;
 
   return [
     `<figure class="${attr(CODE_FRAME_CLASSES.figure)}" data-wave-docs-code=""${
