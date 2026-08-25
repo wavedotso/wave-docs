@@ -661,7 +661,7 @@ describe('SearchDialog', () => {
        * `aria-hidden`: more than one screen reader pronounces the character,
        * which is why `spokenName` joins with commas instead.
        */
-      expect(location?.textContent).toBe('docs › guide › install');
+      expect(location?.textContent).toBe('docs \u276f guide \u276f install');
       // The link still carries it, which is what makes the hit a deep link.
       expect(option.querySelector('a')?.getAttribute('href')).toBe(
         '/docs/guide/install#peer-dependencies',
@@ -698,7 +698,7 @@ describe('SearchDialog', () => {
 
       expect(
         lead.querySelector('.wave-docs-search-result-location')?.textContent,
-      ).toBe('docs › guide › install');
+      ).toBe('docs \u276f guide \u276f install');
     });
 
     it('gives every row a second line, so the list is not ragged', async () => {
@@ -718,7 +718,7 @@ describe('SearchDialog', () => {
         // Present, and always the same kind of thing. The defect this replaced
         // was a slot that held a page name under one row and an address under
         // the next.
-        expect(location?.textContent).toMatch(/^docs › /);
+        expect(location?.textContent).toMatch(/^docs \u276f /);
       }
     });
 

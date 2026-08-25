@@ -1251,13 +1251,22 @@ function toDisplayPath(href: string): string {
    * make them read as a URL a reader has to parse, and `›` makes them read as
    * the thing they are.
    *
-   * ⚠️ AND `›` IS SAFE *HERE* BECAUSE THIS LINE IS `aria-hidden`. More than one
-   * screen reader pronounces it, which is exactly why `spokenName` below joins
-   * with commas instead — the two lines carry the same fact in the form each
-   * audience can use, and the character that suits one ruins the other.
+   * ⚠️ U+276F, NOT THE U+203A THIS STARTED WITH, AND IT IS A SIZE DECISION.
+   * Measured in the shipped mono face at 11px: `›` inks 4.93px tall against
+   * 6.32 for an `s` and 8.51 for a `b`, so it sat visibly below the letters it
+   * separates. `❯` inks 8.03 — letter height — and still advances one mono cell
+   * (6.62px), so the line stays on the grid. U+27E9 `⟩` is taller still at 9.8
+   * but overshoots below the baseline, and U+3009 `〉` measures 11.24px wide,
+   * which is a CJK fallback breaking the monospace grid outright.
+   *
+   * ⚠️ AND ANY OF THEM IS SAFE *HERE* ONLY BECAUSE THIS LINE IS `aria-hidden`.
+   * More than one screen reader pronounces these, which is exactly why
+   * `spokenName` below joins with commas instead — the two lines carry the same
+   * fact in the form each audience can use, and the character that suits one
+   * ruins the other.
    */
   const segments = route.split('/').filter(Boolean);
-  return segments.length === 0 ? '/' : segments.join(' › ');
+  return segments.length === 0 ? '/' : segments.join(' \u276f ');
 }
 
 /**

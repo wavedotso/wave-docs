@@ -24,6 +24,14 @@ more than one screen reader pronounces the character, which is exactly why
 `spokenName` joins with commas instead. The two lines carry the same fact in the
 form each audience can use.
 
+⚠️ THE SEPARATOR IS U+276F `❯` RATHER THAN U+203A `›`, AND THAT IS A SIZE
+DECISION MEASURED IN THE SHIPPED FACE. At 11px mono, `›` inks 4.93px tall
+against 6.32 for an `s` and 8.51 for a `b` — visibly shorter than the words it
+separates. `❯` inks 8.03, which is letter height, and still advances one mono
+cell (6.62px) so the line stays on the grid. U+27E9 `⟩` is taller still at 9.8
+but overshoots below the baseline, and U+3009 `〉` measures 11.24px wide — a CJK
+fallback breaking the monospace grid outright.
+
 ⚠️ AND THE SEPARATOR IS TIGHTENED WITH `word-spacing`, NOT A THINNER SPACE
 CHARACTER. The line is monospace, where every glyph advances one cell — a U+2009
 thin space would take exactly as much room as U+0020, or drop out of the mono
