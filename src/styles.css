@@ -749,9 +749,17 @@
      * wins when the table is wider and `1fr` takes over when it is not.
      */
     grid-template-columns: minmax(max-content, 1fr);
-    overflow-x: auto;
-    border: 1px solid var(--wave-docs-border);
-    border-radius: var(--wave-docs-radius);
+    /*
+     * ⚠️ NO `overflow-x` HERE, AND NO BORDER OR RADIUS EITHER — THIS ELEMENT
+     * IS THE PANEL'S SURFACE NOW.
+     *
+     * It wears `.wave-docs-panel__body`, which draws the border and the
+     * radius and owns the overflow; `.wave-docs-table-frame` below turns that
+     * overflow into a scroll. Leaving a second `overflow-x: auto` here would
+     * be worse than redundant: `__body` is declared later at the same
+     * specificity, so the value written here would not be the value in effect,
+     * and the next reader would change it and watch nothing happen.
+     */
     scrollbar-width: thin;
     scrollbar-color: var(--wave-docs-border-strong) transparent;
     /*
@@ -784,8 +792,26 @@
         right / 0.75rem 100% no-repeat scroll;
   }
 
+  /*
+   * A table wears the panel: the outer frame, and its scroll region as the
+   * inset surface. There is no header row — a GFM table has no caption to put
+   * in one — so this is the frame alone, which is the point. It is what makes
+   * a table, a code block and "where to go next" read as three of one thing
+   * rather than three boxes that happen to be near each other.
+   */
+  .wave-docs-table-frame {
+    /* The surface scrolls rather than clipping. See `.wave-docs-panel__body`. */
+    --wave-docs-panel-overflow: auto;
+  }
+
   .wave-docs-table-scroll:focus-visible {
     outline: 2px solid var(--wave-docs-accent);
+    /*
+     * Positive, unlike the `<pre>`'s. This element *is* the scroll container,
+     * and an element's own overflow does not clip its own outline — so the ring
+     * draws into the frame's 4px band around it, which is exactly where there
+     * is room for it.
+     */
     outline-offset: 2px;
   }
 
@@ -2046,9 +2072,29 @@
      * the property wins by having set it, and one that does not gets this.
      */
     background: var(--wave-docs-panel-surface, var(--wave-docs-bg));
-    /* The frame already clips to its own corners; this keeps a child's square
-     * corner — a table, a `<pre>` — from poking through the inner one. */
-    overflow: hidden;
+    /*
+     * ⚠️ CLIPS BY DEFAULT, AND SCROLLS FOR A WEARER THAT SAYS SO — WHICH IS
+     * NOT A CONVENIENCE.
+     *
+     * `hidden` is what keeps a child's square corner — a `<pre>`, a `<table>` —
+     * from poking through the inner radius. But a wide table has to scroll
+     * sideways, and this rule is declared after `.wave-docs-table-scroll` at
+     * the same specificity: a flat `overflow: hidden` here clips a wide table
+     * instead of scrolling it, and takes the whole scroll affordance with it.
+     * The reader gets a table cut off at the frame with no way to reach the
+     * rest and nothing on screen saying so.
+     *
+     * A property rather than a bigger selector, and the default in the
+     * fallback rather than in a declaration — see the ground above for why the
+     * declaration form loses: a frame wears `.wave-docs-panel` *and* its own
+     * class, so both set the property on one element at one specificity and
+     * source order decides.
+     *
+     * `auto`, not `overflow-x: auto`: per CSS Overflow 3 a `visible` sibling
+     * axis computes to `auto` anyway, so the two spell the same thing, and the
+     * shorthand is the one that can be written as a single value here.
+     */
+    overflow: var(--wave-docs-panel-overflow, hidden);
   }
 }
 

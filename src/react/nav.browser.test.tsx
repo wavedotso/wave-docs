@@ -80,7 +80,7 @@ function mount(width?: string): Mounted {
            * A sticky table header, because it is `z-index: 1` — the same layer
            * the scrim is on — and it is what punched through it.
            */}
-          <section className="wave-docs-table-scroll">
+          <section className="wave-docs-panel__body wave-docs-table-scroll">
             <table className="wave-docs-table">
               <thead>
                 <tr>

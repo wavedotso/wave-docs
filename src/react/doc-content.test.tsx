@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { DocContent } from './doc-content.js';
 import type { DocsLinkProps } from './markdown-components.js';
 import { createMarkdownComponents } from './markdown-components.js';
+import { TABLE_FRAME_CLASSES } from '../__fixtures__/table/frame-markup.js';
 
 function element(
   tagName: string,
@@ -269,8 +270,15 @@ describe('markdown components', () => {
     );
 
     // A labelled <section> is a `region` landmark without the explicit role.
-    expect(html).toContain('<section class="wave-docs-table-scroll"');
+    expect(html).toContain(
+      `<section class="${TABLE_FRAME_CLASSES.surface.join(' ')}"`,
+    );
     expect(html).toContain('aria-label="Table"');
     expect(html).toContain('tabindex="0"');
+    // And the frame around it, which is what makes a table, a code block and
+    // "where to go next" read as three of one thing.
+    expect(html).toContain(
+      `<div class="${TABLE_FRAME_CLASSES.frame.join(' ')}"`,
+    );
   });
 });

@@ -16,6 +16,7 @@ import { page } from 'vitest/browser';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import styles from './styles.css?inline';
+import { tableFrameMarkup } from './__fixtures__/table/frame-markup.js';
 
 /** Widths the reflow and layout claims are made at. */
 const VIEWPORTS = [320, 390, 768, 1024, 1440] as const;
@@ -165,15 +166,13 @@ describe('tables', () => {
       <td><a href="/c">/api/v1/a/third/long/path</a></td>
     </tr></tbody></table>`;
 
-  const PROSE_CELL = `<table class="wave-docs-table"><tbody><tr>
+  const PROSE_CELL = `<tbody><tr>
       <td>timeout</td>
       <td>How long the client waits before giving up, in milliseconds, across every retry.</td>
-    </tr></tbody></table>`;
+    </tr></tbody>`;
 
   function mountTable(html: string): HTMLElement {
-    const prose = mount(
-      `<section class="wave-docs-table-scroll" tabindex="0">${html}</section>`,
-    );
+    const prose = mount(tableFrameMarkup(html));
     const scroll = prose.querySelector('.wave-docs-table-scroll');
     if (!(scroll instanceof HTMLElement)) throw new Error('no scroll region');
     return scroll;
@@ -192,6 +191,80 @@ describe('tables', () => {
     const scroll = mountTable(LINKS);
     await resize(320);
     expect(scroll.scrollWidth).toBeGreaterThan(scroll.clientWidth);
+  });
+
+  it('scrolls its overflow rather than clipping it away', () => {
+    /*
+     * ⚠️ THE ASSERTION IS ON THE *COMPUTED* VALUE, BECAUSE THE DEFECT WAS A
+     * CASCADE AND NOT A MISSING RULE.
+     *
+     * The scroll region wears `.wave-docs-panel__body`, which is declared after
+     * `.wave-docs-table-scroll` at the same specificity — so a flat
+     * `overflow: hidden` on the surface silently won, and a wide table was cut
+     * off at the frame with no way to reach the rest of it and nothing on
+     * screen saying so.
+     *
+     * ⚠️ AND `scrollWidth > clientWidth` CANNOT SEE THIS. It is true of a
+     * clipped box as well as a scrolling one, so both tests above went on
+     * passing against a table a reader could not scroll. The surface hands its
+     * overflow to the wearer through `--wave-docs-panel-overflow` precisely so
+     * this can be one value in one place.
+     */
+    const scroll = mountTable(API);
+    expect(getComputedStyle(scroll).overflowX).toBe('auto');
+  });
+
+  it('wears the panel: one frame, set in on every side', () => {
+    /*
+     * The table is the third thing to wear `.wave-docs-panel`, after "where to
+     * go next" and the code frame, and that is the whole point of it — a
+     * table, a fence and a widget reading as three of one thing rather than
+     * three boxes that happen to be near each other.
+     */
+    const scroll = mountTable(API);
+    const frame = scroll.closest('.wave-docs-panel');
+    if (!(frame instanceof HTMLElement)) throw new Error('no panel frame');
+
+    const outer = getComputedStyle(frame);
+    const inner = getComputedStyle(scroll);
+
+    // The surface carries the border now, and so does the frame: two boxes,
+    // one gap, which is what makes the corners read as concentric.
+    expect(inner.borderTopWidth).toBe('1px');
+    expect(outer.borderTopWidth).toBe('1px');
+
+    // Inset by the frame's own border plus its padding, on all four sides —
+    // an asymmetry here is the frame drawing a margin rather than a band.
+    const gap =
+      Number.parseFloat(outer.borderTopWidth) +
+      Number.parseFloat(outer.paddingTop);
+    const f = frame.getBoundingClientRect();
+    const s = scroll.getBoundingClientRect();
+
+    expect(s.top - f.top).toBeCloseTo(gap, 1);
+    expect(f.bottom - s.bottom).toBeCloseTo(gap, 1);
+    expect(s.left - f.left).toBeCloseTo(gap, 1);
+    expect(f.right - s.right).toBeCloseTo(gap, 1);
+
+    /*
+     * Concentric: the inner radius is the outer one minus the frame's padding,
+     * or the two corners run at different curvatures and the surface reads as
+     * pasted onto the frame rather than set into it.
+     *
+     * ⚠️ MINUS THE PADDING, NOT MINUS THE WHOLE GAP — measured at 15px against
+     * a `gap` of 5. Strictly the surface's border box starts a *border* inside
+     * the frame's padding box too, so the geometric answer is one pixel less
+     * again: the same correction `--wave-docs-panel-inset` documents for the
+     * inline axis and does not make here. One pixel of curvature is below what
+     * a corner shows, so the tokens are the tokens; this pins which of the two
+     * arithmetics they are, so nobody "fixes" it in either direction by
+     * accident.
+     */
+    expect(Number.parseFloat(inner.borderTopLeftRadius)).toBeCloseTo(
+      Number.parseFloat(outer.borderTopLeftRadius) -
+        Number.parseFloat(outer.paddingTop),
+      1,
+    );
   });
 
   it.each([320, 768, 1024])(
@@ -264,12 +337,10 @@ describe('the responsive shell', () => {
           <article class="wave-docs-prose">
             <h1>Title</h1>
             <p>${DIGEST}</p>
-            <section class="wave-docs-table-scroll" tabindex="0">
-              <table class="wave-docs-table"><tbody><tr>
+            ${tableFrameMarkup(`<tbody><tr>
                 <td>${'x'.repeat(200)}</td>
                 <td><a href="/b">/api/v1/another/long/path</a></td>
-              </tr></tbody></table>
-            </section>
+              </tr></tbody>`)}
           </article>
         </div>
         <div class="wave-docs-layout__toc"><nav class="wave-docs-toc"><a href="#x">Title</a></nav></div>
@@ -541,12 +612,10 @@ describe('the table scroll shadow', () => {
 
     document.body.innerHTML = `
       <div class="wave-docs-prose">
-        <section class="wave-docs-table-scroll" tabindex="0">
-          <table class="wave-docs-table">
-            <thead><tr>${cells('th')}</tr></thead>
-            <tbody>${`<tr>${cells('td')}</tr>`.repeat(2)}</tbody>
-          </table>
-        </section>
+        ${tableFrameMarkup(
+          `<thead><tr>${cells('th')}</tr></thead>
+            <tbody>${`<tr>${cells('td')}</tr>`.repeat(2)}</tbody>`,
+        )}
       </div>`;
 
     const scroller = document.querySelector('.wave-docs-table-scroll');

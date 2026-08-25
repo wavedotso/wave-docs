@@ -324,7 +324,7 @@ function createImage(Image: DocsImageComponent | undefined) {
 }
 
 /**
- * A table wrapped in its own scroll container.
+ * A table wearing the panel, with its scroll region as the inset surface.
  *
  * A wide table cannot be made scrollable by CSS alone without an extra
  * element, and a scroll container that is not focusable cannot be scrolled by
@@ -332,6 +332,20 @@ function createImage(Image: DocsImageComponent | undefined) {
  * "no tabindex on non-interactive elements", not a violation of it. A labelled
  * `<section>` is a `region` landmark, so the tab stop announces itself instead
  * of being a mystery stop in the tab order.
+ *
+ * ⚠️ THE FRAME IS A `<div>` AND NOT A `<figure>`, WHICH THE CODE BLOCK IS.
+ *
+ * A `<figure>` earns its element from its `<figcaption>`; GFM has no table
+ * caption syntax, so one here would be a `figure` role with no accessible name
+ * wrapped around a `region` that already has one — a second announcement for
+ * nothing. The frame is presentational until there is a caption to hang on it.
+ *
+ * ⚠️ AND THE SURFACE IS THE SCROLL REGION ITSELF, NOT A BOX AROUND IT. One
+ * element cannot both clip to a radius and scroll, so `.wave-docs-panel__body`
+ * hands its overflow to the wearer through `--wave-docs-panel-overflow`, which
+ * `.wave-docs-table-frame` sets to `auto`. The code block solves the same
+ * problem the other way, because a `<pre>` is a box it can scroll *inside* the
+ * surface and a `<table>` is not.
  */
 function createTable(label: string) {
   return function MarkdownTable({
@@ -339,17 +353,19 @@ function createTable(label: string) {
     ...rest
   }: ComponentProps<'table'>): ReactNode {
     return (
-      <section
-        className="wave-docs-table-scroll"
-        aria-label={label}
-        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard scrolling — see above.
-        tabIndex={0}
-      >
-        <table
-          {...rest}
-          className={joinClassNames('wave-docs-table', className)}
-        />
-      </section>
+      <div className="wave-docs-panel wave-docs-table-frame">
+        <section
+          className="wave-docs-panel__body wave-docs-table-scroll"
+          aria-label={label}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard scrolling — see above.
+          tabIndex={0}
+        >
+          <table
+            {...rest}
+            className={joinClassNames('wave-docs-table', className)}
+          />
+        </section>
+      </div>
     );
   };
 }
