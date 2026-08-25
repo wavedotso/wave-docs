@@ -852,6 +852,40 @@ describe('callout hues', () => {
   );
 });
 
+describe('blocks set apart from the prose', () => {
+  /**
+   * ⚠️ ONE UNIFORM BORDER, NOT A RULE DOWN ONE EDGE.
+   *
+   * A blockquote drew a 3px rule down its inline start and a callout drew one
+   * in its accent, so the two blocks a reader meets most often were the only
+   * ones that were not boxes — and beside a code frame or a table they read as
+   * a different kind of thing rather than as quieter ones. A thick rule on one
+   * side also fights the corner it runs into once the box is a squircle.
+   *
+   * The table-of-contents rail is deliberately not on this list: it is a
+   * continuous line that an active marker slides along, which is a navigation
+   * affordance rather than the edge of a box.
+   */
+  it.each(['.wave-docs-prose blockquote', '.wave-docs-callout'])(
+    'gives %s the same border on every side',
+    (selector) => {
+      const block = readBlock(sheet, sheet.indexOf(`${selector} {`));
+
+      expect(block).toMatch(/border:\s*1px solid/);
+      for (const side of [
+        'border-inline-start:',
+        'border-inline-end:',
+        'border-block-start:',
+        'border-block-end:',
+        'border-left:',
+        'border-right:',
+      ]) {
+        expect(block, `${selector} overrides ${side}`).not.toContain(side);
+      }
+    },
+  );
+});
+
 describe('focus indicators', () => {
   const declared = focusSelectors(RULES);
 

@@ -1645,8 +1645,21 @@
     --callout-bg: var(--wave-docs-callout-note-bg);
 
     padding: 0.875rem 1rem;
+    /*
+     * ⚠️ ONE UNIFORM EDGE, AND THERE WAS A 3px ACCENT DOWN THE INLINE START.
+     *
+     * Every other block set apart from the prose here is a box with one border
+     * all the way round; the accent edge made a callout the exception, and a
+     * thick rule on one side of a squircled box also fights the corner it runs
+     * into. A blockquote is this box without the hue, which is the relationship
+     * — and a stripe on one of them broke it.
+     *
+     * ⚠️ AND THE TYPE IS STILL NOT CONVEYED BY COLOUR ALONE. The stripe was
+     * never what carried it: the icon and the label — "Note", "Warning" — are
+     * the non-colour signals, and they are unchanged. The tinted border and
+     * ground remain as reinforcement rather than as the whole message.
+     */
     border: 1px solid color-mix(in oklab, var(--callout-accent) 35%, transparent);
-    border-inline-start: 3px solid var(--callout-accent);
     border-radius: var(--wave-docs-radius-lg);
     background: var(--callout-bg);
   }
