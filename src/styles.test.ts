@@ -699,8 +699,20 @@ describe('focus indicators', () => {
   it('has one for every focusable surface in the package', () => {
     // The skip link, prose links, the sidebar, the TOC, the YouTube facade, the
     // table scroll region, the Shiki `<pre>` (Shiki gives it `tabindex="0"`),
-    // the search trigger, its input row and the close button.
-    expect(declared.length).toBeGreaterThanOrEqual(9);
+    // the search trigger, its input row, the close button and the copy button.
+    expect(declared.length).toBeGreaterThanOrEqual(10);
+  });
+
+  /**
+   * ⚠️ A BORDER IS NOT A FOCUS INDICATOR, AND THIS CONTROL HAD ONLY A BORDER.
+   *
+   * The copy button drew a 1px box at rest — present whether it was focused or
+   * not — so a keyboard reader tabbing onto it got a `color` change and nothing
+   * else, and it never appeared in this inventory. Taking the border away for
+   * the design made the hole visible; it did not create it.
+   */
+  it('covers the copy button, which had none behind its border', () => {
+    expect(declared).toContain('.wave-docs-code__copy:focus-visible');
   });
 
   it('covers the Shiki <pre>, which Shiki makes focusable', () => {

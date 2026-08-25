@@ -1221,12 +1221,25 @@
     /* A grid, so the three state icons stack in one cell. */
     display: grid;
     place-items: center;
+    /*
+     * A 2rem hit target around a 1rem glyph. The box stays even though nothing
+     * draws it at rest — a control smaller than the icon plus its padding is a
+     * control people miss on a touch screen.
+     */
     width: 2rem;
     height: 2rem;
-    border: 1px solid var(--wave-docs-border);
+    /*
+     * ⚠️ NO BORDER AND NO GROUND AT REST, AND IT HAD BOTH.
+     *
+     * A bordered, filled 2rem box on the frame's own band is a third framed
+     * rectangle inside a frame that already has two, for a control that is
+     * secondary to everything around it. Quiet at rest, and the ground appears
+     * on hover — which is also what tells you it is a control.
+     */
+    border: 0;
     border-radius: var(--wave-docs-radius-sm);
-    background-color: var(--wave-docs-bg);
-    color: var(--wave-docs-fg-muted);
+    background-color: transparent;
+    color: var(--wave-docs-fg-subtle);
     cursor: pointer;
     /*
      * ⚠️ HIDDEN UNTIL THE RUNTIME SAYS OTHERWISE, AND THIS IS STRUCTURAL.
@@ -1257,9 +1270,31 @@
    */
 
 
+  /*
+   * ⚠️ `--wave-docs-bg`, NOT `--wave-docs-bg-subtle`, AND THE SWAP IS THE WHOLE
+   * POINT. The subtle ramp *is* the frame's ground here, so the hover state
+   * this used to have was the colour the button was already sitting on: a
+   * hover that changed nothing but the ink. Lighter than the band reads as a
+   * chip lifting off it.
+   */
   .wave-docs-code__copy:hover {
-    background-color: var(--wave-docs-bg-subtle);
+    background-color: var(--wave-docs-bg);
     color: var(--wave-docs-fg);
+  }
+
+  /*
+   * ⚠️ AND IT HAD NO FOCUS RULE AT ALL, WHICH THE BORDER WAS QUIETLY COVERING
+   * FOR.
+   *
+   * A 1px box around a control is not a focus indicator — it is there whether
+   * the control is focused or not — so a keyboard reader tabbing onto this
+   * button got a `color` change and nothing else, and the package's own
+   * inventory of focusable surfaces did not list it. Taking the border away
+   * makes that visible; it does not create it.
+   */
+  .wave-docs-code__copy:focus-visible {
+    outline: 2px solid var(--wave-docs-accent);
+    outline-offset: 2px;
   }
 
   /* The success state, swapped by CSS rather than by React: no component owns
@@ -1289,7 +1324,6 @@
 
   /* The success state, swapped by CSS rather than by React. */
   .wave-docs-code__copy[data-copied='true'] {
-    border-color: var(--wave-docs-callout-tip);
     color: var(--wave-docs-callout-tip);
   }
 
@@ -1317,7 +1351,6 @@
    * stroke weight, and the triangle reads as a page-level alert.
    */
   .wave-docs-code__copy[data-copied='false'] {
-    border-color: var(--wave-docs-callout-caution);
     color: var(--wave-docs-callout-caution);
   }
 
