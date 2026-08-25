@@ -13,7 +13,7 @@
  *
  * Wrapping before Shiki is safe because Shiki's own `visit` assigns over
  * `parent.children[index]`, so the `<pre>` it replaces is replaced in place,
- * inside the figure this put around it. The `root` node it splices in is
+ * inside the surface `<div>` this put around it. The `root` node it splices in is
  * flattened by `rehypeFlattenRoots`, which already recurses into element
  * children — this is simply the first thing to put a `root` inside an element,
  * which is why the test suite pins it.
@@ -95,12 +95,51 @@ export const rehypeCodeFrame: Plugin<[RehypeCodeFrameOptions?], Root> = (
       const language = readLanguage(code);
 
       const children: ElementContent[] = [];
+      /*
+       * ⚠️ THE `<figcaption>` STAYS A DIRECT CHILD OF THE `<figure>`, WHICH IS
+       * WHY THIS HAS NO HEADER WRAPPER.
+       *
+       * A `figcaption` has to be the first or last child of its figure. Put
+       * inside the `.wave-docs-panel__header` `<div>` that "where to go next"
+       * uses, it captions nothing: the markup is invalid and the figure loses
+       * the accessible name a titled block used to have. So the frame wears
+       * `.wave-docs-panel` and `.wave-docs-panel__body` and the stylesheet
+       * lays these children out on a grid — sharing the primitive's insets
+       * rather than its header element.
+       *
+       * The button stays out of the caption for the same reason it is not
+       * inside it: a `<button>` in a `<figcaption>` contributes its accessible
+       * name to the figure's, so a block called `swap.ts` would announce as
+       * "swap.ts Copy code from swap.ts".
+       */
       if (title !== undefined) {
         children.push({
           type: 'element',
           tagName: 'figcaption',
           properties: { className: ['wave-docs-code__title'] },
           children: [{ type: 'text', value: title }],
+        });
+      } else if (language !== undefined) {
+        /*
+         * The language, when the author named no file — one label slot, and a
+         * filename already says what the language is more precisely than the
+         * language does.
+         *
+         * ⚠️ `aria-hidden`, WHICH IS ALSO WHAT KEEPS IT OUT OF THE SEARCH
+         * INDEX. `buildSearchIndex` drops any subtree marked presentational,
+         * so the badge costs the index nothing. As real text it would put
+         * "typescript" or "bash" into the searchable body of every page that
+         * has a fence — the same relevance poisoning `pre` is skipped to
+         * avoid — and a screen reader would read it out ahead of every block.
+         */
+        children.push({
+          type: 'element',
+          tagName: 'span',
+          properties: {
+            className: ['wave-docs-code__lang'],
+            'aria-hidden': 'true',
+          },
+          children: [{ type: 'text', value: language }],
         });
       }
       children.push(
@@ -111,14 +150,26 @@ export const rehypeCodeFrame: Plugin<[RehypeCodeFrameOptions?], Root> = (
             ? copyLabel
             : copyFromLabel.replace('{title}', title),
         ),
-        node,
+        /*
+         * The panel's inset surface. It is a wrapper rather than the `<pre>`
+         * itself because the `<pre>` is the scroll container for a wide line,
+         * and a box cannot both clip to a radius and scroll inside it.
+         */
+        {
+          type: 'element',
+          tagName: 'div',
+          properties: {
+            className: ['wave-docs-panel__body', 'wave-docs-code__body'],
+          },
+          children: [node],
+        },
       );
 
       parent.children[index] = {
         type: 'element',
         tagName: 'figure',
         properties: {
-          className: ['wave-docs-code'],
+          className: ['wave-docs-panel', 'wave-docs-code'],
           [CODE_FRAME_ATTRIBUTE]: '',
           /*
            * Only when the author declared one. A bare fence has no

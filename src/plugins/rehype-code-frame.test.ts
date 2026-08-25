@@ -18,6 +18,7 @@ import remarkParse from 'remark-parse';
 import remarkRehype from 'remark-rehype';
 import { unified } from 'unified';
 
+import { CODE_FRAME_CLASSES } from '../__fixtures__/code/frame-markup.js';
 import { CODE_FRAME_ATTRIBUTE, hasCodeFrame } from '../code-frame.js';
 import { rehypeCodeFrame } from './rehype-code-frame.js';
 import { rehypeNormalizeCodeLanguage } from './rehype-code-language.js';
@@ -189,13 +190,97 @@ describe('rehypeCodeFrame', () => {
     const [figure] = figures(doc.hast);
     if (figure === undefined) throw new Error('expected a figure');
 
-    const tags = figure.children
-      .filter((child): child is Element => child.type === 'element')
-      .map((child) => child.tagName);
+    /*
+     * ⚠️ DOCUMENT ORDER, NOT DIRECT CHILDREN — and this test asserted the
+     * latter until the `<pre>` moved inside `.wave-docs-panel__body`. It went
+     * on comparing `indexOf('button')` to `indexOf('pre')` on a list that no
+     * longer had a `pre` in it: `-1`, which is less than everything, so the
+     * assertion passed for the one reason it must never pass. Tab order is a
+     * property of the whole subtree, so the check has to read the whole
+     * subtree.
+     */
+    const order: string[] = [];
+    visit(figure, 'element', (node: Element) => {
+      order.push(node.tagName);
+    });
 
+    expect(order).toContain('pre');
     // Reversed, a keyboard reader tabs into the scrollable code region and
     // out of it again before ever meeting the control that copies it.
-    expect(tags.indexOf('button')).toBeLessThan(tags.indexOf('pre'));
+    expect(order.indexOf('button')).toBeLessThan(order.indexOf('pre'));
+  });
+
+  it('wears the panel, with the code on its inset surface', () => {
+    /*
+     * The frame is a `.wave-docs-panel` and the code sits on that panel's
+     * surface, which is what lets one set of rules dress this and "where to go
+     * next" — and, next, a table.
+     *
+     * ⚠️ THE CLASSES COME FROM THE FIXTURE THE BROWSER TIER MOUNTS. Spelled
+     * out again here, a rename would leave `code.browser.test.tsx` measuring a
+     * shape the pipeline stopped emitting, with every assertion in it still
+     * green.
+     */
+    for (const figure of figures(doc.hast)) {
+      expect(figure.properties.className).toEqual([
+        ...CODE_FRAME_CLASSES.figure,
+      ]);
+
+      const surface = findAll(figure, 'div').find((node) =>
+        Array.isArray(node.properties.className),
+      );
+      expect(surface?.properties.className).toEqual([
+        ...CODE_FRAME_CLASSES.body,
+      ]);
+      // The `<pre>` is *inside* the surface: one box clips to the frame's
+      // radius, the other scrolls a wide line, and neither can do both.
+      expect(findAll(surface as Element, 'pre')).toHaveLength(1);
+    }
+  });
+
+  it('labels an untitled fence with its language, out of the a11y tree', () => {
+    const untitled = figures(doc.hast).filter(
+      (figure) => findAll(figure, 'figcaption').length === 0,
+    );
+
+    // The `JSON` fence gets a badge; the bare one declared no language and so
+    // has nothing to put in the slot.
+    const badges = untitled.flatMap((figure) =>
+      findAll(figure, 'span').filter((node) =>
+        Array.isArray(node.properties.className)
+          ? node.properties.className.includes(CODE_FRAME_CLASSES.lang[0])
+          : false,
+      ),
+    );
+
+    expect(badges).toHaveLength(1);
+    expect(toText(badges[0] as Element)).toBe('json');
+    /*
+     * ⚠️ `aria-hidden`, WHICH IS ALSO WHAT KEEPS IT OUT OF THE SEARCH INDEX.
+     * `buildSearchIndex` drops presentational subtrees, so this costs the
+     * index nothing. As real text it would put a language name into the
+     * searchable body of every page carrying a fence.
+     */
+    expect(badges[0]?.properties['aria-hidden']).toBe('true');
+  });
+
+  it('gives a titled fence no language badge, because the name says it', () => {
+    const titled = figures(doc.hast).find(
+      (figure) => findAll(figure, 'figcaption').length > 0,
+    );
+    if (titled === undefined) throw new Error('expected a titled figure');
+
+    // One label slot. `app/page.tsx` beside a `ts` badge is the same fact
+    // twice, and the filename is the more precise half.
+    const badges = findAll(titled, 'span').filter((node) =>
+      Array.isArray(node.properties.className)
+        ? node.properties.className.includes(CODE_FRAME_CLASSES.lang[0])
+        : false,
+    );
+
+    expect(badges).toHaveLength(0);
+    // The language is still on the figure, for anyone selecting on it.
+    expect(titled.properties['data-lang']).toBe('ts');
   });
 
   it('carries the folded language, and none for a bare fence', () => {

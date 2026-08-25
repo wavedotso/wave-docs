@@ -1083,12 +1083,37 @@
    * ---------------------------------------------------------------------- */
 
   .wave-docs-code {
-    position: relative;
     /*
-     * ⚠️ `margin-inline`, NOT `margin`. The `<pre>` inside carries the border
-     * and the background; this figure is only a positioning context, and a
-     * default `<figure>` margin would indent the whole block by 40px — which is
-     * what this rule was written for.
+     * ⚠️ A GRID ON THE FIGURE ITSELF, NOT A `.wave-docs-panel__header` WRAPPER.
+     *
+     * A `<figcaption>` has to be a direct child of its `<figure>`. Wrapped in
+     * the header `<div>` "where to go next" uses, it captions nothing: the
+     * markup is invalid and a titled block loses the accessible name it had.
+     * So the frame wears `.wave-docs-panel`, its surface wears
+     * `.wave-docs-panel__body`, and the header row is laid out here — sharing
+     * the primitive's insets rather than its header element.
+     *
+     * ⚠️ AND THE FIRST ROW IS FLOORED RATHER THAN LEFT TO ITS CONTENT. With a
+     * label it is the label's height; with none it is the copy button's, and
+     * those differ by 4px — enough that a page mixing titled and untitled
+     * fences shows two header heights and reads as a rendering bug.
+     */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(var(--wave-docs-panel-header-row), auto) auto;
+    align-items: center;
+    /*
+     * The code's own ground rather than the panel's default. A code block is
+     * part of the surface ramp and a reader expects it darker than the page;
+     * the panel paints `--wave-docs-bg` for a widget made of prose, which is
+     * the right default and the wrong one here. Set on the frame so it reaches
+     * the surface by inheritance — see the property's note on the panel.
+     */
+    --wave-docs-panel-surface: var(--wave-docs-code-block-bg);
+    /*
+     * ⚠️ `margin-inline`, NOT `margin`. A default `<figure>` margin would
+     * indent the whole block by 40px — which is what this rule was written
+     * for.
      *
      * Zeroing all four also took the *block* margin, and `.wave-docs-prose > *
      * + *` is the same specificity and declared earlier, so this won. Every
@@ -1099,58 +1124,54 @@
     margin-inline: 0;
   }
 
-  .wave-docs-code__title {
-    display: flex;
-    align-items: center;
-    /* Room for the button, which is absolutely positioned over this row. */
-    padding: 0.5rem 3rem 0.5rem 1.125rem;
-    border: 1px solid var(--wave-docs-border);
-    border-block-end: 0;
-    border-start-start-radius: var(--wave-docs-radius);
-    border-start-end-radius: var(--wave-docs-radius);
-    background-color: var(--wave-docs-bg-subtle);
+  /*
+   * The label slot: the fence's `title="…"` where it has one, and its language
+   * otherwise. One or the other and never both — `swap.ts` beside a `ts` badge
+   * is the same fact twice, and the filename is the more precise half.
+   */
+  .wave-docs-code__title,
+  .wave-docs-code__lang {
+    grid-row: 1;
+    grid-column: 1;
+    /* The track is `minmax(0, 1fr)` so a long path can shrink it; these two let
+     * the path wrap inside that track instead of pushing the button out of the
+     * frame. */
+    min-width: 0;
+    overflow-wrap: anywhere;
+    /*
+     * ⚠️ THE `+ 1px` IS THE SURFACE'S BORDER, AND IT IS THE SAME SUBTRACTION
+     * `.wave-docs-panel__header` MAKES — the reason the inset is exported at
+     * all. The label's first character and the code's first character sit on
+     * one column; without it they miss by exactly one border, which appears in
+     * no rule and reads as a design decision.
+     */
+    padding-inline-start: calc(var(--wave-docs-panel-inset) + 1px);
     color: var(--wave-docs-fg-muted);
     font-family: var(--wave-docs-font-mono);
     font-size: 0.8125rem;
   }
 
-  /* Square off the top of a `<pre>` that sits under a title bar.
-   *
-   * `.wave-docs-prose` first, even though `.wave-docs-code` is our class and
-   * only ever appears inside it: `styles.test.ts` requires every `.shiki` rule
-   * to name the prose scope, so the package can never style a code block it
-   * did not render. One form for that invariant is worth the extra selector. */
-  /*
-   * ⚠️ THE `<pre>`'s USER-AGENT MARGIN, WHICH UNDID THE FRAME.
-   *
-   * A `<pre>` defaults to `margin-block: 1em`, and at this block's 0.875rem
-   * that is 14px — measured in Chromium on the real site, not reasoned about.
-   * So the title bar dropped its bottom border and squared its bottom corners
-   * to join the code below it, and then the browser pushed the two 14px apart:
-   * a caption floating over a gap, which is the one arrangement the frame was
-   * designed not to be.
-   *
-   * It mis-seated the copy button too. The button is positioned against the
-   * `<figure>`, so on a fence with no title the margin slid the code down out
-   * from under it.
-   *
-   * Invisible to every test here before the site existed: jsdom has no layout,
-   * and `styles.test.ts` reads rules as text. It took a screenshot of a real
-   * page to see it.
-   */
-  .wave-docs-prose .wave-docs-code .shiki {
-    margin: 0;
-  }
-
-  .wave-docs-prose .wave-docs-code:has(.wave-docs-code__title) .shiki {
-    border-start-start-radius: 0;
-    border-start-end-radius: 0;
+  .wave-docs-code__body {
+    grid-column: 1 / -1;
   }
 
   .wave-docs-code__copy {
-    position: absolute;
-    top: 0.5rem;
-    inset-inline-end: 0.5rem;
+    grid-row: 1;
+    grid-column: 2;
+    /*
+     * ⚠️ `relative`, AND IT IS LOAD-BEARING RATHER THAN TIDY. The tick and the
+     * cross below are `position: absolute`, and this rule used to say
+     * `position: absolute` — which made the button their containing block for
+     * free. Left static, both glyphs would resolve against the figure and draw
+     * in the top-left corner of the code block.
+     */
+    position: relative;
+    /*
+     * Optically inset, not aligned to the label's column: a 2rem hit target
+     * held 17px off the frame's edge reads as floating in the middle of the
+     * row rather than as the control that ends it.
+     */
+    margin-inline-end: calc(var(--wave-docs-panel-inset) - 0.5rem);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1172,51 +1193,24 @@
      * a control that is invisible, focusable, and does nothing.
      */
     visibility: hidden;
-    opacity: 0;
-    transition: opacity 120ms ease;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .wave-docs-code__copy {
-      transition: none;
-    }
   }
 
   html[data-wave-docs-code-ready] .wave-docs-code__copy {
     visibility: visible;
   }
 
-  .wave-docs-code:hover .wave-docs-code__copy,
-  .wave-docs-code:focus-within .wave-docs-code__copy,
-  /* A title bar already reserves the space, so there is nothing to reveal. */
-  .wave-docs-code:has(.wave-docs-code__title) .wave-docs-code__copy {
-    opacity: 1;
-    /*
-     * ⚠️ CENTRED IN THE TITLE BAR, NOT INSET FROM THE FIGURE.
-     *
-     * The button is positioned against the `<figure>`, which is the whole code
-     * block, so a single `top` cannot be right for both shapes. Against a bare
-     * fence, `0.5rem` insets it from the top of the `<pre>`, which is correct.
-     * Against a title bar it measured 8px of space above and **0 below** — the
-     * button sitting flush on the bar's own border, which reads as misaligned
-     * rather than as inset.
-     *
-     * The bar is 40px and the button is 32px, so 4px is the centre. A `top:
-     * 50%` would be wrong here: the percentage resolves against the figure,
-     * which includes the code block below.
-     */
-    top: 0.25rem;
-  }
-
   /*
-   * A control that only appears on hover does not exist on a phone. This is
-   * the whole of the mobile story for copy, and it is one query.
+   * ⚠️ NO HOVER REVEAL, AND ITS ABSENCE IS THE POINT.
+   *
+   * The button used to fade in on `:hover` or `:focus-within`, because it was
+   * absolutely positioned over the code and had nowhere of its own to be. It
+   * has a slot in the header row now, and a reserved slot that is empty until
+   * you point at it reads as a rendering fault rather than as restraint — so
+   * the reveal, the `@media (hover: none)` exception that existed because a
+   * hover-only control does not exist on a phone, and the reduced-motion guard
+   * on its transition all went with it.
    */
-  @media (hover: none) {
-    .wave-docs-code__copy {
-      opacity: 1;
-    }
-  }
+
 
   .wave-docs-code__copy:hover {
     background-color: var(--wave-docs-bg-subtle);
@@ -1304,13 +1298,37 @@
   }
 
   .wave-docs-prose .shiki {
-    padding: 1rem 1.125rem;
-    border: 1px solid var(--wave-docs-border);
-    border-radius: var(--wave-docs-radius);
-    /* Our token, not `--shiki-light-bg`: the code block is part of the page's
-     * surface ramp, and a theme's own background is whatever GitHub chose. */
-    background-color: var(--wave-docs-code-block-bg);
+    /*
+     * ⚠️ NO BORDER, NO RADIUS AND NO BACKGROUND OF ITS OWN — THE PANEL'S
+     * SURFACE CARRIES ALL THREE NOW. `rehypeCodeFrame` puts every highlighted
+     * fence inside a `.wave-docs-panel__body`, so declaring them here draws a
+     * second frame one pixel inside the first. `pre:not(.shiki)` above keeps
+     * its own, because an excluded fence is never wrapped.
+     *
+     * ⚠️ AND THE INLINE PADDING IS `1rem` BECAUSE THAT IS
+     * `--wave-docs-panel-inset`, NOT BECAUSE IT IS A ROUND NUMBER. The frame's
+     * label sits at that inset plus the surface's border; the first character
+     * of the code sits at the surface's border plus this. Equal, they land on
+     * one column. The `1.125rem` this was put the code 2px right of the
+     * filename above it — visible, and attributable to nothing.
+     */
+    padding: 1rem;
+    /*
+     * ⚠️ THE `<pre>` SCROLLS AND THE SURFACE AROUND IT CLIPS, WHICH IS WHY
+     * THEY ARE TWO BOXES. One box cannot both round its corners with
+     * `overflow: hidden` and scroll a wide line: the first value wins and the
+     * line is cut off with no way to reach it.
+     */
     overflow-x: auto;
+    /*
+     * ⚠️ THE `<pre>`'s USER-AGENT MARGIN, WHICH UNDOES THE FRAME.
+     *
+     * A `<pre>` defaults to `margin-block: 1em`, and at this block's 0.875rem
+     * that is 14px — measured in Chromium on the real site, not reasoned
+     * about. Left in, it pushes the code away from the surface holding it and
+     * the frame reads as a caption floating over a gap.
+     */
+    margin: 0;
     font-family: var(--wave-docs-font-mono);
     font-size: 0.875rem;
     line-height: 1.7;
@@ -1327,7 +1345,17 @@
    * had no focus style. */
   .wave-docs-prose .shiki:focus-visible {
     outline: 2px solid var(--wave-docs-accent);
-    outline-offset: 2px;
+    /*
+     * ⚠️ NEGATIVE, BECAUSE THE SURFACE AROUND THIS ONE CLIPS.
+     *
+     * The `<pre>` fills `.wave-docs-panel__body`, which is `overflow: hidden`
+     * so a square corner cannot poke through the frame's rounded one. An
+     * outline drawn *outside* the `<pre>`'s border box is outside the
+     * surface's content box as well, so the `2px` this was got clipped away
+     * to nothing and the one focusable element in a code block had a focus
+     * style that could not be seen. Inset, it lands on the code's own edge.
+     */
+    outline-offset: -2px;
   }
 
   .wave-docs-prose .shiki code {
@@ -1938,6 +1966,18 @@
      * its own arithmetic to itself.
      */
     --wave-docs-panel-inset: 1rem;
+    /*
+     * The header row's floor, exported for the same reason the inset is: the
+     * code frame lays its header out on a grid rather than in
+     * `.wave-docs-panel__header`, because a `<figcaption>` cannot live inside a
+     * wrapper, and two components drawing the same row to two different heights
+     * is how a primitive stops being one.
+     */
+    --wave-docs-panel-header-row: 2.25rem;
+    /*
+     * The surface's ground is a property a wearer sets on the frame — see the
+     * `var()` fallback on `__body`, which is where its default lives.
+     */
   }
 
   /*
@@ -1958,6 +1998,7 @@
      * Derived rather than written out, so moving `--wave-docs-panel-inset`
      * moves both.
      */
+    min-height: var(--wave-docs-panel-header-row);
     padding-block: 0.5rem;
     padding-inline: calc(var(--wave-docs-panel-inset) + 1px);
   }
@@ -1986,7 +2027,25 @@
     /* See the radius note above: outer minus this box's inset. */
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius-panel);
-    background: var(--wave-docs-bg);
+    /*
+     * ⚠️ THE DEFAULT LIVES IN THE FALLBACK, NOT IN A DECLARATION ON
+     * `.wave-docs-panel` — AND THAT IS THE WHOLE FIX, TWICE OVER.
+     *
+     * First: `.wave-docs-code__body` and `.wave-docs-panel__body` are both one
+     * class, so source order decides and the panel is declared later. A code
+     * frame asking for the darker code ground got the panel's white, on the
+     * page, with both rules present and correct.
+     *
+     * Then, with the ground moved to a property: a frame wears
+     * `.wave-docs-panel` *and* `.wave-docs-code`, so both rules set that
+     * property on the same element at the same specificity — and source order
+     * handed it back to the panel. Measured twice as `oklch(1 0 0)` where
+     * `oklch(0.975 0.003 262)` was written.
+     *
+     * In the fallback there is no declaration to lose to: a wearer that sets
+     * the property wins by having set it, and one that does not gets this.
+     */
+    background: var(--wave-docs-panel-surface, var(--wave-docs-bg));
     /* The frame already clips to its own corners; this keeps a child's square
      * corner — a table, a `<pre>` — from poking through the inner one. */
     overflow: hidden;
