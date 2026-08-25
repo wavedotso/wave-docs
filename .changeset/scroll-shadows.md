@@ -1,0 +1,55 @@
+---
+'@waveso/docs': minor
+---
+
+**The search results and the sidebar say "there is more this way" the same way
+the table does, and hide their scrollbars where they can.**
+
+Four gradients on the search list, exactly as `.wave-docs-table-scroll` does it:
+the two `local` covers are painted in the surface colour and travel *with* the
+rows, so each sits over its shadow only while that edge is at rest, and the two
+`scroll` shadows are pinned to the box. A grey edge appears on precisely the side
+that has rows off-screen, with no listener, no state and no hydration.
+
+⚠️ IT REPLACED A MASK, WHICH WAS THE WRONG TOOL TWICE OVER. A mask fades content
+to *transparent*, so what showed through was the dialog's own white — a hole
+rather than a shadow. And it cannot be conditional: CSS has no way to ask whether
+there is anything above to scroll to, so the first and last rows were softened
+even at rest.
+
+## The sidebar needs its shadow above the content, not behind it
+
+⚠️ `.wave-docs-sidebar` PAINTS ITS OWN GROUND, AND MUST. It is in the theme's
+opt-in rule — the one that installs a ground wherever it installs a foreground
+ramp — so a consumer mounting the tree alone gets one, and `styles.browser.test`
+requires the shell to be a single surface. An element's background is painted
+*below* its children, so the four-gradient trick was covered by a child 480px
+tall: measured 255/255 at the top edge with the nav scrolled — declared,
+computed, and invisible.
+
+So the nav's shadows are sticky overlays instead, the way the table's are and for
+the reason its comment gives, with opacity driven by `scroll(nearest block)`. An
+inactive timeline is what makes it conditional: a nav that fits shows nothing,
+because a scroll timeline with no scrollable overflow does not apply and the base
+`opacity: 0` wins.
+
+⚠️ AND THE STICKY INSETS ARE NEGATIVE, BY THE NAV'S OWN BLOCK PADDING. A sticky
+child of a scroll container is constrained to the *content* box rather than the
+scrollport, so `top: 0` pinned the band 32px down the panel, floating over the
+search trigger instead of sitting on the panel's edge. Found by painting it red
+and reading the pixels back. The padding is a custom property now, because the
+overlays have to cancel exactly it and two literals that must agree are two
+literals that drift.
+
+⚠️ THE SCROLLBAR IS HIDDEN ONLY WHERE THE SHADOW EXISTS. Both live in the same
+`@supports (animation-timeline: scroll())`, so Firefox — where scroll-driven
+animations have not shipped — keeps the thin bar rather than losing the bar and
+the shadow together. A scrollbar is the one cue that a column has more below it,
+and taking it away before something replaces it trades a slab for nothing.
+
+⚠️ AND A SECOND TEST LEARNED THAT `getAnimations()` IS NOT "TRANSITIONS". A
+scroll-driven animation's `finished` promise resolves when the *scroll position*
+reaches the end, which is to say never on a panel sitting at the top — so
+awaiting the whole list hung `sidebar.browser.test.tsx` for its full 15s timeout
+the moment this shadow existed. `nav.browser.test.tsx` had already been bitten by
+the table's; this is the second place the assumption lived.

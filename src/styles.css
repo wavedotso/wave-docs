@@ -3272,7 +3272,15 @@
     flex: none;
     box-sizing: border-box;
     width: var(--wave-docs-sidebar-width);
-    padding: 2rem 1rem;
+    /*
+     * A property rather than a literal, because the scroll-shadow overlays
+     * below have to cancel exactly this to reach the panel's edges: a sticky
+     * child of a scroll container is constrained to the content box, so each
+     * one insets itself by `-1 *` this. Two literals that must agree are two
+     * literals that drift.
+     */
+    --wave-docs-sidebar-nav-pad-block: 2rem;
+    padding: var(--wave-docs-sidebar-nav-pad-block) 1rem;
     border: 0;
     /*
      * Cover mode only, and it is a different thing from the divider in push
@@ -3308,9 +3316,117 @@
      *
      * `thin`, so the scrollbar that does appear is narrow, and coloured rather
      * than left as the UA's default slab against the panel.
+     *
+     * ⚠️ AND IT IS HIDDEN ONLY WHERE SOMETHING REPLACES IT — see the `@supports`
+     * block below. A bar is the one cue that a column has more below it, so
+     * taking it away before the shadow exists trades a slab for nothing.
      */
     scrollbar-width: thin;
     scrollbar-color: var(--wave-docs-border-strong) transparent;
+  }
+
+  /*
+   * ⚠️ THE SHADOW IS AN OVERLAY AND NEVER A BACKGROUND, BECAUSE THE TREE PAINTS
+   * ITS OWN GROUND.
+   *
+   * `.wave-docs-sidebar` is in the theme's opt-in rule — the one that installs a
+   * ground wherever it installs a foreground ramp — so it carries an opaque
+   * `--wave-docs-bg`. That is correct: a consumer mounting the tree alone needs
+   * it, and `styles.browser.test.ts` requires the shell to be one surface. But
+   * an element's background is painted *below* its children, so the
+   * four-gradient trick `.wave-docs-table-scroll` falls back on was covered by a
+   * child 480px tall — measured 255/255 at the top edge with the nav scrolled:
+   * declared, computed, and invisible.
+   *
+   * These sit above it instead, the same way the table's do and for the reason
+   * its comment gives.
+   *
+   * ⚠️ THE NEGATIVE MARGINS KEEP THEM OUT OF THE FLOW. A sticky child is still
+   * laid out, so without the block ones each of these would push the tree
+   * 0.75rem down the column; the inline pair spans the shadow across the nav's
+   * `1rem` of side padding, which a block child would otherwise stop short of.
+   *
+   * `opacity: 0` is the base state and it is load-bearing: see below.
+   */
+  .wave-docs-layout__sidebar-nav::before,
+  .wave-docs-layout__sidebar-nav::after {
+    content: '';
+    display: block;
+    position: sticky;
+    z-index: 1;
+    height: 0.75rem;
+    margin-inline: -1rem;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .wave-docs-layout__sidebar-nav::before {
+    /*
+     * ⚠️ NEGATIVE, AND IT IS THE NAV'S OWN BLOCK PADDING. A sticky child of a
+     * scroll container is constrained to the *content* box, not the scrollport
+     * — so `top: 0` pinned this 32px down the panel, floating over the search
+     * trigger instead of sitting on the panel's edge. Found by painting it red
+     * and reading the pixels back: the band was at y=32 on the dot.
+     */
+    top: calc(-1 * var(--wave-docs-sidebar-nav-pad-block));
+    margin-block-end: -0.75rem;
+    background: linear-gradient(
+      to bottom,
+      var(--wave-docs-scroll-shadow),
+      transparent
+    );
+  }
+
+  .wave-docs-layout__sidebar-nav::after {
+    /* The same correction at the other end — see `::before`. */
+    bottom: calc(-1 * var(--wave-docs-sidebar-nav-pad-block));
+    margin-block-start: -0.75rem;
+    background: linear-gradient(
+      to top,
+      var(--wave-docs-scroll-shadow),
+      transparent
+    );
+  }
+
+  /*
+   * ⚠️ AN INACTIVE TIMELINE IS WHAT MAKES THIS CORRECT. A scroll timeline is
+   * inactive when its container has no scrollable overflow in the axis, and an
+   * animation with an inactive timeline does not apply — so `opacity: 0` wins
+   * and a nav that fits shows nothing at all. No query asks whether it scrolls;
+   * the answer falls out of whether there is anything to scroll.
+   *
+   * ⚠️ `nearest`, NOT `self`: the animation is on a pseudo-element *inside* the
+   * scroll container rather than on the container itself, and `self` would name
+   * the pseudo — inactive at every height, which looks exactly like the feature
+   * being unsupported.
+   *
+   * The scrollbar is hidden in here and nowhere else. Where this does not run —
+   * Firefox, until scroll-driven animations ship — the thin bar above stays and
+   * a reader keeps the cue rather than losing both.
+   */
+  @supports (animation-timeline: scroll()) {
+    .wave-docs-layout__sidebar-nav {
+      scrollbar-width: none;
+    }
+
+    .wave-docs-layout__sidebar-nav::-webkit-scrollbar {
+      display: none;
+    }
+
+    .wave-docs-layout__sidebar-nav::before,
+    .wave-docs-layout__sidebar-nav::after {
+      animation-timeline: scroll(nearest block);
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+    }
+
+    .wave-docs-layout__sidebar-nav::before {
+      animation-name: wave-docs-scroll-shadow-start;
+    }
+
+    .wave-docs-layout__sidebar-nav::after {
+      animation-name: wave-docs-scroll-shadow-end;
+    }
   }
 
   /* First child of the navigation, above the tree. */
@@ -4133,32 +4249,38 @@
     flex: 1 1 auto;
     overflow-y: auto;
     /*
-     * ⚠️ A MASK ON THE SCROLLPORT, WHICH IS WHY IT DOES NOT SCROLL WITH THE
-     * ROWS. A mask paints against the element's own box, so these two stops
-     * stay at the top and bottom edges of the *port* while the content travels
-     * under them — which is the whole point: the row being cut off is the one
-     * that fades.
+     * ⚠️ THE TABLE'S SCROLL SHADOW, TURNED ON ITS SIDE — AND IT REPLACED A
+     * MASK, WHICH WAS THE WRONG TOOL TWICE OVER.
      *
-     * ⚠️ LINEAR, NOT RADIAL. A radial gradient fades outward from a centre, so
-     * the corners of the list would go before its edges did; the cut being
-     * softened here is a horizontal line at the top and another at the bottom,
-     * and that is what a linear stop pair draws.
+     * A mask fades content to *transparent*, so what showed through was the
+     * dialog's own white: a hole rather than a shadow. And it cannot be
+     * conditional — CSS has no way to ask whether there is anything above to
+     * scroll to — so the first and last rows were softened even at rest.
      *
-     * ⚠️ AND IT IS UNCONDITIONAL, WHICH IS THE ONE THING TO KNOW ABOUT IT. CSS
-     * cannot ask "is there anything above this to scroll to" — the table's
-     * shadow answers that with a scroll-driven animation, whose timeline goes
-     * inactive when there is no overflow. A mask has no equivalent, so the
-     * first and last rows carry a little of this even at rest. At `1.25rem`
-     * against a row nearer three times that, what it costs is the top pixel or
-     * two of a heading and what it buys is that no row is ever guillotined.
+     * Four gradients, exactly as `.wave-docs-table-scroll` does it. The two
+     * `local` covers are painted in the surface colour and travel *with* the
+     * rows, so each sits over its shadow only while that edge is at rest; the
+     * two `scroll` shadows are pinned to the box. A grey edge appears on
+     * precisely the side that has rows off-screen, with no listener, no state
+     * and no hydration.
      */
-    mask-image: linear-gradient(
-      to bottom,
-      transparent 0,
-      #000 1.25rem,
-      #000 calc(100% - 1.25rem),
-      transparent 100%
-    );
+    background:
+      linear-gradient(to bottom, var(--wave-docs-bg) 30%, transparent) top /
+        100% 2rem no-repeat local,
+      linear-gradient(to top, var(--wave-docs-bg) 30%, transparent) bottom /
+        100% 2rem no-repeat local,
+      radial-gradient(
+          farthest-side at 50% 0,
+          var(--wave-docs-scroll-shadow),
+          transparent
+        )
+        top / 100% 0.75rem no-repeat scroll,
+      radial-gradient(
+          farthest-side at 50% 100%,
+          var(--wave-docs-scroll-shadow),
+          transparent
+        )
+        bottom / 100% 0.75rem no-repeat scroll;
     /*
      * ⚠️ NO PADDING ON TOP, BECAUSE THE FIELD'S MARGIN IS ALREADY THAT GAP.
      * Both paid it, so the space between the input and the first result was
@@ -4225,18 +4347,20 @@
    * field above wears the trigger's border because the field is a control; a
    * row is a list item, and its state is a colour.
    *
-   * ⚠️ THE MARKER'S INK IS NOT DECORATION — IT IS WHAT KEEPS THE STATE
-   * PERCEIVABLE. `bg-subtle` on `bg` is about 1.02:1, so the tint is a hint and
-   * not an indicator; the marker going `fg-subtle` to `fg` is the part that
-   * carries it, which is text contrast rather than non-text and is the
-   * sidebar's own hover. What must not happen is the tint being left alone.
+   * ⚠️ THE INK IS NOT DECORATION — IT IS WHAT KEEPS THE STATE PERCEIVABLE. A
+   * tint alone is 1.12:1 light and 1.19:1 dark, under the 3:1 WCAG 1.4.11 asks
+   * of a state indicator. `accent` on `accent-subtle` is 4.60:1 / 6.30:1, which
+   * is text contrast rather than non-text and is the same pair the sidebar's
+   * current-page row has always shipped. What must not happen is the tint going
+   * back to carrying this alone.
    */
   .wave-docs-search-result-active {
-    background: var(--wave-docs-bg-subtle);
+    background: var(--wave-docs-accent-subtle);
   }
 
+  .wave-docs-search-result-active .wave-docs-search-result-heading,
   .wave-docs-search-result-active .wave-docs-search-result-icon {
-    color: var(--wave-docs-fg);
+    color: var(--wave-docs-accent);
   }
 
   /*

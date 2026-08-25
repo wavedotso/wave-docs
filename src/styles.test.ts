@@ -1007,37 +1007,36 @@ describe('focus indicators', () => {
   });
 
   /**
-   * ⚠️ THE ACTIVE RESULT IS MARKED BY MORE THAN ITS TINT, AND WHAT CARRIES THAT
-   * HAS BEEN FOUR THINGS.
+   * ⚠️ THE ACTIVE RESULT IS MARKED BY MORE THAN ITS TINT.
    *
    * Every result is `tabindex="-1"` — `:focus-visible` cannot fire on one — so
-   * the active class is the only indication of where the keyboard is. A 2px
-   * accent ring read as a component borrowed from somewhere else and came and
-   * went as a reader arrowed. The trigger's border pair meant bordering *every*
-   * row to make one edge legible, turning a list into a stack of cards. An
-   * accent tint was the same colour family as the field above it. It is the
-   * table header's grey now.
+   * the active class is the only indication of where the keyboard is. It has
+   * been a 2px accent ring, which came and went as a reader arrowed; the
+   * trigger's border pair, which meant bordering *every* row to make one edge
+   * legible and turned a list into a stack of cards; and a grey tint. It is the
+   * accent tint and ink, which is what it was before either detour.
    *
-   * ⚠️ AND `bg-subtle` ON `bg` IS ABOUT 1.02:1, SO THE TINT IS A HINT AND NOT
-   * AN INDICATOR. The marker going `fg-subtle` to `fg` is the part that carries
-   * the state — text contrast rather than non-text, and the sidebar's own
-   * hover. What this forbids is the tint being left to carry it alone.
+   * ⚠️ AND THE INK IS THE PART THAT KEEPS THE STATE PERCEIVABLE. A tint alone is
+   * 1.12:1, under the 3:1 WCAG 1.4.11 asks of a state indicator; `accent` on
+   * `accent-subtle` is 4.60:1 light and 6.30:1 dark, which is text contrast
+   * rather than non-text and is the pair the sidebar's current-page row ships.
+   * What this forbids is the tint being left to carry the state alone.
    */
   it('marks the active search result with more than a tint', () => {
     const active = readBlock(
       sheet,
       sheet.indexOf('.wave-docs-search-result-active {'),
     );
-    expect(active).toContain('background: var(--wave-docs-bg-subtle)');
+    expect(active).toContain('background: var(--wave-docs-accent-subtle)');
 
     const ink = RULES.filter(
       (rule) =>
         rule.prelude.includes('.wave-docs-search-result-active') &&
-        rule.prelude.includes('.wave-docs-search-result-icon'),
+        rule.prelude.includes('.wave-docs-search-result-heading'),
     );
-    expect(ink, 'the active marker takes no ink of its own').toHaveLength(1);
+    expect(ink, 'the active heading takes no accent ink').toHaveLength(1);
     expect(readBlock(sheet, ink[0]?.at ?? 0)).toContain(
-      'color: var(--wave-docs-fg)',
+      'color: var(--wave-docs-accent)',
     );
 
     /*

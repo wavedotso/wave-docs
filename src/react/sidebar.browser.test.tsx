@@ -197,9 +197,22 @@ describe('the sidebar while it is closed', () => {
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
     shell.setAttribute('data-state', 'open');
+    /*
+     * ⚠️ TRANSITIONS ONLY, AND `getAnimations()` IS NOT THAT.
+     *
+     * It returns every running animation, and the sidebar's scroll shadow is
+     * driven by `animation-timeline: scroll(nearest block)` — a scroll-driven
+     * animation whose `finished` promise resolves when the *scroll position*
+     * reaches the end, which is to say never on a nav sitting at the top.
+     * Awaiting the whole list hung this test for the full 15s timeout the
+     * moment that shadow existed. `nav.browser.test.tsx` learned the same thing
+     * when the table's shadow landed; this is the second place that assumption
+     * lived.
+     */
     await Promise.all(
       document
         .getAnimations()
+        .filter((animation) => animation instanceof CSSTransition)
         .map((animation) => animation.finished.catch(() => undefined)),
     );
 
