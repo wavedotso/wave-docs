@@ -722,11 +722,27 @@
     accent-color: var(--wave-docs-accent);
   }
 
+  /*
+   * ⚠️ A FULL BORDER, AND IT WAS A 3px RULE DOWN THE INLINE START.
+   *
+   * A quote is a block set apart from the prose, and every other block set
+   * apart from the prose here — a callout, a code frame, a table, an embed —
+   * is a box. A single edge made it the one exception, and next to a callout
+   * two paragraphs away it read as a different kind of thing rather than as a
+   * quieter one.
+   *
+   * The same box as `.wave-docs-callout`, minus the hue: same padding, same
+   * block radius, a plain border instead of a tinted one and no accent edge.
+   * That is the relationship — a callout is a quote with a colour, and now it
+   * looks like one.
+   */
   .wave-docs-prose blockquote {
-    padding-inline-start: 1rem;
-    border-inline-start: 3px solid var(--wave-docs-border-strong);
+    /* The callout's padding, so the two line their text up with each other. */
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius-lg);
     color: var(--wave-docs-fg-muted);
-    /* Not italic. The rule and the muted colour already say "quotation"; a
+    /* Not italic. The box and the muted colour already say "quotation"; a
      * long italic passage is measurably slower to read, and markdown authors
      * use blockquotes for asides and notes, not only for speech. */
     font-style: normal;
@@ -798,7 +814,7 @@
      * `.wave-docs-prose`, so they are ours to shape.
      */
     :is([class^='wave-docs-'], [class*=' wave-docs-']),
-    .wave-docs-prose :is(code, kbd, pre) {
+    .wave-docs-prose :is(blockquote, code, kbd, pre) {
       corner-shape: squircle;
     }
 

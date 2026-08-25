@@ -545,6 +545,7 @@ describe('the radius tiers', () => {
    * *control* does not, and that is the distinction to defend.
    */
   it.each([
+    '.wave-docs-prose blockquote',
     '.wave-docs-callout',
     '.wave-docs-image',
     '.wave-docs-youtube',
