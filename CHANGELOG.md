@@ -1,5 +1,385 @@
 # @waveso/docs
 
+## 0.11.0
+
+### Minor Changes
+
+- 5730af3: **The code frame wears the panel.** A fence is now an outer card holding a
+  header row — the filename or the language on the left, the copy button on the
+  right — and an inset surface with the code on it, dressed by the same
+  `.wave-docs-panel` rules as "where to go next".
+
+  ⚠️ THE `<figcaption>` STAYS A DIRECT CHILD OF THE `<figure>`, WHICH IS WHY THIS
+  HAS NO HEADER WRAPPER. A `figcaption` has to be the first or last child of its
+  figure; inside the `.wave-docs-panel__header` `<div>` that "where to go next"
+  uses it captions nothing, the markup is invalid, and a titled block loses the
+  accessible name it had. So the frame lays its header out on a grid and shares
+  the primitive's _insets_ rather than its header element. The button stays out of
+  the caption for the matching reason: a `<button>` inside a `<figcaption>`
+  contributes its accessible name to the figure's, so `swap.ts` would announce as
+  "swap.ts Copy code from swap.ts".
+
+  ⚠️ AND A TITLE IS WHAT DECIDES WHETHER THERE IS A FRAME AT ALL. With one, the
+  figure is a panel: a band carrying the filename and the copy button, and the
+  code set into a card below it. With none there is nothing to put in a band, so
+  the frame flattens away, the surface becomes the block, and the button sits on
+  the code — which is what Mintlify does, and what stops an unnamed fence from
+  carrying a reserved slot with nothing in it.
+
+  A language is not a title for this purpose. A fence declaring `ts` and no
+  filename is still an untitled fence, and a band holding a two-letter badge is
+  the same empty header with a word in it. `data-lang` stays on the figure for
+  anyone selecting on it.
+
+  One shape of markup, switched in the stylesheet rather than in the pipeline: two
+  markup paths mean two fixtures, and the one that is not on screen is the one
+  that rots.
+
+  **The copy button no longer hides until you hover.** It faded in on `:hover` or
+  `:focus-within` because it was positioned over the code and had nowhere of its
+  own to be. It has a slot in the header row now, and a reserved slot that stays
+  empty until you point at it reads as a rendering fault — so the reveal, the
+  `@media (hover: none)` exception that existed because a hover-only control does
+  not exist on a phone, and the reduced-motion guard on its transition all went
+  with it. It is still `visibility: hidden` until the runtime attaches, which is
+  the structural promise and is unchanged.
+
+  ## Three things the restructure moved, each of which was a defect
+
+  ⚠️ THE `<pre>` DRAWS NO FRAME OF ITS OWN ANY MORE. It carried the border, the
+  radius and the background; inside a `.wave-docs-panel__body` that carries all
+  three, that draws the frame twice one pixel apart. `pre:not(.shiki)` keeps its
+  own, because an excluded fence is never wrapped.
+
+  ⚠️ AND ITS INLINE PADDING IS `1rem` BECAUSE THAT IS `--wave-docs-panel-inset`,
+  not because it is a round number. The label sits at that inset plus the
+  surface's border; the code sits at the surface's border plus this. The
+  `1.125rem` it was put the first character 2px right of the filename above it —
+  visible, and attributable to nothing.
+
+  ⚠️ AND THE FOCUS RING ON THE `<pre>` IS INSET NOW. Shiki gives it
+  `tabindex="0"` so a keyboard reader can scroll a wide block, and the surface
+  around it is `overflow: hidden` so a square corner cannot poke through the
+  frame's rounded one — which clipped a `+2px` outline away to nothing.
+  `styles.test.ts` reads rules as text and would have gone on passing.
+
+  ## The panel grew two properties, both to settle a cascade rather than a taste
+
+  `--wave-docs-panel-surface` is the inset surface's ground, and its default lives
+  in a `var()` fallback rather than in a declaration. `.wave-docs-code__body` and
+  `.wave-docs-panel__body` are both one class, so source order decides and the
+  panel is declared later: a code frame asking for the darker code ground got the
+  panel's white. Moving the ground to a property did not fix it either — a frame
+  wears `.wave-docs-panel` _and_ `.wave-docs-code`, so both rules set that property
+  on the same element at the same specificity, and source order handed it back.
+  Measured twice as `oklch(1 0 0)` where `oklch(0.975 0.003 262)` was written. In
+  the fallback there is no declaration to lose to.
+
+  `--wave-docs-panel-header-row` floors the header. With a label the row is the
+  label's height and with none it is the button's, and a page mixing titled and
+  untitled fences showed two header heights.
+
+  The frame's markup now has one home — `codeFrameMarkup` — that the browser tier
+  mounts and the plugin tier asserts the pipeline agrees with. Written out
+  separately in both, a hand-written fixture goes on describing a frame the
+  pipeline stopped emitting while every assertion measuring it stays green.
+
+- 793d0f7: **"Where to go next": a question per row, and the page that answers it.** A page
+  opts in from its frontmatter:
+
+  ```yaml
+  explore:
+    - question: How a person is recognised across servers
+      href: ./identity.md
+    - question: What happens when the network fails
+      href: ./delivery.md
+  ```
+
+  A sidebar is a structure; this is a router. It says _why_ a reader would go
+  somewhere, which no tree of titles can — so the same component is a landing
+  page's onboarding and an ordinary page's footnote.
+
+  ⚠️ THE LINK TEXT COMES FROM THE NAVIGATION. An `href` pointing at a page in the
+  tree takes that page's own name, so renaming it updates every block that points
+  at it — the same tree the sidebar and the pager read. Name a `title` only where
+  the tree cannot answer: an external link, or a page kept out of the navigation.
+
+  ⚠️ AND AN HREF THAT RESOLVES TO NEITHER STOPS THE BUILD. Falling back to the
+  href renders a URL where a sentence should be — "Where this runs and what that
+  buys → /docs/infrastructure" — on a page that builds cleanly, and nothing else
+  in the pipeline would notice. The frontmatter is authored and the author is
+  right there, so the error names the page and both fixes.
+
+  ⚠️ A LIST, NOT A TABLE, WHICH IS WHAT THE MARKDOWN IT REPLACES HAD TO BE. A
+  screen reader announces "table, 2 columns, 7 rows" for what is a list of links
+  with descriptions, and asks the reader to navigate it by cell. Two columns of
+  sentence-length questions are also cramped in a narrow box, where the rows stack
+  instead — a `@container` query, because a host can hand this a 500px panel on a
+  1920px monitor.
+
+  One frame with hairlines between the rows rather than a stack of cards: they are
+  the same question asked several ways, and separate boxes say several unrelated
+  things. The rule is a _top_ border on every row but the first — `:last-child`
+  leaves a doubled line the moment anything is appended to the list.
+
+  ## And the frame is a primitive, not this component's furniture
+
+  `.wave-docs-panel` is a framed block with a header and an inset surface — the
+  outer card names the thing and carries its controls, the inner one holds the
+  content. "Where to go next" is the first thing to wear it; a code frame is the
+  obvious next, and two copies of the same three rules is how they drift apart.
+
+  ⚠️ THE TWO RADII ARE NOT INDEPENDENT NUMBERS. A rounded box inside a rounded box
+  only looks right when the inner radius is the outer one minus the gap between
+  them; anything else runs the corners at different curvatures and the inner box
+  reads as _pasted onto_ the frame rather than set into it. The new
+  `--wave-docs-radius-lg` is chosen so the arithmetic lands on an existing token:
+  `1rem` outer minus `0.5rem` of padding is `--wave-docs-radius`.
+
+  The header sits in the frame's padding and draws no rule of its own — the inset
+  surface below already draws the line, and a border there is a second one a pixel
+  away from the first.
+
+  ⚠️ AND THE PANEL EXPORTS `--wave-docs-panel-inset`, WHICH IS NOT THE SAME NUMBER
+  AS ITS PADDING. The title sits at the frame's padding; anything inside the body
+  sits at that padding _plus the body's own border_, so the two columns miss each
+  other by a pixel per border. Measured before it existed: the rows started 9px
+  right of the heading above them — a number that appears in no rule and reads as
+  a design decision. Exported rather than repeated, because the next component to
+  wear the panel has to make the same subtraction and will not think to.
+
+  It renders above the pager. The two answer different questions and both belong
+  there: this is the semantic answer, the pager the linear one.
+
+  A real `<h2>` names it, not an `aria-label` — a reader moving by heading would
+  pass straight over a region named only by an attribute.
+
+  ## The key is `explore`, and neither `next` nor `steps` would do
+
+  `next` is unusable in this package. `src/next.ts` is the Next.js adapter, so
+  two files one directory apart would carry the same name for entirely different
+  things, and `doc.frontmatter.next` would read like a routing hook rather than
+  a block of prose.
+
+  `steps` is wrong for a different reason: these rows are a _branch_, not a
+  sequence. A reader picks one and ignores the rest, and none of them is first.
+  A numbered "1 -> 2 -> 3" component is a real and separate thing worth building
+  later, and `steps` is the name it will need.
+
+  The rendered heading is still "Where to go next" — `next` in prose is fine,
+  it is only the identifier that had to move.
+
+  No client JavaScript. New: `DocsExplore` at `@waveso/docs/react/explore`,
+  `explore` in frontmatter, and `explore` in `labels`.
+
+- c871d2f: **One radius scale, taken from `@waveso/ui`, retunable from a single line.**
+
+  Three tiers, all `calc()` off one root, so which corner a box gets is decided by
+  what _kind_ of box it is rather than by how big it happens to be:
+
+  | Token                   | What takes it                                               |
+  | ----------------------- | ----------------------------------------------------------- |
+  | `--wave-docs-radius-sm` | inline chips, small controls, focus rings on those          |
+  | `--wave-docs-radius`    | controls, overlays, and the panel's inset surface           |
+  | `--wave-docs-radius-lg` | every block in the reading flow, and the panel's outer edge |
+
+  ⚠️ THE BLOCK TIER WAS SPLIT. Callouts, images and video embeds sat at the base
+  radius while a code frame and a table sat at 19px, so two blocks a paragraph
+  apart disagreed by eleven pixels — and a table read as aggressively round next
+  to the callout above it. 19 was measured off a reference site, which is a fine
+  way to pick a number and a bad way to pick a _system_.
+
+  ⚠️ AND THE NUMBERS ARE `@waveso/ui`'s, NOT NEW ONES. A page running both this
+  package and the component library should not show two radius scales a few pixels
+  apart, and taking theirs is how that is guaranteed rather than kept in step by
+  hand. `--wave-docs-radius-base` is the override point: a host writes
+  `--wave-docs-radius-base: var(--radius)` and every corner here follows their app,
+  including any theme that moves it. Overriding three tokens separately would be
+  three chances to break the arithmetic below.
+
+  ⚠️ `--wave-docs-radius-step` IS LOAD-BEARING. The panel's inset surface takes the
+  base radius and its frame takes `-lg`, which is the base plus one step — so the
+  two corners are concentric only while the frame's _padding_ is that same step.
+  It is paid out of the token rather than written as `4px`, so moving the root
+  keeps both true. `--wave-docs-radius-panel` is gone with it: a token whose only
+  job is to be another token minus a constant is a number that can drift from its
+  own definition.
+
+  ## Squircles, where the browser has them
+
+  `corner-shape` renders every `border-radius` as a continuous superellipse rather
+  than a circular arc. `@waveso/ui` ships it and this now matches, including the
+  root bump both make under the same `@supports` — a squircle reads tighter at the
+  same radius, so the scale moves up to restore the roundness the numbers were
+  chosen for. Only the root moves; every tier and the panel's padding follow.
+
+  ⚠️ SCOPED TO ELEMENTS THIS PACKAGE OWNS, AND NOT `*`. `@waveso/ui` can say `*`
+  because it is the application's own stylesheet. This one is mounted inside
+  somebody else's page, and a bare `*` would reshape every corner the host drew —
+  the same trespass as claiming `html` or `body`, which this file already refuses.
+  Pills and dots opt back out, because a squircled pill is a lozenge.
+
+  ⚠️ AND THE SOURCE TEST FOR THE CONCENTRIC ARITHMETIC WENT VACUOUS ON THE WAY.
+  It regexed three `rem` literals out of the token block; with the tiers as
+  `calc()` the regex matched nothing, both sides defaulted to zero, and `0 - 0`
+  passed while asserting nothing. It is measured in computed pixels now, which is
+  also the only tier that can see the squircle bump. Two browser assertions that
+  built an expected radius out of `getPropertyValue` were the same mistake in a
+  different shape — a custom property is not computed to pixels, so it hands back
+  the `calc()` as written. They compare two computed corners to each other now,
+  which is the uniformity claim anyway.
+
+### Patch Changes
+
+- 04b7de7: **A blockquote is a box, not a rule down one edge.**
+
+  Every other block set apart from the prose here — a callout, a code frame, a
+  table, an embed — is a bordered box. A single 3px edge made the quote the one
+  exception, so next to a callout two paragraphs away it read as a _different kind
+  of thing_ rather than as a quieter one.
+
+  It is the callout's box now, minus the hue: the same padding so their text lines
+  up, the same block radius, a plain border instead of a tinted one, and no accent
+  edge. That is the relationship — **a callout is a quote with a colour** — and it
+  finally looks like it.
+
+  Still not italic. The box and the muted colour already say "quotation", a long
+  italic passage is measurably slower to read, and markdown authors use
+  blockquotes for asides and notes rather than only for speech.
+
+  ⚠️ AND IT HAD TO JOIN THE SQUIRCLE LIST BY NAME. Corner shaping is scoped to
+  elements this package owns, matched by our own class prefix — and a `blockquote`
+  is the markdown author's tag, with no class of ours on it. It would have been
+  the one block on the page still drawing a circular arc.
+
+- 975acba: **A callout draws one uniform border, not a 3px rule down its inline start.**
+
+  The stripe made a callout the exception among blocks set apart from the prose —
+  a code frame, a table, an embed and now a blockquote are all boxes with one
+  border all the way round — so beside any of them it read as a different kind of
+  thing rather than as a coloured one. A thick rule on one side also fights the
+  corner it runs into once the box is a squircle.
+
+  ⚠️ THE TYPE IS STILL NOT CONVEYED BY COLOUR ALONE. The stripe was never what
+  carried it: the icon and the label — "Note", "Warning" — are the non-colour
+  signals, and they are unchanged. The tinted border and ground stay as
+  reinforcement rather than as the whole message.
+
+  The table-of-contents rail keeps its 2px inline-start border. That is a
+  continuous line an active marker slides along, which is a navigation affordance
+  rather than the edge of a box, and a source guard names the two blocks it does
+  apply to.
+
+- cd21631: **The copy button draws Lucide icons, like everything else here.**
+
+  It rendered `⧉`, and swapped in `✓` and `×` through CSS `content` — three
+  characters drawn by whatever font resolved, at whatever weight and baseline
+  that font has, beside a sidebar, a pager, a callout and a search dialog that
+  are all Lucide paths at `stroke-width: 2`. It read as a different icon set
+  because it was one. Now `copy`, `check` and `x` on the same 24×24 grid.
+
+  ⚠️ THE SWAP IS `display` AND NOT `visibility`, AND THAT IS NOT A PREFERENCE.
+  All three icons ship in the markup and the stylesheet picks one — there is no
+  component owning this button, so there is no state to re-render. But the button
+  is `visibility: hidden` until the runtime attaches, which is what keeps a reader
+  with no JavaScript from meeting a control that does nothing and keeps it out of
+  the tab order — and `visibility` inherits. An icon rule setting it back to
+  `visible` would draw a glyph inside a button that is meant to be invisible.
+  `display` does not inherit, so the button's own rule still governs all three.
+
+  Three icons per fence is fifty on a page with fifty of them, and the repeat is
+  why that is affordable: byte-identical every time, which is the case gzip
+  handles best. The quick start's gzipped payload did not move, and the
+  hast-over-the-wire ratio for code and tables went from 1.11× to 1.09×.
+
+  ## And it stops drawing a box around itself
+
+  No border and no ground, in any state. A bordered, filled 2rem box sitting on
+  the frame's own band is a third framed rectangle inside a frame that already has
+  two, for a control secondary to everything around it. The glyph is the whole
+  control, and hover moves its ink to the accent rather than putting a box behind
+  it — the same signal every other interactive surface here gives. A ground also
+  had nowhere to come from: the subtle ramp _is_ the frame's colour, so the hover
+  state it used to have was the colour the button was already sitting on.
+
+  ⚠️ AND IT HAD NO FOCUS INDICATOR AT ALL, WHICH THE BORDER WAS COVERING FOR. A
+  1px box is not a focus indicator — it is there whether the control is focused or
+  not — so a keyboard reader tabbing onto this button got a `color` change and
+  nothing else, and it never appeared in the package's own inventory of focusable
+  surfaces. Taking the border away made that visible; it did not create it. There
+  is a real `:focus-visible` outline now, and a test that keeps it.
+
+  ⚠️ AND ONE TEST WAS PASSING BY ACCIDENT. `render.test.ts` asserted that a
+  GitHub alert produces no octicons by checking the _whole document_ for `<svg>`,
+  which was only ever true because nothing else in the pipeline emitted one. It
+  now checks the callout's own subtree, which is what it meant.
+
+- d7333cb: **The site's pages stop hand-writing their own "Next" link.** Nineteen of them
+  ended with `Next: [Page](./page.md).`, which the pager has rendered from the
+  navigation tree since it landed — the same link, twice, a few hundred pixels
+  apart, and the hand-written one silently wrong the moment a page moved in the
+  tree.
+
+  Documentation-only: no package change.
+
+- 6f0afb7: **A panel title is the size of a column header.**
+
+  "Where to go next" and `Enforced by` are the same kind of thing — the label a
+  reader's eye lands on before the content under it — and a page shows both. At
+  `0.875rem` against the table's `0.9375rem` they read as two levels rather than
+  as one.
+
+  The weight does not follow: a panel title names the block, a column header names
+  a column inside one, so the title stays a step heavier. A source guard pins the
+  pair, because two literals that have to agree are two literals that drift.
+
+- 8c59155: The navigation stops being lopsided.
+
+  Its rows sat 16px from the inline start and 31px from the end. The 15px was
+  `scrollbar-gutter: stable`, which reserves the scrollbar's width whether or not
+  it is showing — and that reservation sits _inside_ the padding.
+
+  The jump it prevents is one 15px shift, the first time a nav grows past a
+  screen. What it cost was permanent and on every page.
+
+  ⚠️ AND IT IS A NO-OP ON macOS, WHICH IS WHY IT SURVIVED BEING LOOKED AT.
+  `scrollbar-gutter` does nothing where overlay scrollbars are the default, so the
+  asymmetry was invisible to everyone who built this and plain on every Windows
+  and Linux machine that opened it.
+
+  `scrollbar-width: thin` in its place, with `scrollbar-color`, so the scrollbar
+  that does appear is narrow and coloured rather than a UA slab against the
+  panel's edge. A browser test measures both insets and fails at 15px.
+
+- e94bb67: **A table keeps one frame, at the panel's radius.**
+
+  It wore `.wave-docs-panel` for a while — outer frame, header band, inset card —
+  and that was wrong for a reason worth writing down rather than just undoing.
+
+  ⚠️ THE PANEL SEPARATES _CHROME_ FROM _CONTENT_, AND A TABLE'S HEADER ROW IS
+  CONTENT. "Where to go next" and a code frame both have chrome to put in the
+  band: a title, a language, a copy button. A table's `<thead>` is data. Setting
+  the body into a card away from its own header cost three vertical rules down
+  each side, stopped the row dividers short of the box and narrowed the reading
+  width — on the densest element on a page, for nothing gained. Full-width
+  dividers are what let an eye track a row across.
+
+  What is kept is the outer radius: `--wave-docs-radius-lg` rather than
+  `--wave-docs-radius`, so a table and a code block read as two of one family
+  without the table pretending to chrome it has not got.
+
+  ⚠️ AND AN EMPTY HEADER ROW NOW DRAWS NO BAND, WHICH GFM PRODUCES ROUTINELY. A
+  GFM table always has a `<thead>` — the delimiter row is what makes it a table —
+  so an author who wants a plain two-column list of facts writes `| | |` and gets
+  a header of empty `<th>`s, which rendered as a tinted strip with nothing in it.
+  `:empty` and not a text check: GFM emits `<th></th>` with no whitespace inside.
+  A header with even one named column keeps its band.
+
+  **And a fence with neither a title nor a language gets no band either.** The
+  header row is floored so titled and untitled fences match, which is right when
+  there is a label and wrong when there is not: a bare fence had only the copy
+  button, adrift in a strip of empty ground. The row is the button now.
+
 ## 0.10.0
 
 ### Minor Changes
