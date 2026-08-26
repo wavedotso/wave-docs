@@ -4500,23 +4500,24 @@
   .wave-docs-search-result-sep {
     flex: none;
     /*
-     * ⚠️ `1rem`, WHICH IS THE SIZE EVERY OTHER ICON IN THIS PACKAGE IS DRAWN
-     * AT — the sidebar's markers, the pager's chevron, the copy button's
-     * glyphs, the search magnifier. A separator sized off its own line would be
-     * a second icon scale for one glyph.
-     *
-     * ⚠️ AND THE INK IS HALF THE BOX, WHICH IS THE ICON'S GEOMETRY RATHER THAN
-     * A NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
-     * twelve units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so 16px of box is
-     * 8px of chevron, against 8.51 for a `b` on this line. Sized to the line
+     * ⚠️ THE INK IS HALF THE BOX, WHICH IS THE ICON'S GEOMETRY RATHER THAN A
+     * NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
+     * twelve units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so 15px of box is
+     * 7.5px of chevron, against 8.51 for a `b` on this line. Sized to the line
      * instead, at `1em`, it measured 5.5px: shorter than the words it
      * separates, which was the whole complaint.
+     *
+     * ⚠️ AND `0.9375rem` IS A SIZE OF ITS OWN — every other icon here is drawn
+     * at `1rem`: the sidebar's markers, the pager's chevron, the copy button's
+     * glyphs, the search magnifier. A separator is the one that sits *between*
+     * words rather than beside them, and a notch under the icon scale is what
+     * keeps it from out-weighing the trail it punctuates.
      *
      * `rem` and not `px`, so a reader who raises their base font size gets a
      * larger separator with everything else.
      */
-    width: 1rem;
-    height: 1rem;
+    width: 0.9375rem;
+    height: 0.9375rem;
     /* The box is twice its ink and taller than this line's own box, so the
      * extra hangs above and below. Pulled back out of the block axis, or a row
      * of results grows for a glyph that did not. */
@@ -4528,13 +4529,15 @@
      * A replaced element sits on the baseline by default, which hangs a glyph
      * below the row of lowercase it separates — and this box is twice its own
      * ink, so half the correction is the icon's padding rather than the text's
-     * metrics. Measured against a `Range` over the words beside it, twice: at
-     * `-0.42em` the chevron's centre sat 2.66px low, and again at `-0.18em`
-     * after the box went from `1.55em` to `1rem`, which moved it 0.66px more.
-     * The lesson is that this number belongs to the box's size, not the text's,
-     * so it has to be re-measured whenever that changes.
+     * metrics. Measured against a `Range` over the words beside it every time
+     * the box has moved: `-0.42em` sat 2.66px low, `-0.18em` sat 0.66px low
+     * once the box went from `1.55em` to `1rem`, and `-0.12em` sat 0.5px low
+     * again at `0.9375rem`. Each drift is half the box's change, because the
+     * box is centred on its own ink — which is the rule to remember: this
+     * number belongs to the *box's* size, not the text's, and has to be
+     * re-measured whenever that changes.
      */
-    vertical-align: -0.12em;
+    vertical-align: -0.075em;
     color: var(--wave-docs-fg-subtle);
   }
 
