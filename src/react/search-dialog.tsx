@@ -1325,10 +1325,19 @@ const RESULT_ICON_PATHS = {
 /**
  * The separator between two route segments.
  *
- * The same path the sidebar's group toggle and the pager draw, at the size the
- * words beside it are: `1em` of a line already set at `0.6875rem`. Decorative,
- * and inside a span that is already `aria-hidden` — the route is announced as
- * words by `spokenName`, never read out as punctuation.
+ * The same path the sidebar's group toggle and the pager draw, at the same
+ * `1rem` they draw it. Decorative, and inside a span that is already
+ * `aria-hidden` — the route is announced as words by `spokenName`, never read
+ * out as punctuation.
+ *
+ * ⚠️ THE `viewBox` IS CROPPED HORIZONTALLY AND THAT IS NOT A DIFFERENT GLYPH.
+ * `d` is Lucide's chevron unchanged and `8 0 8 24` keeps its vertical grid, so
+ * the stroke ratio and the ink are exactly what the sidebar and the pager
+ * paint. What it drops is the padding either side that the path never reaches:
+ * on the full grid a 24-unit box held six units of chevron, so five-sixths of
+ * this element was air and the stylesheet had to subtract it back with
+ * negative margins. Cropped, the box is the ink and the spacing beside it is
+ * one positive value. See `.wave-docs-search-result-sep`.
  */
 function PathChevron(): ReactNode {
   return (
@@ -1336,7 +1345,7 @@ function PathChevron(): ReactNode {
       className="wave-docs-search-result-sep"
       aria-hidden="true"
       focusable="false"
-      viewBox="0 0 24 24"
+      viewBox="8 0 8 24"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"

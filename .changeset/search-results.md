@@ -37,17 +37,26 @@ An SVG has no font to be missing from — and it is the same Lucide chevron the
 sidebar and the pager draw, which is the real argument: everything else here is
 that one set.
 
-⚠️ AND IT IS `0.8125rem`, A NOTCH UNDER THE `1rem` EVERY OTHER ICON HERE IS DRAWN
-AT. A separator is the one glyph that sits *between* words rather than beside
-them, and the notch keeps it from out-weighing the trail it punctuates.
+⚠️ AND IT IS DRAWN AT `1rem`, THE SIZE EVERY OTHER GLYPH IN THIS DIALOG IS —
+AFTER A FIRST PASS AT `0.8125rem` THAT WAS DERIVED FROM THE WRONG REFERENCE.
+That size put the chevron's ink on the trail's x-height, 6.5px against an `o`'s
+6.32, which is the right rule for a glyph as wide as the letters and the wrong
+one for this. Lucide draws on a 24 grid and this chevron spans six units across
+and twelve down, so its ink is half as wide as it is tall; matched to x-height
+it carries visibly less weight than the words it punctuates and reads as a
+smudge rather than a mark. Matched to the *cap* height instead — 7.99px against
+a `b`'s 8.36 — it reads as the same colour as the line, and that lands on the
+icon scale, so the special size disappears with it.
 
-Lucide draws on a 24 grid and this chevron occupies the middle twelve units of
-it, so 13px of box is 6.5px of chevron. Sized to the line instead, at `1em`, it
-measured 5.5px — shorter than the words it separates, which was the whole
-complaint.
-
-The box is twice its own ink and taller than this line's box, so negative block
-margins keep a row from growing around it: measured, every row stays 56px.
+⚠️ AND THE `viewBox` IS CROPPED TO THE INK, WHICH IS WHAT RETIRED THREE NEGATIVE
+MARGINS. On the full grid the box was 13px wide around 3.25px of chevron: five
+sixths of the element was air, so every gap on the line had to be clawed back
+with a negative `margin-inline` and the surplus height with a negative
+`margin-block`. `8 0 8 24` keeps the vertical grid exactly as Lucide draws it —
+same path, same stroke ratio, ink still half the box's height — and drops the
+horizontal padding the glyph never used. The box is now its own ink, 5.33px
+wide, `margin-inline` is a real gap that means what it says, and the row
+measures the 55.5px it measured before.
 
 ⚠️ AND ITS ALIGNMENT IS `middle`, WHICH REPLACED FOUR HAND-MEASURED `em` VALUES.
 A replaced element sits on the baseline, which hangs a glyph below the row of
@@ -57,7 +66,8 @@ box resized, by exactly half that change — the box is centred on its own ink, 
 half of any resize lands below the baseline. That number belongs to the *box*,
 not the text, and re-deriving it on every resize is how it goes stale. `middle`
 puts the box's centre on the x-height's, which is the same place, and follows the
-box wherever it goes.
+box wherever it goes: measured 0.07px out after the resize above, with no second
+pass.
 
 ## The scrollbar is hidden, and it cannot be conditional
 

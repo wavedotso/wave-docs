@@ -4488,43 +4488,34 @@
    * The separator between two route segments — the package's own chevron
    * rather than a character, so there is no font for it to be missing from.
    *
-   * ⚠️ SIZED IN `em`, SO IT IS THE HEIGHT OF THE WORDS EITHER SIDE OF IT BY
-   * CONSTRUCTION. A character had to be *chosen* for its ink height and then
-   * measured to check — `›` came out at 4.93px against a `b`'s 8.51 — and the
-   * answer was only true for the face this machine happens to resolve. This
-   * one follows the line's own `font-size` wherever it lands.
+   * ⚠️ IT IS DRAWN AT `1rem`, THE SIZE EVERY OTHER GLYPH IN THIS DIALOG IS,
+   * AND THE EARLIER `0.8125rem` WAS DERIVED FROM THE WRONG REFERENCE. The size
+   * was picked to put the chevron's ink on the trail's x-height — 6.5px against
+   * an `o`'s 6.32 — which is the right rule for a glyph as wide as the letters
+   * and the wrong one for this. Lucide's chevron spans six grid units across
+   * and twelve down, so its ink is half as wide as it is tall; at x-height it
+   * carries visibly less weight than the words it punctuates and reads as a
+   * smudge rather than a mark. Matched to the *cap* height instead — 7.99px
+   * against a `b`'s 8.36 — it reads as the same colour as the line, and that
+   * lands on the icon scale, so the special size disappears with it.
    *
-   * The margins do the work `word-spacing` used to: there are no spaces left on
-   * the line to adjust.
+   * ⚠️ AND THE `viewBox` IS CROPPED TO THE INK, WHICH IS WHAT RETIRED THREE
+   * NEGATIVE MARGINS. On the full 24 grid the box was 13px wide around 3.25px
+   * of chevron: five-sixths of it was air, so every gap on this line had to be
+   * clawed back with a negative `margin-inline`, and the surplus height with a
+   * negative `margin-block`. `8 0 8 24` keeps the vertical grid exactly as
+   * Lucide draws it — same path, same stroke ratio, ink still half the box's
+   * height — and drops the horizontal padding the glyph never used. The box is
+   * now its own ink, 5.33px wide, so `margin-inline` is a real gap that means
+   * what it says and the row measures the same 55.5px it did before.
    */
   .wave-docs-search-result-sep {
-    flex: none;
+    /* Height only: the cropped `viewBox` gives the width, and pinning both
+     * would squash the glyph back out of proportion. */
+    height: 1rem;
+    width: auto;
     /*
-     * ⚠️ THE INK IS HALF THE BOX, WHICH IS THE ICON'S GEOMETRY RATHER THAN A
-     * NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
-     * twelve units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so 13px of box is
-     * 6.5px of chevron, against 8.51 for a `b` on this line. Sized to the line
-     * instead, at `1em`, it measured 5.5px: shorter than the words it
-     * separates, which was the whole complaint.
-     *
-     * ⚠️ AND `0.8125rem` IS A SIZE OF ITS OWN — every other icon here is drawn
-     * at `1rem`: the sidebar's markers, the pager's chevron, the copy button's
-     * glyphs, the search magnifier. A separator is the one that sits *between*
-     * words rather than beside them, and a notch under the icon scale is what
-     * keeps it from out-weighing the trail it punctuates.
-     *
-     * `rem` and not `px`, so a reader who raises their base font size gets a
-     * larger separator with everything else.
-     */
-    width: 0.8125rem;
-    height: 0.8125rem;
-    /* The box is twice its ink and taller than this line's own box, so the
-     * extra hangs above and below. Pulled back out of the block axis, or a row
-     * of results grows for a glyph that did not. */
-    margin-block: -0.2rem;
-    margin-inline: -0.05rem;
-    /*
-     * ⚠️ `middle`, AND IT REPLACED THREE HAND-MEASURED `em` VALUES IN A ROW.
+     * ⚠️ `middle`, AND IT REPLACED FOUR HAND-MEASURED `em` VALUES IN A ROW.
      *
      * A replaced element sits on the baseline by default, which hangs a glyph
      * below the row of lowercase it separates, so this needed correcting. The
@@ -4536,11 +4527,14 @@
      * That is a number that belongs to the *box*, not the text, and re-deriving
      * it on every resize is how it ends up stale. `middle` puts the box's
      * centre on the x-height's, which is the same place, and follows the box
-     * wherever it goes. Measured 0.48px from the inline box's own centre — half
-     * a pixel, and against a reference that includes descender space the
-     * lowercase here does not use.
+     * wherever it goes — measured 0.07px out after the resize this rule's own
+     * comment describes, with no second pass.
      */
     vertical-align: middle;
+    /* The air either side, once rather than as a correction. Four pixels, which
+     * is what the 13px box happened to leave after its negatives — the rhythm
+     * is unchanged, only the glyph inside it. */
+    margin-inline: 0.25rem;
     color: var(--wave-docs-fg-subtle);
   }
 
