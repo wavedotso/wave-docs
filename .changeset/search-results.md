@@ -37,12 +37,12 @@ An SVG has no font to be missing from — and it is the same Lucide chevron the
 sidebar and the pager draw, which is the real argument: everything else here is
 that one set.
 
-⚠️ AND IT IS `0.875rem`, A NOTCH UNDER THE `1rem` EVERY OTHER ICON HERE IS DRAWN
+⚠️ AND IT IS `0.8125rem`, A NOTCH UNDER THE `1rem` EVERY OTHER ICON HERE IS DRAWN
 AT. A separator is the one glyph that sits *between* words rather than beside
 them, and the notch keeps it from out-weighing the trail it punctuates.
 
 Lucide draws on a 24 grid and this chevron occupies the middle twelve units of
-it, so 14px of box is 7px of chevron. Sized to the line instead, at `1em`, it
+it, so 13px of box is 6.5px of chevron. Sized to the line instead, at `1em`, it
 measured 5.5px — shorter than the words it separates, which was the whole
 complaint.
 
