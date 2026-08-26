@@ -4484,6 +4484,50 @@
     min-width: 0;
   }
 
+  /*
+   * The separator between two route segments — the package's own chevron
+   * rather than a character, so there is no font for it to be missing from.
+   *
+   * ⚠️ SIZED IN `em`, SO IT IS THE HEIGHT OF THE WORDS EITHER SIDE OF IT BY
+   * CONSTRUCTION. A character had to be *chosen* for its ink height and then
+   * measured to check — `›` came out at 4.93px against a `b`'s 8.51 — and the
+   * answer was only true for the face this machine happens to resolve. This
+   * one follows the line's own `font-size` wherever it lands.
+   *
+   * The margins do the work `word-spacing` used to: there are no spaces left on
+   * the line to adjust.
+   */
+  .wave-docs-search-result-sep {
+    flex: none;
+    /*
+     * ⚠️ `1.55em`, NOT `1em`, AND THE FACTOR IS THE ICON'S OWN GEOMETRY.
+     *
+     * Lucide draws on a 24 grid and this chevron occupies the middle twelve
+     * units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so a box sized to the
+     * text renders a glyph half that: measured 5.5px of ink against a `b`'s
+     * 8.51, which is the same complaint the character had. `24 / 12` is the
+     * correction, so `letter-height x 2 / font-size` lands here.
+     */
+    width: 1.55em;
+    height: 1.55em;
+    /* The box is twice the ink, so half the extra hangs above and below the
+     * line. Pulled back out of the block axis, or a row of results grows by
+     * six pixels for a glyph that did not get any bigger. */
+    margin-block: -0.28em;
+    margin-inline: -0.1em;
+    /*
+     * ⚠️ ON THE TEXT'S CENTRE, AND THE NUMBER IS MEASURED RATHER THAN GUESSED.
+     *
+     * A replaced element sits on the baseline by default, which hangs a glyph
+     * below the row of lowercase it separates — and this box is twice its own
+     * ink, so half the correction is the icon's padding rather than the text's
+     * metrics. Measured against a `Range` over the words beside it: at `-0.42em`
+     * the chevron's centre sat 2.66px low, which is `0.24em` at this size.
+     */
+    vertical-align: -0.18em;
+    color: var(--wave-docs-fg-subtle);
+  }
+
   .wave-docs-search-result-heading {
     font-size: 0.9375rem;
     font-weight: 600;
@@ -4519,19 +4563,6 @@
     text-overflow: ellipsis;
     color: var(--wave-docs-fg-subtle);
     font-family: var(--wave-docs-font-mono);
-    /*
-     * ⚠️ `word-spacing`, BECAUSE A THINNER SPACE CHARACTER CANNOT WORK HERE.
-     *
-     * The separator is ` › `, and in a monospace face every glyph advances one
-     * cell — a U+2009 thin space would occupy exactly as much room as U+0020,
-     * or fall out of the mono face entirely and render at a different width
-     * from every other gap on the line. `word-spacing` adjusts the advance
-     * added at each separator instead, which is independent of the cell.
-     *
-     * Only the separators move: a route segment is a slug, so these are the
-     * only spaces on the line.
-     */
-    word-spacing: -0.15em;
     /* Smaller than the trail was: a monospace face reads larger at the same
      * size, and this line is a reference rather than something to read. */
     font-size: 0.6875rem;

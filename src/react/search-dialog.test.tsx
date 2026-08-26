@@ -655,13 +655,15 @@ describe('SearchDialog', () => {
       // restating line one — and on a real site it is the part that pushes the
       // route past the ellipsis.
       /*
-       * ⚠️ A BREADCRUMB, NOT A ROUTE — the segments joined by `›` rather than
-       * by slashes. Same fact, and it reads as the trail it is instead of as a
-       * URL a reader has to parse. Safe here only because the line is
-       * `aria-hidden`: more than one screen reader pronounces the character,
-       * which is why `spokenName` joins with commas instead.
+       * ⚠️ A BREADCRUMB, NOT A ROUTE, AND ITS SEPARATOR IS AN ELEMENT RATHER
+       * THAN A CHARACTER — so the *text* is the segments alone and the chevrons
+       * contribute nothing to `textContent`. That is the point: a character had
+       * to be chosen for its ink height and was only ever right for the font
+       * one machine resolved, while the package's own chevron has no font to be
+       * missing from. The count below is what pins that it is drawn at all.
        */
-      expect(location?.textContent).toBe('docs \u276f guide \u276f install');
+      expect(location?.textContent).toBe('docsguideinstall');
+      expect(location?.querySelectorAll('svg')).toHaveLength(2);
       // The link still carries it, which is what makes the hit a deep link.
       expect(option.querySelector('a')?.getAttribute('href')).toBe(
         '/docs/guide/install#peer-dependencies',
@@ -698,7 +700,7 @@ describe('SearchDialog', () => {
 
       expect(
         lead.querySelector('.wave-docs-search-result-location')?.textContent,
-      ).toBe('docs \u276f guide \u276f install');
+      ).toBe('docsguideinstall');
     });
 
     it('gives every row a second line, so the list is not ragged', async () => {
@@ -718,7 +720,7 @@ describe('SearchDialog', () => {
         // Present, and always the same kind of thing. The defect this replaced
         // was a slot that held a page name under one row and an address under
         // the next.
-        expect(location?.textContent).toMatch(/^docs \u276f /);
+        expect(location?.textContent).toMatch(/^docs/);
       }
     });
 

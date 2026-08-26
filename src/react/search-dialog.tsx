@@ -18,7 +18,14 @@ import type {
   MouseEvent as ReactMouseEvent,
   ReactNode,
 } from 'react';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 // `../search-options.js`, not `../search-index.js`: the index builder is
 // Node-only (`"browser": null` in the exports map), while the field
@@ -960,7 +967,17 @@ function SearchResultOption({
          * say is the heading, and the heading opens the accessible name.
          */}
         <span className="wave-docs-search-result-location" aria-hidden="true">
-          {toDisplayPath(hit.href)}
+          {toDisplaySegments(hit.href).map((segment, index, all) => (
+            /*
+             * Keyed by the path so far rather than by index: two segments of a
+             * route can repeat — `/docs/docs` is a real route — and the
+             * accumulated prefix is unique by construction.
+             */
+            <Fragment key={all.slice(0, index + 1).join('/')}>
+              {index === 0 ? null : <PathChevron />}
+              {segment}
+            </Fragment>
+          ))}
         </span>
       </span>
     </>
@@ -1242,7 +1259,7 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
  * Display only. `hit.href` keeps the anchor, so the link still deep-links to
  * the section — that is the whole point of section-scoped records.
  */
-function toDisplayPath(href: string): string {
+function toDisplaySegments(href: string): string[] {
   const hash = href.indexOf('#');
   const route = hash === -1 ? href : href.slice(0, hash);
   /*
@@ -1251,22 +1268,26 @@ function toDisplayPath(href: string): string {
    * make them read as a URL a reader has to parse, and `›` makes them read as
    * the thing they are.
    *
-   * ⚠️ U+276F, NOT THE U+203A THIS STARTED WITH, AND IT IS A SIZE DECISION.
-   * Measured in the shipped mono face at 11px: `›` inks 4.93px tall against
-   * 6.32 for an `s` and 8.51 for a `b`, so it sat visibly below the letters it
-   * separates. `❯` inks 8.03 — letter height — and still advances one mono cell
-   * (6.62px), so the line stays on the grid. U+27E9 `⟩` is taller still at 9.8
-   * but overshoots below the baseline, and U+3009 `〉` measures 11.24px wide,
-   * which is a CJK fallback breaking the monospace grid outright.
+   * ⚠️ THE SEPARATOR IS THE PACKAGE'S OWN CHEVRON, NOT A CHARACTER — AND TWO
+   * CHARACTERS WERE TRIED AND REJECTED BEFORE IT.
    *
-   * ⚠️ AND ANY OF THEM IS SAFE *HERE* ONLY BECAUSE THIS LINE IS `aria-hidden`.
-   * More than one screen reader pronounces these, which is exactly why
-   * `spokenName` below joins with commas instead — the two lines carry the same
-   * fact in the form each audience can use, and the character that suits one
-   * ruins the other.
+   * `›` (U+203A) inks 4.93px tall in the shipped mono face at 11px, against
+   * 6.32 for an `s` and 8.51 for a `b`, so it sat visibly below the words it
+   * separated. `❯` (U+276F) inks 8.03 and fixed the height — *on this machine*.
+   * That is the flaw: `ui-monospace` resolves to SF Mono here, Consolas on
+   * Windows, Liberation Mono on Linux, and a glyph missing from one of those
+   * falls back to another face at another width. U+3009 already demonstrated
+   * exactly that, measuring 11.24px against the 6.62 cell.
+   *
+   * An SVG has no font to be missing from, and it is the same Lucide chevron
+   * the sidebar and the pager draw — which is the real argument. Everything
+   * else in this package is that one set; a Unicode dingbat was a second.
    */
   const segments = route.split('/').filter(Boolean);
-  return segments.length === 0 ? '/' : segments.join(' \u276f ');
+  // The site root has no segments to separate, and `/` is what a reader
+  // recognises as "the top" — the one case that is a character rather than a
+  // trail.
+  return segments.length === 0 ? ['/'] : segments;
 }
 
 /**
@@ -1300,6 +1321,32 @@ const RESULT_ICON_PATHS = {
   ],
   section: ['M4 9h16', 'M4 15h16', 'm10 3-2 18', 'm16 3-2 18'],
 } as const;
+
+/**
+ * The separator between two route segments.
+ *
+ * The same path the sidebar's group toggle and the pager draw, at the size the
+ * words beside it are: `1em` of a line already set at `0.6875rem`. Decorative,
+ * and inside a span that is already `aria-hidden` — the route is announced as
+ * words by `spokenName`, never read out as punctuation.
+ */
+function PathChevron(): ReactNode {
+  return (
+    <svg
+      className="wave-docs-search-result-sep"
+      aria-hidden="true"
+      focusable="false"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
 
 function ResultIcon({ section }: { section: boolean }): ReactNode {
   return (

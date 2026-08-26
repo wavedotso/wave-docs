@@ -24,21 +24,27 @@ more than one screen reader pronounces the character, which is exactly why
 `spokenName` joins with commas instead. The two lines carry the same fact in the
 form each audience can use.
 
-⚠️ THE SEPARATOR IS U+276F `❯` RATHER THAN U+203A `›`, AND THAT IS A SIZE
-DECISION MEASURED IN THE SHIPPED FACE. At 11px mono, `›` inks 4.93px tall
-against 6.32 for an `s` and 8.51 for a `b` — visibly shorter than the words it
-separates. `❯` inks 8.03, which is letter height, and still advances one mono
-cell (6.62px) so the line stays on the grid. U+27E9 `⟩` is taller still at 9.8
-but overshoots below the baseline, and U+3009 `〉` measures 11.24px wide — a CJK
-fallback breaking the monospace grid outright.
+⚠️ THE SEPARATOR IS THE PACKAGE'S OWN CHEVRON, NOT A CHARACTER, AND TWO
+CHARACTERS WERE MEASURED AND REJECTED FIRST. `›` (U+203A) inks 4.93px tall in
+the shipped mono face at 11px, against 6.32 for an `s` and 8.51 for a `b` — it
+sat visibly below the words it separated. `❯` (U+276F) inks 8.03 and fixed the
+height *on one machine*: `ui-monospace` resolves to SF Mono here, Consolas on
+Windows, Liberation Mono on Linux, and a glyph missing from one of those falls
+back to another face at another width. U+3009 already demonstrated exactly that,
+measuring 11.24px against the 6.62 cell.
 
-⚠️ AND THE SEPARATOR IS TIGHTENED WITH `word-spacing`, NOT A THINNER SPACE
-CHARACTER. The line is monospace, where every glyph advances one cell — a U+2009
-thin space would take exactly as much room as U+0020, or drop out of the mono
-face and render at a different width from every other gap on the line.
-`word-spacing` adjusts the advance added at each separator instead, which is
-independent of the cell, and a route segment is a slug so those are the only
-spaces it can touch.
+An SVG has no font to be missing from — and it is the same Lucide chevron the
+sidebar and the pager draw, which is the real argument: everything else here is
+that one set.
+
+⚠️ AND IT IS SIZED `1.55em` RATHER THAN `1em`, WHICH IS THE ICON'S GEOMETRY AND
+NOT A NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
+twelve units of it, so a box sized to the text renders a glyph half that —
+measured 5.5px of ink, the same complaint the character had. `24 / 12` is the
+correction. The box is then twice its own ink, so negative block margins keep a
+row from growing around it, and `vertical-align` is measured against a `Range`
+over the neighbouring words rather than guessed: 8.52px of ink against a `b`'s
+8.51, centres 0.02px apart.
 
 ## The scrollbar is hidden, and it cannot be conditional
 

@@ -62,7 +62,7 @@ targets checked, and their `#fragments` checked against the headings that exist.
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 14.8 KB |
+| Everything the quick start ships, gzipped | 14.9 KB |
 | Without the search dialog | under 4 KB |
 | Markdown parser | none |
 | Syntax highlighter | none |

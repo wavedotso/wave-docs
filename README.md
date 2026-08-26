@@ -69,7 +69,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 14.8 KB |
+| Everything the quick start ships, gzipped | 14.9 KB |
 | Search dialog and router wiring | 9.8 KB |
 | Navigation: one sidebar, open and closed | 3.1 KB |
 | Table of contents | 1 KB |
@@ -78,7 +78,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | hast over the wire vs HTML, code and tables | 1.12× |
 | Highlighting vs no highlighting | 2.00× |
 
-The first row is the honest total: a reader who lands on a page of your documentation downloads under 14.8 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 14.9 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
 The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
 
