@@ -37,14 +37,21 @@ An SVG has no font to be missing from — and it is the same Lucide chevron the
 sidebar and the pager draw, which is the real argument: everything else here is
 that one set.
 
-⚠️ AND IT IS SIZED `1.55em` RATHER THAN `1em`, WHICH IS THE ICON'S GEOMETRY AND
-NOT A NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
-twelve units of it, so a box sized to the text renders a glyph half that —
-measured 5.5px of ink, the same complaint the character had. `24 / 12` is the
-correction. The box is then twice its own ink, so negative block margins keep a
-row from growing around it, and `vertical-align` is measured against a `Range`
-over the neighbouring words rather than guessed: 8.52px of ink against a `b`'s
-8.51, centres 0.02px apart.
+⚠️ AND IT IS `1rem`, THE SIZE EVERY OTHER ICON IN THIS PACKAGE IS DRAWN AT — the
+sidebar's markers, the pager's chevron, the copy button's glyphs, the search
+magnifier. A separator sized off its own line would be a second icon scale for
+one glyph.
+
+Lucide draws on a 24 grid and this chevron occupies the middle twelve units of
+it, so 16px of box is 8px of chevron, against 8.51 for a `b` on this line. Sized
+to the line instead, at `1em`, it measured 5.5px — shorter than the words it
+separates, which was the whole complaint.
+
+The box is twice its own ink and taller than this line's box, so negative block
+margins keep a row from growing around it: measured, every row stays 56px.
+`vertical-align` is measured against a `Range` over the neighbouring words rather
+than guessed — and it had to be measured twice, because the number belongs to the
+box's size rather than the text's and moved again when the box did.
 
 ## The scrollbar is hidden, and it cannot be conditional
 

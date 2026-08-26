@@ -4500,31 +4500,41 @@
   .wave-docs-search-result-sep {
     flex: none;
     /*
-     * ⚠️ `1.55em`, NOT `1em`, AND THE FACTOR IS THE ICON'S OWN GEOMETRY.
+     * ⚠️ `1rem`, WHICH IS THE SIZE EVERY OTHER ICON IN THIS PACKAGE IS DRAWN
+     * AT — the sidebar's markers, the pager's chevron, the copy button's
+     * glyphs, the search magnifier. A separator sized off its own line would be
+     * a second icon scale for one glyph.
      *
-     * Lucide draws on a 24 grid and this chevron occupies the middle twelve
-     * units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so a box sized to the
-     * text renders a glyph half that: measured 5.5px of ink against a `b`'s
-     * 8.51, which is the same complaint the character had. `24 / 12` is the
-     * correction, so `letter-height x 2 / font-size` lands here.
+     * ⚠️ AND THE INK IS HALF THE BOX, WHICH IS THE ICON'S GEOMETRY RATHER THAN
+     * A NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
+     * twelve units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so 16px of box is
+     * 8px of chevron, against 8.51 for a `b` on this line. Sized to the line
+     * instead, at `1em`, it measured 5.5px: shorter than the words it
+     * separates, which was the whole complaint.
+     *
+     * `rem` and not `px`, so a reader who raises their base font size gets a
+     * larger separator with everything else.
      */
-    width: 1.55em;
-    height: 1.55em;
-    /* The box is twice the ink, so half the extra hangs above and below the
-     * line. Pulled back out of the block axis, or a row of results grows by
-     * six pixels for a glyph that did not get any bigger. */
-    margin-block: -0.28em;
-    margin-inline: -0.1em;
+    width: 1rem;
+    height: 1rem;
+    /* The box is twice its ink and taller than this line's own box, so the
+     * extra hangs above and below. Pulled back out of the block axis, or a row
+     * of results grows for a glyph that did not. */
+    margin-block: -0.2rem;
+    margin-inline: -0.05rem;
     /*
      * ⚠️ ON THE TEXT'S CENTRE, AND THE NUMBER IS MEASURED RATHER THAN GUESSED.
      *
      * A replaced element sits on the baseline by default, which hangs a glyph
      * below the row of lowercase it separates — and this box is twice its own
      * ink, so half the correction is the icon's padding rather than the text's
-     * metrics. Measured against a `Range` over the words beside it: at `-0.42em`
-     * the chevron's centre sat 2.66px low, which is `0.24em` at this size.
+     * metrics. Measured against a `Range` over the words beside it, twice: at
+     * `-0.42em` the chevron's centre sat 2.66px low, and again at `-0.18em`
+     * after the box went from `1.55em` to `1rem`, which moved it 0.66px more.
+     * The lesson is that this number belongs to the box's size, not the text's,
+     * so it has to be re-measured whenever that changes.
      */
-    vertical-align: -0.18em;
+    vertical-align: -0.12em;
     color: var(--wave-docs-fg-subtle);
   }
 
