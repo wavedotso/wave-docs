@@ -4502,12 +4502,12 @@
     /*
      * ⚠️ THE INK IS HALF THE BOX, WHICH IS THE ICON'S GEOMETRY RATHER THAN A
      * NUDGE. Lucide draws on a 24 grid and this chevron occupies the middle
-     * twelve units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so 15px of box is
-     * 7.5px of chevron, against 8.51 for a `b` on this line. Sized to the line
+     * twelve units of it — `m9 18 6-6-6-6` spans y 6 to 18 — so 14px of box is
+     * 7px of chevron, against 8.51 for a `b` on this line. Sized to the line
      * instead, at `1em`, it measured 5.5px: shorter than the words it
      * separates, which was the whole complaint.
      *
-     * ⚠️ AND `0.9375rem` IS A SIZE OF ITS OWN — every other icon here is drawn
+     * ⚠️ AND `0.875rem` IS A SIZE OF ITS OWN — every other icon here is drawn
      * at `1rem`: the sidebar's markers, the pager's chevron, the copy button's
      * glyphs, the search magnifier. A separator is the one that sits *between*
      * words rather than beside them, and a notch under the icon scale is what
@@ -4516,28 +4516,31 @@
      * `rem` and not `px`, so a reader who raises their base font size gets a
      * larger separator with everything else.
      */
-    width: 0.9375rem;
-    height: 0.9375rem;
+    width: 0.875rem;
+    height: 0.875rem;
     /* The box is twice its ink and taller than this line's own box, so the
      * extra hangs above and below. Pulled back out of the block axis, or a row
      * of results grows for a glyph that did not. */
     margin-block: -0.2rem;
     margin-inline: -0.05rem;
     /*
-     * ⚠️ ON THE TEXT'S CENTRE, AND THE NUMBER IS MEASURED RATHER THAN GUESSED.
+     * ⚠️ `middle`, AND IT REPLACED THREE HAND-MEASURED `em` VALUES IN A ROW.
      *
      * A replaced element sits on the baseline by default, which hangs a glyph
-     * below the row of lowercase it separates — and this box is twice its own
-     * ink, so half the correction is the icon's padding rather than the text's
-     * metrics. Measured against a `Range` over the words beside it every time
-     * the box has moved: `-0.42em` sat 2.66px low, `-0.18em` sat 0.66px low
-     * once the box went from `1.55em` to `1rem`, and `-0.12em` sat 0.5px low
-     * again at `0.9375rem`. Each drift is half the box's change, because the
-     * box is centred on its own ink — which is the rule to remember: this
-     * number belongs to the *box's* size, not the text's, and has to be
-     * re-measured whenever that changes.
+     * below the row of lowercase it separates, so this needed correcting. The
+     * correction was a measured offset — `-0.42em`, then `-0.18em`, then
+     * `-0.12em`, then `-0.075em` — and it was wrong again every single time the
+     * box's size changed, by exactly half that change: the box is centred on
+     * its own ink, so half of any resize lands below the baseline.
+     *
+     * That is a number that belongs to the *box*, not the text, and re-deriving
+     * it on every resize is how it ends up stale. `middle` puts the box's
+     * centre on the x-height's, which is the same place, and follows the box
+     * wherever it goes. Measured 0.48px from the inline box's own centre — half
+     * a pixel, and against a reference that includes descender space the
+     * lowercase here does not use.
      */
-    vertical-align: -0.075em;
+    vertical-align: middle;
     color: var(--wave-docs-fg-subtle);
   }
 

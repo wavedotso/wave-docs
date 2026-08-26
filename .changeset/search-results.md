@@ -37,23 +37,27 @@ An SVG has no font to be missing from — and it is the same Lucide chevron the
 sidebar and the pager draw, which is the real argument: everything else here is
 that one set.
 
-⚠️ AND IT IS `0.9375rem`, A NOTCH UNDER THE `1rem` EVERY OTHER ICON HERE IS
-DRAWN AT. A separator is the one glyph that sits *between* words rather than
-beside them, and the notch is what keeps it from out-weighing the trail it
-punctuates.
+⚠️ AND IT IS `0.875rem`, A NOTCH UNDER THE `1rem` EVERY OTHER ICON HERE IS DRAWN
+AT. A separator is the one glyph that sits *between* words rather than beside
+them, and the notch keeps it from out-weighing the trail it punctuates.
 
 Lucide draws on a 24 grid and this chevron occupies the middle twelve units of
-it, so 15px of box is 7.5px of chevron, against 8.51 for a `b` on this line.
-Sized to the line instead, at `1em`, it measured 5.5px — shorter than the words
-it separates, which was the whole complaint.
+it, so 14px of box is 7px of chevron. Sized to the line instead, at `1em`, it
+measured 5.5px — shorter than the words it separates, which was the whole
+complaint.
 
 The box is twice its own ink and taller than this line's box, so negative block
 margins keep a row from growing around it: measured, every row stays 56px.
-`vertical-align` is measured against a `Range` over the neighbouring words rather
-than guessed, and it has been re-measured every time the box moved: `-0.42em` sat
-2.66px low, `-0.18em` sat 0.66px low at `1rem`, `-0.12em` sat 0.5px low at
-`0.9375rem`. Each drift is half the box's change, because the box is centred on
-its own ink — the number belongs to the *box's* size, not the text's.
+
+⚠️ AND ITS ALIGNMENT IS `middle`, WHICH REPLACED FOUR HAND-MEASURED `em` VALUES.
+A replaced element sits on the baseline, which hangs a glyph below the row of
+lowercase it separates, so this needed correcting. The correction was measured
+against a `Range` over the neighbouring words and was wrong again every time the
+box resized, by exactly half that change — the box is centred on its own ink, so
+half of any resize lands below the baseline. That number belongs to the *box*,
+not the text, and re-deriving it on every resize is how it goes stale. `middle`
+puts the box's centre on the x-height's, which is the same place, and follows the
+box wherever it goes.
 
 ## The scrollbar is hidden, and it cannot be conditional
 
