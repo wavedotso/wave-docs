@@ -37,37 +37,33 @@ An SVG has no font to be missing from — and it is the same Lucide chevron the
 sidebar and the pager draw, which is the real argument: everything else here is
 that one set.
 
-⚠️ AND IT IS DRAWN AT `1rem`, THE SIZE EVERY OTHER GLYPH IN THIS DIALOG IS —
-AFTER A FIRST PASS AT `0.8125rem` THAT WAS DERIVED FROM THE WRONG REFERENCE.
-That size put the chevron's ink on the trail's x-height, 6.5px against an `o`'s
-6.32, which is the right rule for a glyph as wide as the letters and the wrong
-one for this. Lucide draws on a 24 grid and this chevron spans six units across
-and twelve down, so its ink is half as wide as it is tall; matched to x-height
-it carries visibly less weight than the words it punctuates and reads as a
-smudge rather than a mark. Matched to the *cap* height instead — 7.99px against
-a `b`'s 8.36 — it reads as the same colour as the line, and that lands on the
-icon scale, so the special size disappears with it.
+⚠️ AND THE TRAIL IS SET IN THE SANS, NOT IN THE MONO IT STARTED IN — WHICH IS
+WHAT MADE THE SEPARATOR RELIABLE. A monospace face advances every glyph one
+cell, so the segments marched on a rigid grid an icon could not join, and its
+metrics are whatever the machine resolves: SF Mono here, Consolas on Windows,
+Liberation Mono on Linux. The cap height an inline glyph is sized against
+therefore moved from reader to reader, which is the same portability problem
+that ruled out `›` and `❯` as characters — arriving a second time through the
+face rather than through the glyph. Proportional sans has ordinary spacing and
+one set of metrics to match. `font-size` goes up a notch with it, because a
+mono face reads larger at the same size and holding the number would have
+shrunk the line.
 
-⚠️ AND THE `viewBox` IS CROPPED TO THE INK, WHICH IS WHAT RETIRED THREE NEGATIVE
-MARGINS. On the full grid the box was 13px wide around 3.25px of chevron: five
-sixths of the element was air, so every gap on the line had to be clawed back
-with a negative `margin-inline` and the surplus height with a negative
-`margin-block`. `8 0 8 24` keeps the vertical grid exactly as Lucide draws it —
-same path, same stroke ratio, ink still half the box's height — and drops the
-horizontal padding the glyph never used. The box is now its own ink, 5.33px
-wide, `margin-inline` is a real gap that means what it says, and the row
-measures the 55.5px it measured before.
+⚠️ AND THE `viewBox` IS CROPPED TO THE STROKE, WHICH IS WHAT RETIRED FOUR
+CORRECTIONS. On Lucide's full 24 grid the chevron occupies x 9–15 and y 6–18,
+so a square box around it was five sixths air across and half air down — and
+every one of those gaps had to be subtracted back by hand: a `vertical-align`,
+a negative `margin-inline`, a negative `margin-block`, and a size chosen to
+make the surplus come out right. `8 5 8 14` is the painted extent, caps and
+joins included. The box is the glyph, so it sits on the baseline the way a
+letter does with nothing declared, and the air beside it is one positive
+`margin-inline`.
 
-⚠️ AND ITS ALIGNMENT IS `middle`, WHICH REPLACED FOUR HAND-MEASURED `em` VALUES.
-A replaced element sits on the baseline, which hangs a glyph below the row of
-lowercase it separates, so this needed correcting. The correction was measured
-against a `Range` over the neighbouring words and was wrong again every time the
-box resized, by exactly half that change — the box is centred on its own ink, so
-half of any resize lands below the baseline. That number belongs to the *box*,
-not the text, and re-deriving it on every resize is how it goes stale. `middle`
-puts the box's centre on the x-height's, which is the same place, and follows the
-box wherever it goes: measured 0.07px out after the resize above, with no second
-pass.
+⚠️ AND IT CARRIES `overflow: visible`, WITHOUT WHICH THE POINT IS FLAT. An
+`svg` clips to its viewport by default and this `viewBox` is exactly the
+stroke's extent, so the round join at the tip lands on the box's own edge and
+loses its outermost anti-aliased pixel. Nothing overlaps anything: what spills
+is a fraction of a pixel.
 
 ## The scrollbar is hidden, and it cannot be conditional
 

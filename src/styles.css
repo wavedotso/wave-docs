@@ -4488,53 +4488,21 @@
    * The separator between two route segments — the package's own chevron
    * rather than a character, so there is no font for it to be missing from.
    *
-   * ⚠️ IT IS DRAWN AT `1rem`, THE SIZE EVERY OTHER GLYPH IN THIS DIALOG IS,
-   * AND THE EARLIER `0.8125rem` WAS DERIVED FROM THE WRONG REFERENCE. The size
-   * was picked to put the chevron's ink on the trail's x-height — 6.5px against
-   * an `o`'s 6.32 — which is the right rule for a glyph as wide as the letters
-   * and the wrong one for this. Lucide's chevron spans six grid units across
-   * and twelve down, so its ink is half as wide as it is tall; at x-height it
-   * carries visibly less weight than the words it punctuates and reads as a
-   * smudge rather than a mark. Matched to the *cap* height instead — 7.99px
-   * against a `b`'s 8.36 — it reads as the same colour as the line, and that
-   * lands on the icon scale, so the special size disappears with it.
-   *
-   * ⚠️ AND THE `viewBox` IS CROPPED TO THE INK, WHICH IS WHAT RETIRED THREE
-   * NEGATIVE MARGINS. On the full 24 grid the box was 13px wide around 3.25px
-   * of chevron: five-sixths of it was air, so every gap on this line had to be
-   * clawed back with a negative `margin-inline`, and the surplus height with a
-   * negative `margin-block`. `8 0 8 24` keeps the vertical grid exactly as
-   * Lucide draws it — same path, same stroke ratio, ink still half the box's
-   * height — and drops the horizontal padding the glyph never used. The box is
-   * now its own ink, 5.33px wide, so `margin-inline` is a real gap that means
-   * what it says and the row measures the same 55.5px it did before.
+   * The `viewBox` is cropped to the painted ink, so the box is the glyph: it
+   * sits on the baseline the way a letter does, with no alignment to correct.
    */
   .wave-docs-search-result-sep {
-    /* Height only: the cropped `viewBox` gives the width, and pinning both
-     * would squash the glyph back out of proportion. */
-    height: 1rem;
+    height: 7px;
     width: auto;
     /*
-     * ⚠️ `middle`, AND IT REPLACED FOUR HAND-MEASURED `em` VALUES IN A ROW.
-     *
-     * A replaced element sits on the baseline by default, which hangs a glyph
-     * below the row of lowercase it separates, so this needed correcting. The
-     * correction was a measured offset — `-0.42em`, then `-0.18em`, then
-     * `-0.12em`, then `-0.075em` — and it was wrong again every single time the
-     * box's size changed, by exactly half that change: the box is centred on
-     * its own ink, so half of any resize lands below the baseline.
-     *
-     * That is a number that belongs to the *box*, not the text, and re-deriving
-     * it on every resize is how it ends up stale. `middle` puts the box's
-     * centre on the x-height's, which is the same place, and follows the box
-     * wherever it goes — measured 0.07px out after the resize this rule's own
-     * comment describes, with no second pass.
+     * The `viewBox` is exactly the stroke's extent, so the tip lands on the
+     * box's own edge and an SVG clips at that edge by default — the point came
+     * out flat. Nothing here overlaps: what spills is a fraction of a pixel of
+     * anti-aliasing.
      */
-    vertical-align: middle;
-    /* The air either side, once rather than as a correction. Four pixels, which
-     * is what the 13px box happened to leave after its negatives — the rhythm
-     * is unchanged, only the glyph inside it. */
-    margin-inline: 0.25rem;
+    overflow: visible;
+    /* The air either side. */
+    margin-inline: 4px;
     color: var(--wave-docs-fg-subtle);
   }
 
@@ -4572,10 +4540,21 @@
     white-space: nowrap;
     text-overflow: ellipsis;
     color: var(--wave-docs-fg-subtle);
-    font-family: var(--wave-docs-font-mono);
-    /* Smaller than the trail was: a monospace face reads larger at the same
-     * size, and this line is a reference rather than something to read. */
-    font-size: 0.6875rem;
+    /*
+     * The package's sans, the same face as everything else in the dialog.
+     *
+     * ⚠️ IT WAS MONOSPACE, AND THAT IS WHAT MADE THE SEPARATOR UNRELIABLE. A
+     * mono face advances every glyph one cell, so the trail sat on a rigid
+     * grid an icon could not join, and its metrics are whatever the machine
+     * resolves — SF Mono here, Consolas on Windows, Liberation Mono on Linux —
+     * so the cap height the chevron is sized against moved from reader to
+     * reader. Set in the sans, the line has ordinary proportional spacing and
+     * one set of metrics to match.
+     */
+    font-family: var(--wave-docs-font-sans);
+    /* A notch up from the mono's `0.6875rem`: a monospace face reads larger at
+     * the same size, so holding the number would have shrunk this line. */
+    font-size: 0.75rem;
     line-height: 1.5;
   }
 

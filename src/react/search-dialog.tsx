@@ -1345,7 +1345,7 @@ function PathChevron(): ReactNode {
       className="wave-docs-search-result-sep"
       aria-hidden="true"
       focusable="false"
-      viewBox="8 0 8 24"
+      viewBox="8 5 8 14"
       fill="none"
       stroke="currentColor"
       strokeWidth="2"
