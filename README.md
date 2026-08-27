@@ -70,7 +70,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | | At most |
 | --- | --- |
 | Everything the quick start ships, gzipped | 14.9 KB |
-| Search dialog and router wiring | 9.8 KB |
+| Search dialog and router wiring | 9.9 KB |
 | Navigation: one sidebar, open and closed | 3.1 KB |
 | Table of contents | 1 KB |
 | Copy-button runtime | 1.1 KB |
@@ -864,6 +864,7 @@ If your site sets Next's own `basePath` config, prefix `indexUrl` yourself: Next
 | `minQueryLength` | `number` | `2` | Shortest query that runs |
 | `debounceMs` | `number` | `120` | Input debounce |
 | `className` | `string` | — | Extra classes for the trigger button |
+| `crumbTitles` | `Record<string, string>` | — | Route segment paths to display names, so a result's trail reads `Getting started › Installation` rather than `getting-started › installation`. `docs.Layout` builds it from the navigation and passes it; without it each segment falls back to its slug |
 | `triggerLabel` | `string` | `'Search'` | The trigger's text |
 | `placeholder` | `string` | `'Search documentation'` | The input's placeholder |
 | `dialogLabel` | `string` | `'Search documentation'` | The dialog's accessible name |

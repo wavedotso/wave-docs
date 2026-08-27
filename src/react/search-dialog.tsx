@@ -31,6 +31,7 @@ import { createPortal } from 'react-dom';
 // Node-only (`"browser": null` in the exports map), while the field
 // configuration both halves must agree on carries no Node imports at all.
 import { mergeSearchOptions } from '../search-options.js';
+import type { DocsCrumbTitles } from '../nav-crumbs.js';
 import type { SearchRecord } from '../types.js';
 /*
  * ⚠️ ONE LINK CONTRACT FOR THE WHOLE PACKAGE. This file used to declare its own
@@ -63,6 +64,23 @@ const FOCUSABLE_SELECTOR = [
   .join(', ');
 
 export interface SearchDialogProps {
+  /**
+   * Route segment paths to the names a reader knows them by, e.g.
+   * `{ 'getting-started': 'Getting started' }`. `docs.Layout` builds it from
+   * the navigation and passes it.
+   *
+   * ⚠️ WITHOUT IT A RESULT'S TRAIL IS SLUGS, WHICH IS WHAT A URL IS MADE OF
+   * AND NOT WHAT ANYTHING IS CALLED. `getting-started › installation` against
+   * `Getting started › Installation`. Absent, each segment falls back to
+   * itself, so a host composing the dialog by hand gets the old line rather
+   * than a broken one.
+   *
+   * ⚠️ AND IT COMES FROM THE NAVIGATION, NOT THE SEARCH INDEX. A title on
+   * every record would grow `search-index.json`, which is 46 KB gzipped on
+   * this package's own site and a number its README publishes. This is one
+   * entry per directory, out of a tree the layout already holds.
+   */
+  crumbTitles?: DocsCrumbTitles | undefined;
   /**
    * URL of the serialised index, e.g. `/docs/search-index.json`.
    *
@@ -249,6 +267,7 @@ export function SearchDialog({
   indexUrl,
   navigate,
   Link,
+  crumbTitles,
   triggerLabel = 'Search',
   placeholder = 'Search documentation',
   dialogLabel = 'Search documentation',
@@ -784,6 +803,7 @@ export function SearchDialog({
                        */
                       setSize={hits.length}
                       posInSet={index + 1}
+                      crumbTitles={crumbTitles}
                       onActivate={() => {
                         movedByKeyboard.current = false;
                         setActiveIndex(index);
@@ -914,6 +934,7 @@ function SearchResultOption({
   onActivate,
   onSelect,
   Link,
+  crumbTitles,
 }: {
   hit: SearchHit;
   id: string;
@@ -924,6 +945,7 @@ function SearchResultOption({
   onActivate: () => void;
   onSelect: (hit: SearchHit) => void;
   Link?: DocsLinkComponent;
+  crumbTitles: DocsCrumbTitles | undefined;
 }): ReactNode {
   function handleClick(event: ReactMouseEvent<HTMLAnchorElement>): void {
     // Leave modified clicks to the browser: new tab, new window, download.
@@ -967,17 +989,19 @@ function SearchResultOption({
          * say is the heading, and the heading opens the accessible name.
          */}
         <span className="wave-docs-search-result-location" aria-hidden="true">
-          {toDisplaySegments(hit.href).map((segment, index, all) => (
-            /*
-             * Keyed by the path so far rather than by index: two segments of a
-             * route can repeat — `/docs/docs` is a real route — and the
-             * accumulated prefix is unique by construction.
-             */
-            <Fragment key={all.slice(0, index + 1).join('/')}>
-              {index === 0 ? null : <PathChevron />}
-              {segment}
-            </Fragment>
-          ))}
+          {toDisplaySegments(hit.href, crumbTitles).map(
+            (segment, index, all) => (
+              /*
+               * Keyed by the path so far rather than by index: two segments of a
+               * route can repeat — `/docs/docs` is a real route — and the
+               * accumulated prefix is unique by construction.
+               */
+              <Fragment key={all.slice(0, index + 1).join('/')}>
+                {index === 0 ? null : <PathChevron />}
+                {segment}
+              </Fragment>
+            ),
+          )}
         </span>
       </span>
     </>
@@ -1259,7 +1283,10 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
  * Display only. `hit.href` keeps the anchor, so the link still deep-links to
  * the section — that is the whole point of section-scoped records.
  */
-function toDisplaySegments(href: string): string[] {
+function toDisplaySegments(
+  href: string,
+  titles: DocsCrumbTitles | undefined,
+): string[] {
   const hash = href.indexOf('#');
   const route = hash === -1 ? href : href.slice(0, hash);
   /*
@@ -1284,10 +1311,27 @@ function toDisplaySegments(href: string): string[] {
    * else in this package is that one set; a Unicode dingbat was a second.
    */
   const segments = route.split('/').filter(Boolean);
-  // The site root has no segments to separate, and `/` is what a reader
-  // recognises as "the top" — the one case that is a character rather than a
-  // trail.
-  return segments.length === 0 ? ['/'] : segments;
+
+  /*
+   * ⚠️ THE ROOT PAGE HAS NO TRAIL, AND `/` WAS A FILLER FOR THAT. Every other
+   * row shows names, so a lone slash there was the one row still speaking in
+   * URLs — and it was there only because the alternative was an empty line and
+   * a ragged list. The site's own index has a name in the navigation, which is
+   * what a reader would call "the top".
+   */
+  if (segments.length === 0) return [titles?.[''] ?? '/'];
+
+  /*
+   * ⚠️ KEYED BY THE CUMULATIVE PATH, NOT THE BARE SEGMENT. `guides/api` and
+   * `reference/api` are both `api`, and looked up by the segment alone the
+   * second would rename the first. Each falls back to itself, so a host that
+   * passes no titles gets slugs rather than gaps.
+   */
+  let path = '';
+  return segments.map((segment) => {
+    path = path === '' ? segment : `${path}/${segment}`;
+    return titles?.[path] ?? segment;
+  });
 }
 
 /**

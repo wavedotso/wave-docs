@@ -30,6 +30,7 @@ import { DocsSearch } from './next-search.js';
 import type { DocsIconMap } from './sidebar.js';
 import type { DocsLabels } from './shell-labels.js';
 import { resolveLabels } from './shell-labels.js';
+import { buildCrumbTitles } from '../nav-crumbs.js';
 import { DocsNextNav } from './next-nav.js';
 import { SkipLink } from './skip-link.js';
 
@@ -155,6 +156,14 @@ export function DocsLayoutShell({
             {search === false ? null : (
               <DocsSearch
                 indexUrl={searchIndexUrl}
+                /*
+                 * ⚠️ BEFORE THE SPREAD, SO A HOST CAN REPLACE IT. Built from
+                 * the navigation this layout already holds, which is why a
+                 * result's trail can read `Getting started › Installation`
+                 * without a title on every search record — `search-index.json`
+                 * is the artifact the README publishes a size for.
+                 */
+                crumbTitles={buildCrumbTitles(nav)}
                 {...(search === true ? {} : search)}
                 /*
                  * ⚠️ AFTER THE SPREAD, AND JOINED. `className` was before it,

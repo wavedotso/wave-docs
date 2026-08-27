@@ -103,6 +103,24 @@ Arabic six. `Intl.PluralRules` picks, and an unlisted category falls back to
 There is no `hotkey` prop. The shortcut is ⌘K on Apple platforms and Ctrl K
 elsewhere, exposed as `aria-keyshortcuts`, and it is not configurable.
 
+## The trail under each result
+
+A result's second line is where the hit lives — `Getting started › Installation`
+— and those are the names from your navigation, not the slugs from the URL.
+
+`docs.Layout` builds the lookup from the tree it already has and passes it to
+the dialog as `crumbTitles`. **The titles are not in the search index**, which
+matters: `search-index.json` is the artifact this package publishes a size for,
+and a title on every record would grow it. One entry per directory, out of a
+tree the page already carries, costs nothing extra.
+
+A page at the site root has no trail, so it shows the name its navigation entry
+carries — `Overview` on this site. That used to be a bare `/`, which was the one
+row still speaking in URLs.
+
+Composing the dialog by hand and passing no `crumbTitles` is fine: each segment
+falls back to its own slug.
+
 ## What gets indexed
 
 **The whole section, not a preview of it.** `extractSearchRecords` once
