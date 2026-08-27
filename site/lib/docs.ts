@@ -40,4 +40,14 @@ export const docs = createDocsRoute({
   contentDir: 'site/content',
   basePath: '/',
   siteUrl: 'https://docs.wave.so',
+  /*
+   * `/llms.txt` and `/llms-full.txt`. Links in both resolve against the
+   * `siteUrl` above rather than a second copy of it — see `DocsLlmsOptions`.
+   */
+  llms: {
+    title: '@waveso/docs',
+    description:
+      'Documentation for Next.js, as a package: markdown to hast at build ' +
+      'time, so a reader downloads no parser and no highlighter.',
+  },
 });

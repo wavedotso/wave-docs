@@ -56,6 +56,7 @@ import { assertAnchors } from './anchors.js';
 import { describeSuggestion } from './link-suggestion.js';
 import type { SerializableSearchOptions } from './search-options.js';
 import { findFunctionValuedOptions } from './search-options.js';
+import { DocsCopyPage } from './react/copy-page.js';
 import type {
   DocsHighlighter,
   DocsLang,
@@ -457,7 +458,76 @@ export interface DocsRouteOptions<
    * them per-layout. Set them once here.
    */
   labels?: DocsLabels | undefined;
+  /**
+   * The corpus as markdown, at `/llms.txt` and `/llms-full.txt`.
+   *
+   * Omit it and {@link DocsRoute.llmsTxt} throws when called, rather than
+   * serving a file with a placeholder name in its `h1` — an index that calls
+   * your product "Documentation" is worse than no index.
+   */
+  llms?: DocsLlmsOptions | undefined;
+  /**
+   * A "Copy page" button above each page, putting that page's markdown on the
+   * reader's clipboard. **On by default.**
+   *
+   * It reads `/llms-full.txt`, so the one thing it needs is that route:
+   *
+   * ```ts
+   * // app/llms-full.txt/route.ts — the whole file
+   * export const GET = docs.llmsFullTxt;
+   * export const dynamic = 'force-static';
+   * ```
+   *
+   * ⚠️ THE DEFAULT IS "ON IF `llms` IS SET", NOT PLAIN `true`. The button reads
+   * the corpus, and {@link DocsRoute.llmsFullTxt} refuses to serve one without
+   * an `llms` option — so a site with no `llms` has nothing for the button to
+   * read, and rendering it there produces a control whose only possible
+   * outcome is to remove itself. Setting `true` explicitly overrides this, for
+   * a host serving the corpus some other way.
+   *
+   * ⚠️ AND IT STILL HIDES ITSELF IF THE ROUTE IS ABSENT. `llms` configured and
+   * `app/llms-full.txt/route.ts` never created is the one case the server
+   * cannot see, so the first click that 404s removes the button — rather than
+   * a control that fails every time it is pressed.
+   *
+   * `false` turns it off — worth doing for a `/docs` embedded in an
+   * application that would rather not spend the kilobyte. An object overrides
+   * the labels.
+   */
+  copyPage?: boolean | DocsCopyPageConfig | undefined;
 }
+
+/** Labels for the "Copy page" button. */
+export interface DocsCopyPageConfig {
+  /** Button text. Default `'Copy page'`. */
+  label?: string | undefined;
+  /** Shown and announced after a successful copy. Default `'Copied'`. */
+  copiedLabel?: string | undefined;
+  /** Shown and announced when it fails. Default `'Press Ctrl+C to copy'`. */
+  failedLabel?: string | undefined;
+}
+
+/** Configuration for the two markdown endpoints. */
+export interface DocsLlmsOptions {
+  /** The `# ` line of `llms.txt`. Your product's name. */
+  title: string;
+  /** The `> ` line under it. One sentence on what this corpus covers. */
+  description?: string | undefined;
+  /** Free prose between the description and the first section. */
+  details?: string | undefined;
+}
+
+/*
+ * ⚠️ NO `siteUrl` HERE — IT IS `DocsRouteOptions.siteUrl`, AND THERE IS ONE
+ * ORIGIN PER REPOSITORY BY CONSTRUCTION. `alternates.canonical`, `og:url` and
+ * the sitemap already read it, and a second place to write it is a second
+ * place to write it *differently*: a corpus whose links point at a staging
+ * host is worse than one whose links are relative, because it looks right.
+ *
+ * Without any `siteUrl` these files are still served, with root-relative
+ * links — docs mounted inside a private app have no public origin to give,
+ * and half this feature there beats none.
+ */
 
 /**
  * Props for {@link DocsRoute.Layout}.
@@ -699,6 +769,29 @@ export interface DocsRoute<
    */
   searchIndex: () => Promise<Response>;
   /**
+   * `llms.txt` — the corpus index, in llmstxt.org's format.
+   *
+   * ```ts
+   * // app/llms.txt/route.ts — the whole file
+   * import { docs } from '@/lib/docs';
+   *
+   * export const GET = docs.llmsTxt;
+   * export const dynamic = 'force-static';
+   * ```
+   *
+   * ⚠️ THE URL IS THE FEATURE, NOT A BUTTON. A "copy page as markdown" control
+   * is UI over this; agents fetching the corpus, a reader piping a page into a
+   * prompt, and an MCP server built later all want the file, and none of them
+   * want a click.
+   */
+  llmsTxt: () => Promise<Response>;
+  /**
+   * `llms-full.txt` — every page's markdown, in one file.
+   *
+   * Same wiring as {@link DocsRoute.llmsTxt}, at `app/llms-full.txt/route.ts`.
+   */
+  llmsFullTxt: () => Promise<Response>;
+  /**
    * Default export for `app/<basePath>/layout.tsx` — the entire docs shell.
    *
    * ```tsx
@@ -893,6 +986,41 @@ export function createDocsRoute<
     copyFailed: 'copyFailed',
   });
   const loadComponents = createComponentsMemo(contentLabels);
+
+  /*
+   * The copy button's props, or `undefined` when the site did not opt in.
+   *
+   * Normalised once here rather than at every render: `true` and an object of
+   * labels are the same feature, and the render site should read as one
+   * question — is there a header, or not.
+   */
+  /*
+   * The copy button's props, or `undefined` when it should not render.
+   *
+   * ⚠️ THE DEFAULT IS `llms !== undefined`, NOT `true`, BECAUSE THE SERVER CAN
+   * ANSWER THIS AND THE BROWSER SHOULD NOT HAVE TO. The button reads
+   * `/llms-full.txt`, and `docs.llmsFullTxt` refuses to serve without an
+   * `llms` option — so a site with no `llms` has no corpus by construction,
+   * and defaulting to `true` there renders a control whose only possible
+   * outcome is to remove itself. A reader watching a button vanish under the
+   * cursor is a worse answer than never drawing it.
+   *
+   * The client-side hide stays for the case this cannot see: `llms` configured
+   * and the route file never added. That one is only knowable from a fetch.
+   *
+   * Explicit `true` still wins, so a host serving the corpus some other way
+   * can say so.
+   */
+  const copyPage: DocsCopyPageConfig | undefined =
+    options.copyPage === false
+      ? undefined
+      : options.copyPage === true
+        ? {}
+        : options.copyPage === undefined
+          ? options.llms === undefined
+            ? undefined
+            : {}
+          : options.copyPage;
 
   // Built on first render, not on import: `generateStaticParams` runs in its
   // own pass and has no use for a syntax highlighter.
@@ -1189,6 +1317,71 @@ export function createDocsRoute<
   };
 
   /**
+   * Body plus headers for a markdown endpoint.
+   *
+   * ⚠️ THE `assertPrerendered` CALL IS SHARED WITH THE SEARCH INDEX FOR THE
+   * SAME REASON. These handlers read the whole content root; served
+   * dynamically they re-read every markdown file in the corpus per request,
+   * from a directory that is not in the deployment bundle.
+   */
+  const markdownResponse = (body: string): Response =>
+    new Response(body, {
+      headers: {
+        // `text/markdown` is registered (RFC 7763) and is what a client
+        // content-negotiating for markdown asks for. `charset` matters here in
+        // a way it does not for JSON: the media type's default is US-ASCII.
+        'content-type': 'text/markdown; charset=utf-8',
+        'cache-control': 'public, max-age=0, must-revalidate',
+        etag: `"${createHash('sha1').update(body).digest('hex')}"`,
+      },
+    });
+
+  /** The corpus, ordered the way the navigation orders it. */
+  const llmsFiles = async (): Promise<Array<DocFile<TFrontmatter>>> => {
+    assertPrerendered();
+    return source.all();
+  };
+
+  const requireLlmsOptions = (): DocsLlmsOptions => {
+    const llms = options.llms;
+    if (llms === undefined) {
+      throw docsError(
+        'llms-unconfigured',
+        'the markdown endpoints were requested without configuration. Pass ' +
+          '`llms: { title: "Your product" }` to `createDocsRoute` — the title ' +
+          'is the `h1` of `llms.txt`, and an index that calls your product ' +
+          '"Documentation" is worse than no index. Links in these files ' +
+          'resolve against `siteUrl`, which you already pass here for the ' +
+          'canonical URL and the sitemap; without one they stay ' +
+          'root-relative.',
+      );
+    }
+    return llms;
+  };
+
+  /** What both endpoints resolve links against. */
+  const llmsBase = {
+    ...(siteUrl === undefined ? {} : { siteUrl }),
+    titleHeading: options.titleHeading ?? true,
+  };
+
+  const llmsTxt = async (): Promise<Response> => {
+    const llms = requireLlmsOptions();
+    const files = await llmsFiles();
+    // Lazy, so `remark-parse` stays off the module graph of `next.config.ts`,
+    // which loads this entry point for `createDocsSitemap`.
+    const { buildLlmsTxt } = await import('./llms-txt.js');
+    return markdownResponse(buildLlmsTxt(files, { ...llmsBase, ...llms }));
+  };
+
+  const llmsFullTxt = async (): Promise<Response> => {
+    requireLlmsOptions();
+    const files = await llmsFiles();
+    const { buildLlmsFullTxt } = await import('./llms-txt.js');
+    return markdownResponse(buildLlmsFullTxt(files, llmsBase));
+  };
+
+  /**
    * A page's `next` rows with their link text filled in.
    *
    * ⚠️ THE ERROR IS THE POINT. Falling back to the href renders a URL where a
@@ -1268,6 +1461,31 @@ export function createDocsRoute<
           id: DOCS_CONTENT_ID,
           tabIndex: -1,
         },
+        /*
+         * The page header — the "Copy page" button, when the site opted in.
+         *
+         * ⚠️ THE HEADER IS THE BUTTON'S CONTAINER AND IT DOES NOT EXIST
+         * WITHOUT IT. Emitting an empty `<div>` on every page of every site
+         * that never enabled this is a box with a margin that shifts the first
+         * heading down for nothing — the same reason the hero and the explore
+         * rows below are `null` rather than empty.
+         *
+         * It is the first child of `main` rather than a sibling of it: the
+         * layout is a grid and `main` is one of its tracks, so anything placed
+         * beside it takes a column of its own and pushes the table of contents
+         * out of the third track.
+         */
+        copyPage === undefined
+          ? null
+          : createElement(
+              'div',
+              { className: 'wave-docs-page-header' },
+              createElement(DocsCopyPage, {
+                href: doc.href,
+                corpusUrl: `${config.basePath}/llms-full.txt`,
+                ...copyPage,
+              }),
+            ),
         /*
          * The hero, when the page asked for one. `null` otherwise, and `null`
          * renders nothing — so an ordinary page pays no markup for a feature
@@ -1369,6 +1587,8 @@ export function createDocsRoute<
     renderAll,
     searchIndex,
     searchIndexUrl,
+    llmsTxt,
+    llmsFullTxt,
     dynamicParams: false,
 
     async Page({ params }: DocsPageProps): Promise<ReactNode> {

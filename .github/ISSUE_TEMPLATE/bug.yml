@@ -41,6 +41,7 @@ body:
         - search-index-unavailable
         - search-index-dynamic
         - invalid-code-meta
+        - llms-unconfigured
         - internal
         - no error — wrong output
         - no error — wrong types
