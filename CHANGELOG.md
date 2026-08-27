@@ -1,5 +1,210 @@
 # @waveso/docs
 
+## 0.13.0
+
+### Minor Changes
+
+- d195f07: **"Copy page" — this page's markdown, on the reader's clipboard.**
+
+  On by default, 1.2 KB gzipped, and it needs no configuration: it reads
+  `/llms-full.txt` and slices out the page it is on. The corpus is a file this
+  package already ships for agents, so the button adds no artifact of its own.
+
+  ⚠️ IT SLICES THE CORPUS BECAUSE PER-PAGE `.md` URLS COST FIVE STEPS IN NEXT,
+  AND THAT WAS BUILT FIRST. A route file, a rewrite, `output: 'export'` made
+  conditional, a post-build script, and a placeholder the export forces which the
+  script then deletes. Two of those fail _silently_: a rewrite that stops
+  matching says nothing, and a route folder named `_md` is a _private folder_
+  excluded from routing entirely — the same 404 with nothing in the console,
+  which cost three rounds of debugging the rewrite pattern before the folder name
+  was suspected.
+
+  All of it existed because `*.md` is a _pattern_ the docs catch-all already owns,
+  and a segment holds either a `page` or a `route`, never both. `llms-full.txt` is
+  a **fixed path**, which needs none of it: one route file, the same cost as the
+  search index, rendering on demand in development and prerendering into a static
+  export. For a package whose pitch is "point it at a folder of markdown", five
+  steps of `next.config.ts` surgery was the wrong trade, and the simpler shape
+  travels better — Astro and Vite serve a fixed path in a few lines too.
+
+  ⚠️ AND IT HOLDS NO MARKDOWN OF ITS OWN. Embedding each page's source in its own
+  HTML was the other alternative: five to eight kilobytes gzipped on _every page
+  load_ for a control most readers never press. The fetch is on click, so page
+  weight and first paint are untouched for everyone who does not use it, and the
+  result is cached for the rest of the visit. One corpus download is ~40 KB
+  gzipped at twenty pages and ~2 MB at a thousand, which is Stripe-scale.
+
+  ⚠️ AND THE DEFAULT IS "ON IF `llms` IS SET", NOT PLAIN `true`, BECAUSE THE
+  SERVER CAN ANSWER MOST OF THIS. `docs.llmsFullTxt` refuses to serve without an
+  `llms` option, so a site without one has no corpus by construction — and a
+  `true` default there renders a control whose only possible outcome is to remove
+  itself, which a reader watches vanish under the cursor. Explicit `true` still
+  wins, for a host serving the corpus some other way.
+
+  ⚠️ AND IT STILL REMOVES ITSELF WHEN THE ROUTE FILE IS MISSING, which is the one
+  case the server cannot see: `llms` configured and `app/llms-full.txt/route.ts`
+  never created. Only a fetch can tell. A network failure is deliberately _not_
+  treated the same — the wiring is fine and the next press may work, so it
+  reports and stays.
+
+  ## The links in the copied markdown point at pages
+
+  ⚠️ THE MARKDOWN EXTENSION COMES OFF THE DESTINATION, AND WITHOUT IT EVERY
+  INTERNAL LINK IN THE CORPUS 404ED. Authors write `[auth](./api/auth.md)` on
+  purpose — it resolves on GitHub and in an editor preview — and `/api/auth.md` is
+  not a route. `index` collapses onto its directory's own page, matching `toHref`.
+
+  ⚠️ FOR OUR OWN ORIGIN ONLY. A raw file on GitHub, or a spec published as
+  markdown, is a real URL that ends in `.md`; trimming it points at a page that
+  does not exist on a host we do not control.
+
+  ## The rest
+
+  While the fetch is in flight the label pulses rather than the button jumping
+  straight to its outcome. A cold click crosses the network, and with nothing in
+  between the ✓ or ✗ reads as a verdict on the click rather than on a request that
+  had been running. The label animates instead of a spinner appearing: a fourth
+  glyph in a bundle whose whole argument is its size, for information the label
+  can carry. It sits inside the `prefers-reduced-motion` block, so a reader who
+  asked for less motion gets `cursor: progress` and the live region.
+
+  ⚠️ `font: inherit` RENDERED THE BUTTON IN TIMES. This package scopes its sans to
+  the components that own text — `.wave-docs-prose` and `.wave-docs-toc` set it,
+  `body` and `.wave-docs-layout__main` do not, because a host owns their
+  typography. So a control placed in `main` inherits the browser's default serif,
+  and the mismatch was not only the face: Times sits on a different baseline at
+  the same size, which made an exactly-aligned button look crooked and sent the
+  first diagnosis after the wrong bug.
+
+  ⚠️ AND THE HEADER IS CAPPED _AND_ CENTRED, WHICH IS TWO DECLARATIONS.
+  `.wave-docs-prose` is both, inside a `main` that is wider than the measure, so a
+  header filling `main` puts its trailing edge past the text it belongs to.
+  Measured at 1440px: the button's right edge at 1152 against the prose's 1096.
+  `.wave-docs-pager` carries the identical pair for the identical reason.
+
+  `writeClipboard` — the clipboard write with its `execCommand` fallback for plain
+  HTTP — moved out of the code runtime into a private module both buttons share,
+  so the two cannot come to disagree about whether a copy worked.
+
+  `DocsCopyPage` is exported from `@waveso/docs/react/copy-page` for a
+  hand-composed shell. Its `failedLabel` defaults to an instruction rather than an
+  apology, because the failure that reaches a reader usually leaves them able to
+  finish the job themselves.
+
+- 0224460: **`npx @waveso/docs init` — the route files, written for you.**
+
+  A new `bin`, plus `docsScaffold` and `initDocs` for a host scaffolder that
+  wants to write them its own way.
+
+  ⚠️ THE FILE COUNT IS NEXT'S FLOOR AND THE TYPING IS NOT. A route in the App
+  Router is a folder in the _consumer's_ `app/`, so no package can add one — six
+  files is the minimum for a documentation site however good this package gets.
+  What a scaffold can remove is hand-typing them, and that matters here because
+  three of the six fail **silently** when they are slightly wrong:
+
+  - a `dynamicParams` that is not a literal `false` builds green, then renders
+    unlisted URLs on demand — Next parses route segment config out of the module
+    before any of it runs, so a value it would have to execute an import to learn
+    is no value at all;
+  - a route handler without `export const dynamic = 'force-static'` re-renders the
+    whole corpus per request, from markdown output tracing never put in the
+    deployment bundle;
+  - an index page nobody created leaves the mount itself a 404, because
+    `[...slug]` does not match `/docs`.
+
+  Every one of those produces an application that builds. The tests assert those
+  lines specifically rather than the prose around them.
+
+  ⚠️ AND IT NEVER OVERWRITES. A file that exists is reported and skipped, so a
+  second run is safe and running it in a project that already has a `layout.tsx`
+  cannot destroy one. Scaffolders that clobber are scaffolders people stop
+  running.
+
+  ⚠️ AND THE LAYOUT HAS TWO SHAPES, BECAUSE `docs.Layout` IS NOT A ROOT LAYOUT.
+  It owns the sidebar, the search trigger, the skip link and the grid, and
+  deliberately not `<html>` or `<body>` — which is the property that lets a host
+  wrap it. At a root mount there is no other layout to own them, so the generated
+  file is a real root layout that renders the shell inside it; under `/docs` it is
+  the one-liner, and a root layout is offered beside it for a bare project that
+  has none. Getting this wrong produces an application Next refuses to build with
+  an error about a missing root layout, pointing nowhere near the cause.
+
+  Non-interactive: flags and defaults rather than prompts, so it runs the same way
+  in a terminal, in CI and inside another tool's scaffolder — and adds no
+  dependency to a package that ships its parser to nobody. `node:util`'s
+  `parseArgs` refuses an unknown flag rather than ignoring it, because silently
+  dropping `--base-paths` writes the scaffold to the wrong place and reports
+  success.
+
+  `llms.txt` is behind `--llms-index` rather than default, because `llms-full.txt`
+  already carries every page _and_ its URL — an agent that finds the corpus has
+  everything, and the "Copy page" button reads the corpus. Six files is the floor;
+  the index is the seventh, and optional.
+
+  Verified by building both mount shapes with a real Next: a scaffolded project
+  compiles and prerenders with no edits.
+
+  ## Also
+
+  ⚠️ `[[...slug]]` WAS RE-TESTED AS A WAY TO DROP A FILE, AND IT LOSES THE INDEX
+  ENTIRELY. The README's objection was duplicate content at `/docs/index`; the
+  measured behaviour is worse. `docs.generateStaticParams()` returns no entry for
+  the root — by design, since `page.tsx` owns it — so an optional catch-all
+  prerenders every page _except_ the home page, and `out/index.html` is simply
+  absent. Making it work would need a second params function in the package, and
+  only then would the duplicate-content problem arrive. Two route files stay.
+
+- 9fbef4d: **The corpus, as markdown, at `/llms.txt` and `/llms-full.txt`.**
+
+  Two route handlers — `docs.llmsTxt` and `docs.llmsFullTxt` — wired the way
+  `docs.searchIndex` already is, plus `@waveso/docs/llms-txt` for anyone building
+  the files somewhere else. Both prerender; the browser bundles are byte for byte
+  what they were.
+
+  ⚠️ THIS IS A URL CONVENTION AND NOT A BUTTON, WHICH IS THE WHOLE ORDERING
+  ARGUMENT. A "copy page as markdown" control is UI over these files. An agent
+  fetching the corpus, a reader piping a page into a prompt, and an MCP server
+  built later all want the _file_, and none of them want a click — so the control
+  is the shallow half and shipping it first builds nothing the other three can
+  use. The format is [llmstxt.org](https://llmstxt.org)'s: an index of one line
+  per page, and a second file with every body in it.
+
+  ⚠️ AND THE MARKDOWN IS THE AUTHOR'S, NOT A RE-RENDER — WHICH A HOSTED SERVICE
+  CANNOT SAY. Mintlify and its peers reconstruct markdown from what they rendered
+  and lose whatever the render dropped. The source is still on disk here, so
+  `DocFile.content` is the body as written, and it takes exactly two edits: a
+  `# title` when the body has none, and link destinations resolved against the
+  page they were written on. Everything else survives byte for byte — list
+  markers, table alignment, trailing whitespace — and a test asserts that on a
+  deliberately awkward document, because an implementation that re-serialised
+  would pass every other test in the file.
+
+  ⚠️ AND THE DESTINATIONS ARE FOUND BY PARSING, NOT BY MATCHING `](…)`. A regex
+  matches inside fenced code, which is exactly where a documentation corpus keeps
+  its example URLs — so a regex rewriter edits the sample a reader is meant to
+  copy verbatim. mdast carries the node's position but not the destination's, so
+  the URL is located inside the node's own slice and searched **from the end**:
+  `[/api/reference](/api/reference)` is ordinary in a corpus that documents its
+  own routes, and a forward search rewrites the visible label while leaving the
+  target relative — the exact inverse of the job. A destination that cannot be
+  located verbatim is left alone. Skipping is always safe; guessing is not.
+
+  Measured on this site: 21 pages, `llms.txt` 2.9 KB, `llms-full.txt` 163.8 KB,
+  every relative link resolved, and the only `./` paths left in the output are
+  inside inline code — the pages that document link syntax.
+
+  `siteUrl` is `createDocsRoute`'s existing one rather than a second copy. There
+  is one origin per repository already, feeding `alternates.canonical` and the
+  sitemap, and a second place to write it is a second place to write it
+  _differently_ — a corpus whose links point at a staging host is worse than one
+  whose links are relative, because it looks right. Without a `siteUrl` at all
+  the links are root-relative, which is the honest half of the feature for docs
+  mounted inside a private app.
+
+  New error code: `llms-unconfigured`, thrown when a handler is called with no
+  `llms` option, rather than serving an index whose `h1` calls your product
+  "Documentation".
+
 ## 0.12.0
 
 ### Minor Changes
