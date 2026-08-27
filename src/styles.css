@@ -3664,10 +3664,22 @@
   }
 
   /*
-   * Three dots. Measured off docsify.js.org rather than reasoned about: three
-   * 4px circles 3px apart. One element and two `box-shadow` copies rather than
-   * three spans — no markup, and it follows `currentcolor` through the hover
-   * state for free. 4 + 3 + 4 + 3 + 4 is 18px tall, so the offset is 7.
+   * Two lines down the middle — the grip a resizable panel or a drawer shows.
+   *
+   * ⚠️ IT WAS THREE DOTS, MEASURED OFF DOCSIFY, AND THEY SAY THE WRONG THING.
+   * Three of them read as *more options* in most interfaces and as a texture
+   * to grab in the rest; parallel bars are unambiguously the second, which is
+   * what this is — a handle on the seam between two panes.
+   *
+   * A chevron was the other candidate and it loses on shape: the control is a
+   * 16px-wide pill and an arrow wants to be square, so it either crowds the
+   * pill's edges or shrinks below the rest of the icon set. Lines are narrow
+   * by nature, so they fit without either.
+   *
+   * ⚠️ ONE ELEMENT AND A `box-shadow` COPY, THE WAY THE DOTS WERE — no markup,
+   * and it follows `currentcolor` through the hover state for free. The
+   * element is shifted half the gap off centre and the copy sits a whole gap
+   * to its side, so the *pair* is centred rather than the first bar being.
    *
    * ⚠️ `::after`, AND THE ORDER IS LOAD-BEARING. Neither pseudo-element carries
    * a `z-index`, so tree order decides which paints on top.
@@ -3677,20 +3689,14 @@
     position: absolute;
     inset-block-start: 50%;
     inset-inline-start: 50%;
-    width: 4px;
-    height: 4px;
-    translate: -50% -50%;
-    border-radius: 50%;
+    width: 2px;
+    /* Comfortably inside the 3.5rem pill, so the ends never crowd its curve. */
+    height: 1.5rem;
+    /* 6px apart: 8px of ink in a 16px pill, 4px clear either side. */
+    translate: calc(-50% - 3px) -50%;
+    border-radius: 9999px;
     background: currentcolor;
-    /*
-     * ⚠️ THE DOTS DO NOT SCALE WITH THE PILL. They are `box-shadow` offsets on
-     * one element, so ±7px is 18px of ink whatever `--wave-docs-trigger-width`
-     * or the pill's height happen to be. Shorten the pill below 18px and the
-     * outer two sit outside it, top and bottom — measured, not guessed.
-     */
-    box-shadow:
-      0 -7px 0 currentcolor,
-      0 7px 0 currentcolor;
+    box-shadow: 6px 0 0 currentcolor;
   }
 
   /*
