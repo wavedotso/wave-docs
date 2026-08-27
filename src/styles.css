@@ -617,6 +617,18 @@
     margin-block-start: 0.75em;
   }
 
+  /*
+   * ⚠️ THE UA'S OWN MARGIN, AND IT IS DEAD SPACE. Every browser gives `h1` a
+   * `0.67em` top margin — 22px at this size — which on the first element of a
+   * page opens it with a gap nothing asked for, and which put the title a row
+   * below the "Copy page" button floated beside it. The standard prose reset,
+   * and it applies to whatever the page opens with rather than to headings
+   * only.
+   */
+  .wave-docs-prose > :first-child {
+    margin-block-start: 0;
+  }
+
   .wave-docs-prose h1 {
     /* The one fluid size. A fixed 2.0736rem h1 wraps an ordinary page title to
      * three lines at 390px; everything below it stays fixed, because fluid type
@@ -3934,8 +3946,32 @@
    * should not add a row of its own.
    */
   .wave-docs-page-header {
+    /*
+     * ⚠️ A FLOAT, BECAUSE THE TITLE IS NOT OURS TO PUT IN A ROW WITH. The `h1`
+     * comes out of the markdown pipeline inside `.wave-docs-prose`, so a flex
+     * row would mean the renderer knowing about this control. Floated, the
+     * heading flows *beside* it and a long one wraps under it — which is what
+     * a flex row with a gap would have to be taught to do anyway.
+     */
+    float: inline-end;
     display: flex;
     justify-content: flex-end;
+    /* So a title never runs into it. */
+    margin-inline-start: 1rem;
+    /*
+     * ⚠️ THE MEASURE OFFSET BY HAND, BECAUSE `margin-inline: auto` IS INERT ON
+     * A FLOAT. A float is shrink-to-fit and its `auto` margins compute to
+     * zero, so the capped-and-centred pair this header used to carry silently
+     * stopped working the moment it floated, and the button went back to
+     * overhanging the prose by 56px at 1440px.
+     *
+     * `100%` is `__main`'s content width, so this is the arithmetic
+     * `margin-inline: auto` would have done. With `--wave-docs-measure: none`
+     * the `calc` does not parse and the declaration is dropped, which leaves
+     * the float at the column's edge — right, since there is then no narrower
+     * measure to align to.
+     */
+    margin-inline-end: max(0px, (100% - var(--wave-docs-measure)) / 2);
     /*
      * ⚠️ POSITIONED AND RAISED, OR THE HERO PAINTS OVER IT. `.wave-docs-hero`
      * is `position: relative` with `isolation: isolate`, and carries a
@@ -3951,17 +3987,10 @@
     position: relative;
     z-index: 1;
     /*
-     * ⚠️ CAPPED *AND* CENTRED, WHICH IS TWO DECLARATIONS AND IT SHIPPED WITH
-     * NEITHER. `.wave-docs-prose` is both, inside a `main` that is wider than
-     * the measure — so a header that fills `main` puts its trailing edge past
-     * the text it belongs to. Measured at 1440px: the button's right edge at
-     * 1152 against the prose's 1096, a 56px overhang that reads as a control
-     * floating off the article. `.wave-docs-pager` carries the same pair for
-     * the same reason, and a browser test guards it.
+     * No block margin: the heading it floats beside starts at the top of the
+     * column, so this does too, and the two read as one row.
      */
-    max-width: var(--wave-docs-measure);
-    margin-inline: auto;
-    margin-block: -0.5rem 0.5rem;
+    margin-block: 0;
   }
 
   .wave-docs-copy-page {
