@@ -3937,6 +3937,20 @@
     display: flex;
     justify-content: flex-end;
     /*
+     * ⚠️ POSITIONED AND RAISED, OR THE HERO PAINTS OVER IT. `.wave-docs-hero`
+     * is `position: relative` with `isolation: isolate`, and carries a
+     * `margin-block-start: -2rem` that climbs back over this row to reach the
+     * top of the column — 24px of overlap, measured. A positioned element
+     * paints above an unpositioned one whatever the source order, so without
+     * this the hero's grid pattern covered the button on every landing page.
+     *
+     * The overlap itself is wanted: it puts the control in the hero's own
+     * top-right, which is where a reader looks for it, and costs the hero
+     * none of its height.
+     */
+    position: relative;
+    z-index: 1;
+    /*
      * ⚠️ CAPPED *AND* CENTRED, WHICH IS TWO DECLARATIONS AND IT SHIPPED WITH
      * NEITHER. `.wave-docs-prose` is both, inside a `main` that is wider than
      * the measure — so a header that fills `main` puts its trailing edge past
@@ -3957,7 +3971,14 @@
     padding: 0.375rem calc(0.625rem - 1px);
     border: 1px solid var(--wave-docs-border);
     border-radius: var(--wave-docs-radius);
-    background: var(--wave-docs-bg-subtle);
+    /*
+     * ⚠️ THE PAGE'S OWN GROUND, NOT `bg-subtle` AND NOT `transparent`. A ghost
+     * button is the border and nothing else — but this one can sit over the
+     * hero, whose grid pattern would show straight through a transparent fill
+     * and turn the label into noise. `--wave-docs-bg` is invisible against the
+     * page and opaque against anything behind it.
+     */
+    background: var(--wave-docs-bg);
     color: var(--wave-docs-fg-muted);
     /*
      * ⚠️ NAMED, NOT `font: inherit` — WHICH RENDERED THIS IN TIMES. The package

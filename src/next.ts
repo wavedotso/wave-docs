@@ -1470,10 +1470,18 @@ export function createDocsRoute<
          * heading down for nothing — the same reason the hero and the explore
          * rows below are `null` rather than empty.
          *
-         * It is the first child of `main` rather than a sibling of it: the
-         * layout is a grid and `main` is one of its tracks, so anything placed
-         * beside it takes a column of its own and pushes the table of contents
-         * out of the third track.
+         * It is inside `main` rather than beside it: the layout is a grid and
+         * `main` is one of its tracks, so anything placed beside it takes a
+         * column of its own and pushes the table of contents out of the third.
+         *
+         * ⚠️ AND IT COMES *BEFORE* THE HERO, WHICH IT THEN FLOATS OVER. The
+         * hero carries `margin-block-start: -2rem` to cancel `__main`'s
+         * padding and reach the top of the column, so it climbs back over this
+         * row — measured, 24px of it. That is the intended picture: the button
+         * sits in the hero's own top-right, and the hero still starts at the
+         * top of the column. What it needed was a `z-index`, because the hero
+         * is positioned and this was not, so the grid pattern painted straight
+         * over the button. See `.wave-docs-page-header`.
          */
         copyPage === undefined
           ? null

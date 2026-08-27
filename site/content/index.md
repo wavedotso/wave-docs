@@ -10,7 +10,7 @@ actions:
 explore:
   - question: How to get it into a Next app
     href: /getting-started/installation
-  - question: What the five files actually do
+  - question: What the six files actually do
     href: /getting-started/quick-start
   - question: How a directory becomes a section
     href: /getting-started/navigation
@@ -78,7 +78,14 @@ code and tables. That is the price of never handing markup to
 `dangerouslySetInnerHTML`, and it is the first number a sceptical reviewer
 should ask for.
 
-## Five files
+## One command, six files
+
+```bash
+npx @waveso/docs init
+```
+
+That writes all six into an existing Next application, and never overwrites
+what is already there. They are small enough to read:
 
 ```ts title="lib/docs.ts"
 import { createDocsRoute } from '@waveso/docs/next';
@@ -93,11 +100,17 @@ import { docs } from '@/lib/docs';
 export default docs.Layout;
 ```
 
-The other three are a catch-all page, an index page and the search-index route —
-each one a re-export, each one explained in the
+The other four are a catch-all page, an index page, the search-index route and
+the corpus route — each one a re-export, each one explained in the
 [quick start](./getting-started/quick-start.md). What that gets you is a working
-documentation site: routing, a navigation sidebar, a table of contents,
-syntax highlighting, search, a mobile drawer and a skip link.
+documentation site: routing, a navigation sidebar, a table of contents, syntax
+highlighting, search, a mobile drawer, a skip link, a corpus for agents and a
+button that copies any page as markdown.
+
+A scaffold for six small files sounds like overkill until you notice that three
+of them fail *silently* when they are slightly wrong — see the
+[quick start](./getting-started/quick-start.md) for which three, and what each
+one costs.
 
 Three peer dependencies, one of them optional. No Tailwind, no MDX toolchain, no
 build step of your own.
