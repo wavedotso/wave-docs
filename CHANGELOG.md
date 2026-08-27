@@ -1,5 +1,280 @@
 # @waveso/docs
 
+## 0.12.0
+
+### Minor Changes
+
+- 3551951: **The search results and the sidebar say "there is more this way" the same way
+  the table does, and hide their scrollbars where they can.**
+
+  Four gradients on the search list, exactly as `.wave-docs-table-scroll` does it:
+  the two `local` covers are painted in the surface colour and travel _with_ the
+  rows, so each sits over its shadow only while that edge is at rest, and the two
+  `scroll` shadows are pinned to the box. A grey edge appears on precisely the side
+  that has rows off-screen, with no listener, no state and no hydration.
+
+  ⚠️ IT REPLACED A MASK, WHICH WAS THE WRONG TOOL TWICE OVER. A mask fades content
+  to _transparent_, so what showed through was the dialog's own white — a hole
+  rather than a shadow. And it cannot be conditional: CSS has no way to ask whether
+  there is anything above to scroll to, so the first and last rows were softened
+  even at rest.
+
+  ## The sidebar needs its shadow above the content, not behind it
+
+  ⚠️ `.wave-docs-sidebar` PAINTS ITS OWN GROUND, AND MUST. It is in the theme's
+  opt-in rule — the one that installs a ground wherever it installs a foreground
+  ramp — so a consumer mounting the tree alone gets one, and `styles.browser.test`
+  requires the shell to be a single surface. An element's background is painted
+  _below_ its children, so the four-gradient trick was covered by a child 480px
+  tall: measured 255/255 at the top edge with the nav scrolled — declared,
+  computed, and invisible.
+
+  So the navigation's overflow moved to an inner box, `.wave-docs-layout__sidebar-scroll`,
+  and the panel keeps only its edges.
+
+  ⚠️ THAT SPLIT IS THE FIX, AND EVERY VERSION BEFORE IT FOUGHT THE SCROLLER. An
+  absolutely positioned child of a scroll container is laid out against that
+  container's padding box and _joins its scrollable overflow_ — so nothing placed
+  inside a scroller is ever pinned to it. `position: sticky` only clamps, and a
+  clamp is still a thing that travels until it catches. With the scrolling on an
+  inner element the panel is an ordinary positioned box: `top: 0` and `bottom: 0`
+  are its own edges, and the bands have no scroll to have a position within.
+
+  The timeline is declared on the scroller and `timeline-scope`d up to the panel,
+  because a `scroll-timeline` name is visible to the declaring element's
+  descendants and these pseudo-elements belong to its parent.
+
+  ⚠️ AND THE SHADOW BELONGS TO THE PANEL RATHER THAN THE TREE, because
+  `.wave-docs-sidebar` paints an opaque ground — it is in the theme's opt-in rule,
+  and the shell has to be one surface — so a background on the scroller would be
+  painted underneath it. Measured 255/255 when it was.
+
+  ⚠️ AND THE NAV'S FADE IS A LENGTH, NOT A PERCENTAGE OF THE SCROLL. The table's
+  keyframes shape their fade in percentages, which are percentages of the
+  container's _total_ scroll range — fine on a table, wrong on a navigation. A nav
+  with 1000px of scroll turns the same `2%…8%` into 20px…80px, so the shadow spends
+  eighty pixels of scrolling arriving at full strength, which reads exactly like it
+  is moving with the content rather than pinned to the edge. `animation-range: 0
+1rem` makes it the same short distance whatever the nav's height, identical on a
+  six-page site and a three-hundred-page one, with plain fades for keyframes
+  because the shaping now lives in the range.
+
+  ⚠️ THE SCROLLBAR IS HIDDEN ONLY WHERE THE SHADOW EXISTS. Both live in the same
+  `@supports (animation-timeline: scroll())`, so Firefox — where scroll-driven
+  animations have not shipped — keeps the thin bar rather than losing the bar and
+  the shadow together. A scrollbar is the one cue that a column has more below it,
+  and taking it away before something replaces it trades a slab for nothing.
+
+  ⚠️ AND A SECOND TEST LEARNED THAT `getAnimations()` IS NOT "TRANSITIONS". A
+  scroll-driven animation's `finished` promise resolves when the _scroll position_
+  reaches the end, which is to say never on a panel sitting at the top — so
+  awaiting the whole list hung `sidebar.browser.test.tsx` for its full 15s timeout
+  the moment this shadow existed. `nav.browser.test.tsx` had already been bitten by
+  the table's; this is the second place the assumption lived.
+
+- 70649b8: **Search results get a glyph, a breadcrumb, and no scrollbar.**
+
+  **A page or a section, as an icon.** Which one is read off the `href` rather
+  than a new index field — a record with an anchor is a section within a page and
+  one without is the page itself, which is what `buildSearchIndex` means by its
+  lead record — so the records did not grow by a byte.
+
+  ⚠️ AND THE ICON IS NOT DECORATION, IT IS THE ALIGNMENT. With no icon a result's
+  heading sat on the same column as the input's _magnifier_ while the input's own
+  text sat 24px right of it: three left edges where a reader expects two, which is
+  what made the dialog read as stacked levels rather than as a list under a field.
+  The icon takes the magnifier's column and the text takes the input's, so the two
+  rows are the same shape. Measured: 18px and 42px, both rows, plus the footer's
+  key caps on the 18.
+
+  **The second line is a breadcrumb.** The segments were always a trail from the
+  site's root to the page; slashes made them read as a URL to parse and `›` makes
+  them read as what they are. ⚠️ SAFE ONLY BECAUSE THAT LINE IS `aria-hidden` —
+  more than one screen reader pronounces the character, which is exactly why
+  `spokenName` joins with commas instead. The two lines carry the same fact in the
+  form each audience can use.
+
+  ⚠️ THE SEPARATOR IS THE PACKAGE'S OWN CHEVRON, NOT A CHARACTER, AND TWO
+  CHARACTERS WERE MEASURED AND REJECTED FIRST. `›` (U+203A) inks 4.93px tall in
+  the shipped mono face at 11px, against 6.32 for an `s` and 8.51 for a `b` — it
+  sat visibly below the words it separated. `❯` (U+276F) inks 8.03 and fixed the
+  height _on one machine_: `ui-monospace` resolves to SF Mono here, Consolas on
+  Windows, Liberation Mono on Linux, and a glyph missing from one of those falls
+  back to another face at another width. U+3009 already demonstrated exactly that,
+  measuring 11.24px against the 6.62 cell.
+
+  An SVG has no font to be missing from — and it is the same Lucide chevron the
+  sidebar and the pager draw, which is the real argument: everything else here is
+  that one set.
+
+  ⚠️ AND THE TRAIL IS SET IN THE SANS, NOT IN THE MONO IT STARTED IN — WHICH IS
+  WHAT MADE THE SEPARATOR RELIABLE. A monospace face advances every glyph one
+  cell, so the segments marched on a rigid grid an icon could not join, and its
+  metrics are whatever the machine resolves: SF Mono here, Consolas on Windows,
+  Liberation Mono on Linux. The cap height an inline glyph is sized against
+  therefore moved from reader to reader, which is the same portability problem
+  that ruled out `›` and `❯` as characters — arriving a second time through the
+  face rather than through the glyph. Proportional sans has ordinary spacing and
+  one set of metrics to match. `font-size` goes up a notch with it, because a
+  mono face reads larger at the same size and holding the number would have
+  shrunk the line.
+
+  ⚠️ AND THE `viewBox` IS CROPPED TO THE STROKE, WHICH IS WHAT RETIRED FOUR
+  CORRECTIONS. On Lucide's full 24 grid the chevron occupies x 9–15 and y 6–18,
+  so a square box around it was five sixths air across and half air down — and
+  every one of those gaps had to be subtracted back by hand: a `vertical-align`,
+  a negative `margin-inline`, a negative `margin-block`, and a size chosen to
+  make the surplus come out right. `8 5 8 14` is the painted extent, caps and
+  joins included. The box is the glyph, so it sits on the baseline the way a
+  letter does with nothing declared, and the air beside it is one positive
+  `margin-inline`.
+
+  ⚠️ AND IT CARRIES `overflow: visible`, WITHOUT WHICH THE POINT IS FLAT. An
+  `svg` clips to its viewport by default and this `viewBox` is exactly the
+  stroke's extent, so the round join at the tip lands on the box's own edge and
+  loses its outermost anti-aliased pixel. Nothing overlaps anything: what spills
+  is a fraction of a pixel.
+
+  ## The scrollbar is hidden, and it cannot be conditional
+
+  ⚠️ THERE IS NO CSS WAY TO SHOW A SCROLLBAR ONLY WHILE SCROLLING. That behaviour
+  is the platform's: macOS draws overlay scrollbars that fade in on scroll and out
+  after it, and this list gets it for free there. Windows and Linux draw a classic
+  one that is always present, and the only ways to make it come and go are a
+  JavaScript timer toggling a class or a scrollbar drawn from scratch in script —
+  which is what a `ScrollArea` component is, and neither belongs in a package whose
+  whole argument is what it does _not_ ship to a reader.
+
+  So it is hidden, as `@waveso/app` does with `.scrollbar-none`. What replaces it
+  is the keyboard rather than a fade: the footer says `↑ ↓ Select`, the list is
+  driven by `aria-activedescendant`, and arrowing past the last visible row scrolls
+  it and loads the next page.
+
+  ⚠️ AND `pageSize` STAYS A WINDOW, NOT A CAP. It was a hard ceiling of 8 once, and
+  that was removed with measurements: on a six-page site "docs" matches 18, so
+  results were unreachable and the live region announced "8 results" — not a
+  smaller truth but a false one. Rendering every row of a 300-page corpus costs
+  40ms, 128ms at 4x throttle, which is what paging exists to avoid; the ceiling
+  was never what made it fast.
+
+  The size budget moves with the glyphs, and the figures the README and the
+  installation page publish move with it — a document here may not understate what
+  this package costs.
+
+- 78053a6: **Nothing in the search dialog is selected until the reader selects it.**
+
+  Typing lit the first result the instant it arrived, so a row changed under a
+  reader for something they had not chosen — and on this package's accent that
+  reads as a decision already made. `activeIndex` starts at `-1` now: an arrow key
+  or the pointer moving over a row is what selects.
+
+  ⚠️ AND EVERY GUARD FOR IT ALREADY EXISTED, WHICH IS WHY THIS IS ONE NUMBER.
+  `hits[-1]` is `undefined`, so no `aria-activedescendant` is written and Enter
+  returns without opening anything. The one place that needed teaching is the
+  arrow keys: they wrap modulo the list, and `(-1 - 1 + n) % n` is the _second to
+  last_, so Up from a fresh query landed one short of the end.
+
+  **The active row is the table header's grey**, easing on the same 150ms the
+  sidebar's rows use. Moving the pointer over a result activates it, so hovering
+  _is_ this state; there is no second rule for it.
+
+  It has been four things: a 2px accent ring, which read as a component borrowed
+  from somewhere else and came and went as a reader arrowed; the trigger's border
+  pair, which meant bordering _every_ row to make one edge legible and turned a
+  list into a stack of cards; an accent tint, which was the same colour family as
+  the field above it. A row is a list item and its state is a colour — the field is
+  a control, and that is what wears the trigger's border.
+
+  ⚠️ `bg-subtle` ON `bg` IS ABOUT 1.02:1, SO THE TINT IS A HINT AND NOT AN
+  INDICATOR. The marker going `fg-subtle` to `fg` is the part that carries the
+  state — text contrast rather than non-text, and the sidebar's own hover. What
+  must not happen is the tint being left to carry it alone.
+
+  ## The field stops drawing a ring it could never put down
+
+  ⚠️ A TEXT INPUT MATCHES `:focus-visible` WHENEVER IT IS FOCUSED, HOWEVER FOCUS
+  ARRIVED — that is the spec, not a heuristic — and this dialog focuses its input
+  the moment it opens. So the accent ring was not a state, it was the field's
+  permanent appearance, and it stopped the field looking like the bordered grey
+  control the reader clicked to get there.
+
+  The edge darkens to `--wave-docs-border-strong` instead, which is what the
+  trigger does under the pointer, so the field is the trigger in both of its
+  states.
+
+  ⚠️ AND THE INDICATOR IS NOT LOST WITH IT, BECAUSE A TEXT FIELD HAS ONE OF ITS
+  OWN. The caret is the platform's focus indication for a text box, it is in this
+  field the whole time the dialog is open, and it is what a reader looks for to see
+  where typing goes. That is a different argument from the one this rule used to
+  reject: "the dialog frame is the indicator" was a _static_ border that looked
+  identical focused and unfocused, and indicated nothing. This edge changes.
+
+  ## The list fades at both edges
+
+  A mask on the scrollport, so the row being cut off is the one that softens. It
+  does not travel with the content: a mask paints against the element's own box, so
+  the two stops stay at the top and bottom of the _port_ while the rows move under
+  them.
+
+  ⚠️ IT IS UNCONDITIONAL, WHICH IS THE ONE THING TO KNOW. CSS cannot ask "is there
+  anything above this to scroll to" — the table's shadow answers that with a
+  scroll-driven animation whose timeline goes inactive when nothing overflows, and
+  a mask has no equivalent. So the first and last rows carry a little of it at
+  rest. At `1.25rem` against a row nearer three times that, it costs the top pixel
+  or two of a heading and buys never guillotining one.
+
+  ## The field, and the gap under it
+
+  **The field is the trigger, expanded.** Same border, same fill, same radius. It
+  was a border with no fill — two frames a few pixels apart — and briefly a fill
+  with no border, which is a tinted band rather than a control. The trigger has
+  always been both, and both together are what reads as a field.
+
+  ⚠️ THE PADDING IS NOT COPIED WITH THEM. The trigger pays `calc(0.5rem - 1px)`
+  because it is a compact control in a sidebar; the field pays
+  `calc(0.75rem - 1px)` because its glyph has to land on the column the results
+  and the footer sit on. The `- 1px` is the border either way — content inside a
+  bordered box starts a border further in.
+
+  The field takes the base radius and the result rows take `-sm`, which is the tier
+  system doing what it says: both are controls, and a result row is a list item.
+
+  ⚠️ AND THE GAP UNDER THE FIELD WAS PAID TWICE. The field's margin and the result
+  list's top padding both contributed, so the space between the input and the first
+  result was double the space above the input — a doubled gap in the one place a
+  reader's eye travels on every keystroke. The list drops its top padding; the
+  field keeps its margin, because an empty result list is `display: none` and a gap
+  paid from there would vanish on the query that matches nothing.
+
+### Patch Changes
+
+- 688a84c: **The search dialog lines up on one column, and its input is a field rather
+  than a band.**
+
+  The input row was flush to the dialog's frame, so it could only round the two
+  corners it shared with it and needed a rule underneath to separate it from the
+  results. Inset by the same margin the results list uses, it is a box like they
+  are — all four corners rounded, and the gap does the separating.
+
+  ⚠️ AND ITS RADIUS IS THE DIALOG'S MINUS THE GAP, NOT THE DIALOG'S. A rounded box
+  inset inside a rounded box is concentric only at `outer - gap`; equal radii run
+  the two corners at different curvatures six pixels apart and the field reads as
+  pasted onto the dialog rather than set into it.
+
+  **One column, measured from the bottom up.** The footer's key caps are the
+  anchor — the one row whose left edge is a drawn object — and the results' text
+  and the input's magnifier are measured to it. All three now start 18px from the
+  dialog's inner edge.
+
+  ⚠️ BOXES, NOT INK. A cap's arrow sits its own border and `0.4em` of padding
+  inside the cap, so aligning the _glyphs_ would put every other row on a column
+  that moves whenever the footer's font size does.
+
+  ⚠️ AND THE INPUT ROW PAYS `calc(0.75rem - 1px)` BECAUSE IT IS THE ONE ROW WITH A
+  BORDER. Content inside a bordered box starts a border further in than content
+  inside an unbordered one, so equal padding misses by exactly that — the same
+  subtraction `--wave-docs-panel-inset` exists for.
+
 ## 0.11.0
 
 ### Minor Changes
