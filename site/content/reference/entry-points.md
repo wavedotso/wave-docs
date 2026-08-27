@@ -16,7 +16,8 @@ not documented is not importable — see [Stability](./stability.md).
 | `@waveso/docs/render` | Node | `createDocsRenderer`, `resolveMarkdownLink` |
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS`, `DEFAULT_DOCS_THEMES` |
 | `@waveso/docs/search-index` | Node | `extractSearchRecords`, `buildSearchIndex` |
-| `@waveso/docs/react/<name>` | Browser + RSC | Ten components, one per subpath — enumerated below |
+| `@waveso/docs/llms-txt` | Node | `buildLlmsTxt`, `buildLlmsFullTxt`, `toPortableMarkdown` |
+| `@waveso/docs/react/<name>` | Browser + RSC | Eleven components, one per subpath — enumerated below |
 | `@waveso/docs/frontmatter` | Any | `docFrontmatterSchema`, `parseFrontmatter`, `z` |
 | `@waveso/docs/errors` | Any | `isDocsError`, `DOCS_ERROR_PREFIX`, and the `DocsError` and `DocsErrorCode` types |
 | `@waveso/docs/types` | Any | Seventeen shared types. Type-only — it compiles to an empty JavaScript file |
@@ -86,6 +87,7 @@ so nothing is resolved away as assumed-present, and asserted exactly — with
 | `@waveso/docs/highlighter` | none |
 | `@waveso/docs/render` | none |
 | `@waveso/docs/search-index` | none |
+| `@waveso/docs/llms-txt` | none |
 | `@waveso/docs/source` | `node:fs/promises`, `node:path` |
 | `@waveso/docs/next` | `node:crypto`, `node:fs/promises`, `node:path` |
 

@@ -33,6 +33,7 @@ telling them.
 | `DocsLink` | `react/next-link` | client | `next/link`, adapted — pass it as `Link` when composing by hand |
 | `Callout` | `react/callout` | server | Note · tip · important · warning · caution |
 | `YouTube` | `react/youtube` | server | Click-to-load facade, with no client JavaScript at all |
+| `DocsCopyPage` | `react/copy-page` | client | Copies a page's markdown, sliced out of the corpus |
 | `SkipLink` | `react/skip-link` | server | Targets `docs.Page`'s `<main>`; `DOCS_CONTENT_ID` is that id |
 | `createMarkdownComponents` | `react/markdown-components` | server | The element → component map |
 

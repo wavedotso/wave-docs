@@ -1,12 +1,38 @@
 ---
 title: Quick start
-description: Five files between an empty Next application and a documentation site.
+description: One command between an empty Next application and a documentation site.
 ---
 
-Five files stand between an empty Next application and a working documentation
-site. Each one earns its place, and the two shortest are the two most often
-left out. [Installation](./installation.md) is the single dependency all of
-this assumes.
+```bash
+npx @waveso/docs init
+```
+
+That writes every file below into an existing Next application. It never
+overwrites: anything already there is reported and left alone, so a second run
+is safe and a project that already has a `layout.tsx` cannot lose it.
+
+```
+--app-dir <dir>       where the App Router lives            (app)
+--config <file>       where createDocsRoute goes            (lib/docs.ts)
+--content-dir <dir>   where your markdown lives             (content/docs)
+--base-path <path>    where the docs are mounted            (/docs)
+--site-url <url>      your origin, for canonicals and links
+--llms-index          also write llms.txt, the agent index
+```
+
+Then put markdown in `content/docs/` and uncomment `siteUrl`.
+[Installation](./installation.md) is the single dependency all of this assumes.
+
+**Six small files, so why a scaffold?** Because three of them fail *silently*
+when they are slightly wrong. A `dynamicParams` that is not a literal `false`
+builds green and then renders unlisted URLs on demand. A route handler missing
+`export const dynamic = 'force-static'` re-renders your whole corpus per
+request, from markdown that is not in the deployment bundle. An index page
+nobody created leaves the mount itself a 404. The file count is Next's floor —
+a route is a folder in *your* `app/`, and no package can add one — but the
+typing is not.
+
+The rest of this page is what it writes, and why.
 
 ## Create the route once
 
@@ -117,6 +143,23 @@ route throws `search-index-dynamic` at the reader, inside the search dialog.
 [Search](../guides/search.md) has that failure in full, and the caching
 headers the route sets in place of Next's.
 
+## The corpus route
+
+```ts title="app/docs/llms-full.txt/route.ts"
+import { docs } from '@/lib/docs';
+
+export const GET = docs.llmsFullTxt;
+export const dynamic = 'force-static';
+```
+
+Every published page's markdown in one file — for agents, and for the **Copy
+page** button, which reads it and slices out the page it is on. The button is
+on by default once `llms` is configured, and needs nothing else.
+
+Leave this file out and the button removes itself on the first click; that
+failure is deliberate, and [Markdown for agents](../guides/llms.md) has the
+whole story, including why the button does not use a `.md` URL per page.
+
 ## The content folder
 
 ```
@@ -136,8 +179,9 @@ schema fields of your own are in [Writing content](./writing-content.md).
 ## What you have now
 
 Routing, a navigation sidebar, a table of contents, syntax highlighting, search,
-a mobile drawer and a skip link — from five files, none longer than six lines,
-and no layout CSS of your own. This site is built from the same five.
+a mobile drawer, a skip link, a corpus for agents and a Copy page button — from
+six files, none longer than a dozen lines, and no layout CSS of your own. This
+site is built from the same six.
 
 Every failure this package raises carries a `DocsErrorCode`, and
 [Errors](../reference/errors.md) lists each one with its fix.

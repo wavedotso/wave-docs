@@ -86,6 +86,27 @@ The one real cost is the middle pair: shipping a tree instead of a string is abo
 
 ## Quick start
 
+```bash
+npx @waveso/docs init
+```
+
+That writes every file below into an existing Next application — the config, the layout, both page files, and the two route handlers. It never overwrites: anything already there is reported and left alone, so running it twice is safe and running it in a project that already has a `layout.tsx` cannot destroy one.
+
+```
+--app-dir <dir>       where the App Router lives            (app)
+--config <file>       where createDocsRoute goes            (lib/docs.ts)
+--content-dir <dir>   where your markdown lives             (content/docs)
+--base-path <path>    where the docs are mounted            (/docs)
+--site-url <url>      your origin, for canonicals and links
+--llms-index          also write llms.txt, the agent index
+```
+
+Then put markdown in `content/docs/` and fill in `llms.title` and `siteUrl`.
+
+**Why a scaffold at all, when it is six small files?** Because three of them fail *silently* when they are slightly wrong: a `dynamicParams` that is not a literal `false` builds green and then renders unlisted URLs on demand; a route handler missing `export const dynamic = 'force-static'` re-renders your whole corpus per request from markdown that is not in the deployment bundle; and an index page nobody created leaves the mount itself a 404. The file count is Next's floor — a route is a folder in *your* `app/`, and no package can add one — but the typing is not.
+
+The rest of this section is what it writes, and why.
+
 **Three route files, and each one earns its place.** `[...slug]` does not match `/docs` itself, so the index needs its own `page.tsx` — an optional catch-all (`[[...slug]]`) does match, but leaves `/docs/index` live and serving byte-identical HTML with no canonical between them. The third serves the search index, which the layout's search trigger reads.
 
 Create the route once, in a module every route file imports:
@@ -1150,6 +1171,70 @@ export default () =>
 
 The rejected spellings are not pedantry. Next compiles a redirect `source` as a path pattern, so `aliases: ['v1:beta']` installed a **wildcard** — it built green and then permanently 308'd `/docs/v1-guide`, a real prerendered page, away to somewhere else.
 
+### Copy page
+
+A button that puts the page's markdown on the reader's clipboard. **On by default once `llms` is configured**, and the corpus route below is the only thing it needs.
+
+It reads `/llms-full.txt` and slices out the page it is on, so there is no per-page artifact, no build step and nothing to configure. `copyPage: false` turns it off; an object overrides `label`, `copiedLabel` and `failedLabel`.
+
+```ts
+export const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  siteUrl: 'https://example.com',
+  copyPage: { label: 'Copy as Markdown' }, // optional — `true` is the default
+});
+```
+
+It renders in a header row at the top of the article column, and that row is not emitted when `copyPage` is `false`.
+
+**The default is "on if `llms` is set", not plain `true`.** The button reads the corpus, and `docs.llmsFullTxt` refuses to serve one without an `llms` option — so a site with no `llms` has nothing for the button to read, and rendering it there would produce a control whose only possible outcome is to remove itself. `copyPage: true` overrides that, for a host serving the corpus some other way.
+
+**It still hides itself if the route file is absent** — the one case the server cannot see. Whether `/llms-full.txt` is being served is only knowable from the browser, so the button renders and the first click that 404s removes it — rather than a site that never added the route shipping a control which fails every press. A network failure is treated differently: the wiring is fine and the next press may work, so the button says so and stays.
+
+**The cost is one download of the corpus on the first click**, cached for the rest of the visit — around 40 KB gzipped for twenty pages. It is on *click*, not on load, so page weight and first paint are untouched for every reader who never presses it.
+
+`DocsCopyPage` is exported from `@waveso/docs/react/copy-page` for a hand-composed shell. It takes `href` — the page's route, so it can find that page in the corpus — plus the three labels and `corpusUrl`, which defaults to `/llms-full.txt` and only needs setting if the route lives somewhere else.
+
+**Why not a `.md` URL per page?** That was the first design, and in Next it costs five steps: a route file, a rewrite, `output: 'export'` made conditional, a post-build script, and a placeholder the export forces which the script then deletes. Two of them fail silently. All of it exists because `*.md` is a *pattern* the docs catch-all already owns, while `llms-full.txt` is a fixed path that needs none of it. Astro and Vite serve either shape in a few lines, so the simpler one travels better too.
+
+### The corpus as markdown
+
+Two files, at `/llms.txt` and `/llms-full.txt`, in [llmstxt.org](https://llmstxt.org)'s format. Both are prerendered and neither ships a byte to a browser:
+
+```ts
+// app/llms.txt/route.ts — the whole file
+import { docs } from '@/lib/docs';
+
+export const GET = docs.llmsTxt;
+export const dynamic = 'force-static';
+```
+
+```ts
+// app/llms-full.txt/route.ts
+export const GET = docs.llmsFullTxt;
+export const dynamic = 'force-static';
+```
+
+Configure them once, where the route is created:
+
+```ts
+export const docs = createDocsRoute({
+  contentDir: 'content/docs',
+  siteUrl: 'https://example.com',
+  llms: { title: 'Your product', description: 'One sentence on the corpus.' },
+});
+```
+
+`llms.txt` is an index — a line per page with its title and description. `llms-full.txt` is every page's body, each labelled with its own URL and separated by a `---`.
+
+**This is a URL convention, not a button.** A "copy page as markdown" control is UI over these files; an agent fetching the corpus, a reader piping a page into a prompt, and an MCP server built later all want the file, and none of them want a click.
+
+**The markdown is the author's, not a re-render.** A hosted documentation service has to reconstruct markdown from whatever it rendered; the source is still on disk here, so these files are the original bodies with exactly two edits — a `# title` when the body has none, and link destinations resolved against the page they were written on. Everything else survives byte for byte, list markers and table alignment included.
+
+That resolution matters more than it looks: the destination for this text is a chat window, where `[auth](./api/auth)` has nothing to resolve against. Destinations are found by **parsing**, not by matching `](…)`, so the example URLs in your code fences are left exactly as written — which a regex rewriter would edit, in the one place a reader is meant to copy verbatim. Without a `siteUrl` the links are rewritten to root-relative paths instead of absolute ones.
+
+The same three functions are exported from `@waveso/docs/llms-txt` for anyone building their own artifact — `buildLlmsTxt`, `buildLlmsFullTxt` and `toPortableMarkdown`, the last being one page at a time.
+
 ### Development
 
 Markdown files are not in Next's module graph, so nothing recompiles a route module when one changes. `createDocsRoute` re-scans the content directory on every request outside `NODE_ENV=production`: edits appear on reload, new files are found without a restart, and the sidebar from `docs.source.nav()` agrees with the page body on the *same* request.
@@ -1219,6 +1304,7 @@ try {
 | `missing-peer` | `next` is absent, or not the shape this adapter expects. | Install `next`, or build pages from `@waveso/docs/react/*` with your own loader. |
 | `search-index-unavailable` | The dialog could not fetch or parse the index. | Check `indexUrl` — pass `docs.searchIndexUrl`, and prefix it yourself under a Next `basePath`. |
 | `search-index-dynamic` | The search-index route ran at request time instead of prerendering. | Add `export const dynamic = 'force-static'` to the route file. It must be a literal. |
+| `llms-unconfigured` | `docs.llmsTxt` or `docs.llmsFullTxt` was called without an `llms` option. | Pass `llms: { title, siteUrl }` to `createDocsRoute`. The title is the `h1` of `llms.txt`; without `siteUrl` every link in the file is root-relative. |
 | `invalid-code-meta` | A fence's `title=` cannot be read. | Quote it: ```` ```ts title="app/page.tsx" ````. |
 | `internal` | A plugin ran without context this package always supplies. | This one is a bug here. Please report it with the stack trace. |
 

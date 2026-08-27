@@ -34,12 +34,14 @@ interface DocsRouteOptions<
   miniSearchOptions?: Partial<Options<SearchRecord>>;
   components?: MarkdownComponents;
   labels?: DocsLabels;
+  llms?: DocsLlmsOptions;
+  copyPage?: boolean | DocsCopyPageConfig;
 }
 
 type DocsLinkSeverity = 'throw' | 'warn' | 'ignore';
 ```
 
-Twenty options, one of them required. Every optional is really declared
+Twenty-two options, one of them required. Every optional is really declared
 `?: T | undefined` rather than `?: T`, so a value you computed and may hand over
 as `undefined` is accepted under `exactOptionalPropertyTypes` instead of forcing
 a conditional spread at the call site.
@@ -93,6 +95,45 @@ segments.
 
 Omit it and the canonical is a root-relative path, which Next resolves against
 `metadataBase`. Set neither and the pages ship with no usable canonical at all.
+
+## Markdown for agents
+
+### `llms`
+
+```ts
+llms?: {
+  title: string;
+  description?: string;
+  details?: string;
+}
+```
+
+Turns on `docs.llmsTxt` and `docs.llmsFullTxt`, and with them the **Copy page**
+button. `title` is the `h1` of `llms.txt` — your product's name, which is why it
+is required rather than defaulted: an index calling your product
+"Documentation" is worse than no index.
+
+Links inside both files resolve against [`siteUrl`](#siteurl) rather than a
+second copy of it. Without one they stay root-relative, which is the honest half
+of the feature for docs mounted inside a private application.
+
+### `copyPage`
+
+```ts
+copyPage?: boolean | { label?: string; copiedLabel?: string; failedLabel?: string }
+```
+
+A button at the top of every page that puts that page's markdown on the
+clipboard. **The default is "on if `llms` is set", not plain `true`** — the
+button reads the corpus, and `docs.llmsFullTxt` refuses to serve one without
+`llms`, so a site without it has nothing for the button to read.
+
+`false` turns it off, which is worth doing for a `/docs` embedded in an
+application that would rather not spend the kilobyte. An explicit `true`
+overrides the default, for a host serving the corpus some other way.
+
+[Markdown for agents](../guides/llms.md) has the rest, including what the
+button costs and why it does not use a `.md` URL per page.
 
 ## Validation
 
@@ -224,6 +265,8 @@ their defaults.
 | `renderAll` | `() => Promise<Array<RenderedDoc<TFrontmatter>>>` | Every published page. The escape hatch behind `searchIndex` |
 | `searchIndex` | `() => Promise<Response>` | `GET` for `app/<basePath>/search-index.json/route.ts` |
 | `searchIndexUrl` | `string` | The base path with `/search-index.json` appended. Not prefixed with Next's own `basePath` config |
+| `llmsTxt` | `() => Promise<Response>` | `GET` for `app/<basePath>/llms.txt/route.ts`. Optional — the corpus below carries every page and its URL |
+| `llmsFullTxt` | `() => Promise<Response>` | `GET` for `app/<basePath>/llms-full.txt/route.ts`. Every page's markdown, and what the Copy page button reads |
 
 **Two route files need a route segment config that is a literal, and neither can
 be forwarded from here.** Next parses those out of the module before any of it
