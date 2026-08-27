@@ -12,8 +12,7 @@ Parallel bars are unambiguously a handle.
 
 A chevron was the other candidate and it loses on shape. The control is a 16px
 pill and an arrow wants to be square, so it either crowds the pill's edges or
-shrinks below the rest of the icon set. Lines are narrow by nature: two 2px bars
-6px apart is 8px of ink with 4px clear either side.
+shrinks below the rest of the icon set. Lines are narrow by nature: two 2px bars 4px apart is 6px of ink with 5px clear either side.
 
 Still one element and a `box-shadow` copy, the way the dots were — no markup,
 and it follows `currentcolor` through the hover state for free. The element is

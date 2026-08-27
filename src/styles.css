@@ -3691,12 +3691,12 @@
     inset-inline-start: 50%;
     width: 2px;
     /* Comfortably inside the 3.5rem pill, so the ends never crowd its curve. */
-    height: 1.5rem;
-    /* 6px apart: 8px of ink in a 16px pill, 4px clear either side. */
-    translate: calc(-50% - 3px) -50%;
+    height: 2rem;
+    /* 4px apart: 6px of ink in a 16px pill, 5px clear either side. */
+    translate: calc(-50% - 2px) -50%;
     border-radius: 9999px;
     background: currentcolor;
-    box-shadow: 6px 0 0 currentcolor;
+    box-shadow: 4px 0 0 currentcolor;
   }
 
   /*
