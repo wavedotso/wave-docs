@@ -2188,6 +2188,26 @@
         color 150ms ease-out;
     }
 
+    .wave-docs-copy-page,
+    .wave-docs-copy-page__icon {
+      transition:
+        border-color 150ms ease-out,
+        color 150ms ease-out;
+    }
+
+    /* Inside the motion block, so a reader who asked for less motion gets a
+     * static button rather than a pulsing one — the state is still carried by
+     * `cursor: progress` and by the live region. */
+    .wave-docs-copy-page[data-state='loading'] {
+      animation: wave-docs-copy-page-thinking 900ms ease-in-out infinite;
+    }
+
+    @keyframes wave-docs-copy-page-thinking {
+      50% {
+        opacity: 0.55;
+      }
+    }
+
     /* `color` as well as `opacity`: the marker inherits its row's colour, and
      * on the current page that is a jump from muted grey to accent blue. */
     .wave-docs-sidebar__icon {
@@ -3892,6 +3912,123 @@
    * theirs is, which is the edge a reader sees. Block padding is untouched: it
    * sets this control's height, and nothing below it is the same height.
    */
+  /*
+   * "Copy page" — this page's markdown, on the clipboard.
+   *
+   * Built on the search trigger's shape rather than beside it: both are quiet
+   * controls sitting in the reading column's chrome, and a second button
+   * spelling its own border and radius is how two controls on one screen end
+   * up a pixel apart.
+   */
+  /*
+   * The page header — the row the "Copy page" button sits in.
+   *
+   * ⚠️ IT IS NOT EMITTED AT ALL WHEN NOTHING OPTED INTO IT, SO THIS RULE NEVER
+   * APPLIES TO A PAGE THAT HAS NO BUTTON. That is why it can carry a margin
+   * without guarding for emptiness: an empty header with a bottom margin would
+   * push the first heading down on every page of every site that never turned
+   * this on.
+   *
+   * Trailing edge, and the negative block margin pulls it back into the space
+   * `main`'s padding already leaves above the title — a control in the chrome
+   * should not add a row of its own.
+   */
+  .wave-docs-page-header {
+    display: flex;
+    justify-content: flex-end;
+    /*
+     * ⚠️ CAPPED *AND* CENTRED, WHICH IS TWO DECLARATIONS AND IT SHIPPED WITH
+     * NEITHER. `.wave-docs-prose` is both, inside a `main` that is wider than
+     * the measure — so a header that fills `main` puts its trailing edge past
+     * the text it belongs to. Measured at 1440px: the button's right edge at
+     * 1152 against the prose's 1096, a 56px overhang that reads as a control
+     * floating off the article. `.wave-docs-pager` carries the same pair for
+     * the same reason, and a browser test guards it.
+     */
+    max-width: var(--wave-docs-measure);
+    margin-inline: auto;
+    margin-block: -0.5rem 0.5rem;
+  }
+
+  .wave-docs-copy-page {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem calc(0.625rem - 1px);
+    border: 1px solid var(--wave-docs-border);
+    border-radius: var(--wave-docs-radius);
+    background: var(--wave-docs-bg-subtle);
+    color: var(--wave-docs-fg-muted);
+    /*
+     * ⚠️ NAMED, NOT `font: inherit` — WHICH RENDERED THIS IN TIMES. The package
+     * scopes its sans to the components that own text: `.wave-docs-prose` and
+     * `.wave-docs-toc` set it, `body` and `.wave-docs-layout__main` do not,
+     * because a host owns their typography. So a control placed in `main`
+     * inherits the browser's default serif, and the mismatch is not only the
+     * face: Times sits on a different baseline at the same size, which is what
+     * made an exactly-aligned button look crooked.
+     */
+    font-family: var(--wave-docs-font-sans);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+
+  /*
+   * The fetch, as the label thinking.
+   *
+   * ⚠️ NOT A FOURTH ICON. A cold click crosses the network, and with nothing
+   * between the press and the result the button flashed straight to ✓ or ✗ —
+   * which reads as an outcome *of the click* rather than of a request that had
+   * been running. A spinner would say the same thing and cost another glyph in
+   * a bundle whose whole argument is its size; the label is already there.
+   */
+  .wave-docs-copy-page[data-state='loading'] {
+    cursor: progress;
+  }
+
+  .wave-docs-copy-page:hover {
+    border-color: var(--wave-docs-border-strong);
+    color: var(--wave-docs-fg);
+  }
+
+  /*
+   * ⚠️ THE OUTCOME IS A COLOUR ON THE ICON, NOT ON THE BUTTON. Recolouring the
+   * whole control makes a 2-second flash of green or red in the corner of the
+   * page, which reads as an error state either way; the glyph already changed
+   * shape, and the colour is there to say which way it went.
+   */
+  .wave-docs-copy-page[data-state='copied'] .wave-docs-copy-page__icon {
+    color: var(--wave-docs-callout-note);
+  }
+
+  .wave-docs-copy-page[data-state='failed'] .wave-docs-copy-page__icon {
+    color: var(--wave-docs-callout-caution);
+  }
+
+  .wave-docs-copy-page__icon {
+    flex: none;
+  }
+
+  /*
+   * The live region. Empty at rest and never visible — it exists so the
+   * outcome is announced without renaming the button while it is pressed.
+   *
+   * The standard visually-hidden recipe rather than `display: none`, which
+   * removes it from the accessibility tree and takes the announcement with it.
+   */
+  .wave-docs-copy-page__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .wave-docs-search-trigger {
     display: flex;
     align-items: center;

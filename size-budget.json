@@ -31,6 +31,10 @@
     "next-link": {
       "max": 300,
       "note": "`next/link` with three props adapted, and nothing else. It exists so a consumer composing a shell by hand has something that type-checks under `exactOptionalPropertyTypes` without a cast — so it should stay the thinnest thing in this list. Growth here means the adapter started having opinions, and the place for those is the component using it."
+    },
+    "copy-page": {
+      "max": 1280,
+      "note": "The “Copy page” button. Holds no markdown: it fetches `/llms-full.txt` on click and slices this page out of it, so this is the control, the three icon states, the clipboard write and the slice — nothing that scales with the corpus. Raised once from 1.03 KB when the button moved off per-page `.md` URLs onto the corpus: the slice costs ~230 bytes and removed five steps of consumer wiring, two of which failed silently. Embedding each page's source in its own HTML was the other alternative, and it taxes every reader on every page load for a control most never press."
     }
   },
   "payload": {

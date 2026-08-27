@@ -169,6 +169,11 @@ const INTERNAL_REACT_MODULES = new Set<string>([
   // `./react/next-link` IS exported: it is the ready-made component built from
   // this, which is what a consumer composing a shell by hand actually wants.
   'link-adapter',
+  // The clipboard write, with its `execCommand` fallback for plain HTTP.
+  // Shared by the code button's runtime and `DocsCopyPage`, and private for the
+  // same reason as `link-adapter`: it exists so the two cannot answer "did the
+  // copy work?" differently, not to be a third answer.
+  'clipboard',
   // The shell. `docs.Layout` is the public name for all three, and it has to
   // be, because two of them only work when the route wires them together: the
   // drawer's trigger lives in the sidebar chrome and binds to the dialog by a

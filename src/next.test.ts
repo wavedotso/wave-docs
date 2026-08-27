@@ -633,6 +633,60 @@ describe('docs.Layout', () => {
   });
 });
 
+/**
+ * When the "Copy page" button renders, decided on the server.
+ *
+ * The button reads `/llms-full.txt`, and it can only find out whether that is
+ * being served by fetching it — so anything the server *can* settle should not
+ * be left to the browser. `llms` is exactly that: `docs.llmsFullTxt` refuses to
+ * serve without it, so its absence means there is no corpus by construction.
+ */
+describe('the copy-page default', () => {
+  /** The header the button lives in, rendered for the given options. */
+  async function headerHtml(
+    options: Partial<Parameters<typeof createDocsRoute>[0]>,
+  ): Promise<string> {
+    const route = createDocsRoute({ contentDir: BASIC, ...options });
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    return renderToStaticMarkup(
+      (await route.Page({
+        params: Promise.resolve({ slug: [] }),
+      })) as never,
+    );
+  }
+
+  const LLMS = { llms: { title: 'Docs' } };
+
+  it('renders nothing when `llms` is absent, so no button can vanish', async () => {
+    /*
+     * ⚠️ THE ALTERNATIVE IS A CONTROL WHOSE ONLY OUTCOME IS TO REMOVE ITSELF.
+     * With no `llms` there is no corpus to read, so a `true` default draws a
+     * button, the first click 404s, and the reader watches it disappear under
+     * the cursor. Not drawing it is the better answer, and the server has
+     * enough to know.
+     */
+    expect(await headerHtml({})).not.toContain('wave-docs-page-header');
+  });
+
+  it('renders the button once `llms` is configured', async () => {
+    expect(await headerHtml(LLMS)).toContain('wave-docs-page-header');
+  });
+
+  it('honours an explicit `true` without `llms`', async () => {
+    // For a host serving the corpus some other way — the default is a default,
+    // not a rule.
+    expect(await headerHtml({ copyPage: true })).toContain(
+      'wave-docs-page-header',
+    );
+  });
+
+  it('honours an explicit `false` with `llms`', async () => {
+    expect(await headerHtml({ ...LLMS, copyPage: false })).not.toContain(
+      'wave-docs-page-header',
+    );
+  });
+});
+
 describe('docs.searchIndex', () => {
   const route = createDocsRoute({ contentDir: BASIC });
 
