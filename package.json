@@ -59,6 +59,10 @@
       "browser": null,
       "default": "./dist/search-index.js"
     },
+    "./llms-txt": {
+      "types": "./dist/llms-txt.d.ts",
+      "default": "./dist/llms-txt.js"
+    },
     "./next": {
       "types": "./dist/next.d.ts",
       "browser": null,
@@ -71,6 +75,10 @@
     "./react/hero": {
       "types": "./dist/react/hero.d.ts",
       "default": "./dist/react/hero.js"
+    },
+    "./react/copy-page": {
+      "types": "./dist/react/copy-page.d.ts",
+      "default": "./dist/react/copy-page.js"
     },
     "./react/doc-content": {
       "types": "./dist/react/doc-content.d.ts",
@@ -116,6 +124,9 @@
       "types": "./dist/react/explore.d.ts",
       "default": "./dist/react/explore.js"
     }
+  },
+  "bin": {
+    "wave-docs": "./dist/cli-entry.js"
   },
   "files": [
     "dist",
