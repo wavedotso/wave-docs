@@ -431,9 +431,16 @@ describe('the sidebar, at every container width', () => {
   /**
    * ⚠️ THE STRIP IS SIZED BY THE BUTTON, NOT BESIDE IT. Both were fixed for a
    * while and the gap between them was a third number nobody set — 24px of
-   * button left 10px a side, 16px left 14px. The strip is `auto` with 4px of
-   * padding now, so `--wave-docs-trigger-width` is the only thing to change and
-   * the hit area follows the paint.
+   * button left 10px a side, 16px left 14px. The strip is `auto` now, so
+   * `--wave-docs-trigger-width` is the only thing to change.
+   *
+   * ⚠️ AND THE PADDING IS DERIVED, WHICH THIS TEST'S OWN PREDICTION FORCED.
+   * The note here used to say "narrow the token again and the target fails",
+   * with the padding a fixed `4px`. The grip then lost its dots, the pill
+   * became the icon and the token went from `1rem` to `0.375rem` — and the
+   * target measured 14px, exactly as predicted. So the padding is now
+   * `(1.5rem - token) / 2`: the paint is whatever the token says and the hit
+   * area is 24px whatever the paint.
    */
   it('sizes the trigger from the button plus its padding', async () => {
     const { trigger } = mount();
@@ -444,18 +451,18 @@ describe('the sidebar, at every container width', () => {
 
     const strip = trigger.getBoundingClientRect().width;
     const paint = Number.parseFloat(button.width);
-    expect(Math.round(paint)).toBe(16);
-    expect(Math.round(strip - paint)).toBe(8);
-    expect(getComputedStyle(trigger).padding).toBe('4px');
+    // The paint is the token, and nothing else reads it.
+    expect(Math.round(paint)).toBe(6);
 
     /*
-     * ⚠️ 24px IS THE FLOOR, AND THIS RULE IS NOW ON IT. WCAG 2.5.8 asks for a
-     * 24x24 CSS-pixel target; the strip is 16px of paint plus 4px of padding a
-     * side, and full-height, so it clears the minimum in one axis exactly and
-     * by a mile in the other. Narrow `--wave-docs-trigger-width` again and the
-     * target fails — which is the whole reason the hit area is derived from
-     * that token rather than set beside it.
+     * ⚠️ 24px IS THE FLOOR AND THIS RULE SITS EXACTLY ON IT. WCAG 2.5.8 asks
+     * for a 24x24 CSS-pixel target; the strip is full-height, so it clears the
+     * minimum by a mile in one axis and exactly in the other. Written as an
+     * inequality *and* an equality on purpose: the first is the requirement,
+     * the second catches a padding that stopped tracking the token — which is
+     * how the target reached 14px the first time.
      */
+    expect(Math.round(strip)).toBe(24);
     expect(Math.round(strip)).toBeGreaterThanOrEqual(24);
   });
 

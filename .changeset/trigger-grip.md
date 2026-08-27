@@ -2,19 +2,23 @@
 '@waveso/docs': patch
 ---
 
-**The sidebar trigger is a grip, not three dots.**
+**The sidebar trigger's pill is the icon.**
 
-⚠️ THE DOTS SAID THE WRONG THING. Three of them read as *more options* in most
-interfaces and as a texture to grab in the rest — and this control is neither a
-menu nor a drag handle in the resizing sense: it is a toggle on the seam between
-two panes, with `aria-expanded` and an accessible name that changes with it.
-Parallel bars are unambiguously a handle.
+⚠️ IT CARRIED A GLYPH INSIDE A SHAPE THAT ALREADY SAID THE SAME THING. Three
+docsify dots, then two grip bars — and a rounded bar on the seam between two
+panes *is* the handle, so anything painted on it is a second label for the
+first. The marks are gone and the width came down from `1rem` to `0.375rem`,
+which is what makes it read as a handle rather than as a button that happens to
+be tall.
 
-A chevron was the other candidate and it loses on shape. The control is a 16px
-pill and an arrow wants to be square, so it either crowds the pill's edges or
-shrinks below the rest of the icon set. Lines are narrow by nature: two 2px bars 4px apart is 6px of ink with 5px clear either side.
+⚠️ AND THE PADDING IS NOW DERIVED FROM THE WIDTH, BECAUSE THINNING THE PILL
+BROKE THE TARGET. The strip is `width: auto`, so the button is exactly as wide
+as the bar inside it; at a fixed `4px` of padding that came to **14px** — a
+pointer target the width of a pencil line, on the one control a reader reaches
+for without looking. `padding-inline: (1.5rem - var(--wave-docs-trigger-width))
+/ 2` holds the target at 24px, WCAG 2.5.8's floor, whatever the paint becomes.
 
-Still one element and a `box-shadow` copy, the way the dots were — no markup,
-and it follows `currentcolor` through the hover state for free. The element is
-shifted half the gap off centre so the *pair* is centred rather than the first
-bar being.
+`nav.browser.test.tsx` predicted this in a comment — "narrow the token again and
+the target fails" — and it did, exactly. That test now asserts the derived
+relationship rather than the old literals, so the next narrowing cannot repeat
+it.

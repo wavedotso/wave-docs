@@ -196,7 +196,16 @@
      * of padding on every side — so setting this is the whole of resizing the
      * control, and the hit area grows with it rather than being a second number
      * to keep in step. */
-    --wave-docs-trigger-width: 1rem;
+    /*
+     * ⚠️ THE PILL *IS* THE ICON, WHICH IS WHY IT IS THIS NARROW. It carried
+     * three docsify dots, then two grip bars, and both were a glyph drawn
+     * inside a shape that already said the same thing — a rounded bar on the
+     * seam between two panes is the handle, and anything painted on it is a
+     * second label for the first. Removing the marks let the width come down
+     * from `1rem`, which is what makes it read as a handle rather than as a
+     * button that happens to be tall.
+     */
+    --wave-docs-trigger-width: 0.375rem;
     --wave-docs-toc-width: 15rem;
 
     /*
@@ -3630,7 +3639,16 @@
     display: grid;
     place-items: center;
     width: auto;
-    padding: 4px;
+    /*
+     * ⚠️ THE PADDING IS THE TARGET, BECAUSE THE PILL IS 6px. `width: auto`
+     * means this button is exactly as wide as the bar inside it, and at
+     * `4px` that came to 14px — a pointer target the width of a pencil line,
+     * on the one control a reader reaches for without looking. The padding
+     * carries it back to 24px, WCAG 2.5.8's floor, while the visible handle
+     * stays as thin as it should be.
+     */
+    padding-block: 4px;
+    padding-inline: calc((1.5rem - var(--wave-docs-trigger-width)) / 2);
     border: 0;
     background: none;
     color: var(--wave-docs-trigger-ink);
@@ -3661,42 +3679,6 @@
      * exactly that whatever the two dimensions become. */
     border-radius: 9999px;
     background-color: var(--wave-docs-trigger-fill);
-  }
-
-  /*
-   * Two lines down the middle — the grip a resizable panel or a drawer shows.
-   *
-   * ⚠️ IT WAS THREE DOTS, MEASURED OFF DOCSIFY, AND THEY SAY THE WRONG THING.
-   * Three of them read as *more options* in most interfaces and as a texture
-   * to grab in the rest; parallel bars are unambiguously the second, which is
-   * what this is — a handle on the seam between two panes.
-   *
-   * A chevron was the other candidate and it loses on shape: the control is a
-   * 16px-wide pill and an arrow wants to be square, so it either crowds the
-   * pill's edges or shrinks below the rest of the icon set. Lines are narrow
-   * by nature, so they fit without either.
-   *
-   * ⚠️ ONE ELEMENT AND A `box-shadow` COPY, THE WAY THE DOTS WERE — no markup,
-   * and it follows `currentcolor` through the hover state for free. The
-   * element is shifted half the gap off centre and the copy sits a whole gap
-   * to its side, so the *pair* is centred rather than the first bar being.
-   *
-   * ⚠️ `::after`, AND THE ORDER IS LOAD-BEARING. Neither pseudo-element carries
-   * a `z-index`, so tree order decides which paints on top.
-   */
-  .wave-docs-layout__sidebar-trigger::after {
-    content: '';
-    position: absolute;
-    inset-block-start: 50%;
-    inset-inline-start: 50%;
-    width: 2px;
-    /* Comfortably inside the 3.5rem pill, so the ends never crowd its curve. */
-    height: 2rem;
-    /* 4px apart: 6px of ink in a 16px pill, 5px clear either side. */
-    translate: calc(-50% - 2px) -50%;
-    border-radius: 9999px;
-    background: currentcolor;
-    box-shadow: 4px 0 0 currentcolor;
   }
 
   /*
