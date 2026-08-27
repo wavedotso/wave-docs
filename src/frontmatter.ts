@@ -64,6 +64,10 @@ export const docFrontmatterSchema = z.object({
   description: z.string().exactOptional(),
   label: z.string().exactOptional(),
   draft: z.boolean().exactOptional(),
+  /* Per-page override for the route's "Copy page" button. Both directions win
+   * over the route: `false` hides it on a page with nothing worth copying,
+   * `true` shows it where the route turned it off. */
+  copyPage: z.boolean().exactOptional(),
   aliases: z.array(z.string()).exactOptional(),
   order: z.number().exactOptional(),
   /* A name the consumer resolves, not a path or an import — see

@@ -2,6 +2,9 @@
 title: Wave Docs
 label: Overview
 description: Markdown documentation for Next.js. The parser runs in Node at build time and never reaches the browser.
+# A hero and a row of cards: the button would hand a reader a file of
+# headings and link text, which is working and pointless.
+copyPage: false
 actions:
   - label: Quick start
     href: /getting-started/quick-start

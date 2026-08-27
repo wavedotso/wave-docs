@@ -59,10 +59,24 @@ copyPage: false                      // off
 copyPage: { label: 'Copy as MD' }    // relabelled
 ```
 
-The default is deliberately "on if `llms` is set" rather than plain `true`.
-`docs.llmsFullTxt` refuses to serve without an `llms` option, so a site without
-one has no corpus by construction — and rendering a button there would produce
-a control whose only possible outcome is to remove itself.
+Any page can override it in its own frontmatter, in either direction:
+
+```yaml
+---
+title: Welcome
+copyPage: false
+---
+```
+
+That is for the page with nothing to copy. A landing page that is a hero and a
+row of cards has no prose behind it, so the button offers a reader a file of
+headings and link text — present, working and pointless. `true` turns it back on
+where the route turned it off. This site's own home page sets `false`.
+
+The route-level default is deliberately "on if `llms` is set" rather than plain
+`true`. `docs.llmsFullTxt` refuses to serve without an `llms` option, so a site
+without one has no corpus by construction — and rendering a button there would
+produce a control whose only possible outcome is to remove itself.
 
 **If the route file is missing, the button removes itself.** That is the one
 case the server cannot see: `llms` configured and

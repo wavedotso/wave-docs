@@ -685,6 +685,62 @@ describe('the copy-page default', () => {
       'wave-docs-page-header',
     );
   });
+
+  describe('the per-page override', () => {
+    /*
+     * ⚠️ FOR THE PAGE WITH NOTHING TO COPY. A landing page that is a hero and a
+     * row of cards has no prose behind it, so the button hands a reader a file
+     * of headings and link text — present, working, and pointless. One field
+     * in that one file, the same way `actions` turns the hero on.
+     */
+    const dir = path.join(
+      import.meta.dirname,
+      '__fixtures__',
+      'source',
+      'copy-page',
+    );
+
+    it('hides the button on a page that says `copyPage: false`', async () => {
+      const route = createDocsRoute({ contentDir: dir, ...LLMS });
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const html = renderToStaticMarkup(
+        (await route.Page({
+          params: Promise.resolve({ slug: ['quiet'] }),
+        })) as never,
+      );
+
+      expect(html).not.toContain('wave-docs-page-header');
+    });
+
+    it('shows it on a page that says `copyPage: true`, with the route off', async () => {
+      const route = createDocsRoute({ contentDir: dir, copyPage: false });
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const html = renderToStaticMarkup(
+        (await route.Page({
+          params: Promise.resolve({ slug: ['loud'] }),
+        })) as never,
+      );
+
+      expect(html).toContain('wave-docs-page-header');
+    });
+
+    it('leaves the route to decide when the page says nothing', async () => {
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const render = async (options: { copyPage?: boolean }) =>
+        renderToStaticMarkup(
+          (await createDocsRoute({ contentDir: dir, ...LLMS, ...options }).Page(
+            {
+              params: Promise.resolve({ slug: ['plain'] }),
+            },
+          )) as never,
+        );
+
+      expect(await render({})).toContain('wave-docs-page-header');
+      expect(await render({ copyPage: false })).not.toContain(
+        'wave-docs-page-header',
+      );
+    });
+  });
 });
 
 describe('docs.searchIndex', () => {

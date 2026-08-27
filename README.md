@@ -1187,6 +1187,17 @@ export const docs = createDocsRoute({
 
 It renders in a header row at the top of the article column, and that row is not emitted when `copyPage` is `false`.
 
+**Any page can override it in frontmatter**, in either direction:
+
+```yaml
+---
+title: Welcome
+copyPage: false
+---
+```
+
+That is for the page with nothing to copy — a landing page that is a hero and a row of cards has no prose behind it, so the button hands a reader a file of headings and link text. `true` turns it back on where the route turned it off.
+
 **The default is "on if `llms` is set", not plain `true`.** The button reads the corpus, and `docs.llmsFullTxt` refuses to serve one without an `llms` option — so a site with no `llms` has nothing for the button to read, and rendering it there would produce a control whose only possible outcome is to remove itself. `copyPage: true` overrides that, for a host serving the corpus some other way.
 
 **It still hides itself if the route file is absent** — the one case the server cannot see. Whether `/llms-full.txt` is being served is only knowable from the browser, so the button renders and the first click that 404s removes it — rather than a site that never added the route shipping a control which fails every press. A network failure is treated differently: the wiring is fine and the next press may work, so the button says so and stays.

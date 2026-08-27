@@ -1202,10 +1202,21 @@ describe('the type scale', () => {
   });
 
   it('sizes only the h1 fluidly', () => {
-    // Fluid type against a fixed measure means characters-per-line drifts and
-    // the measure token stops meaning what it says — but a fixed h1 wraps an
-    // ordinary title to three lines at 390px.
-    expect(decl('.wave-docs-prose h1', 'font-size')).toContain('clamp(');
+    /*
+     * Fluid type against a fixed measure means characters-per-line drifts and
+     * the measure token stops meaning what it says — but a fixed h1 wraps an
+     * ordinary title to three lines at 390px.
+     *
+     * ⚠️ THE `clamp()` MOVED TO A TOKEN AND THE INVARIANT DID NOT. The h1 reads
+     * `--wave-docs-h1-size` because the "Copy page" button floated beside it
+     * needs the same number to sit on its row; this follows the indirection
+     * rather than asserting the literal, which would have failed on a change
+     * that altered nothing about the type scale.
+     */
+    expect(decl('.wave-docs-prose h1', 'font-size')).toBe(
+      'var(--wave-docs-h1-size)',
+    );
+    expect(decl(':root', '--wave-docs-h1-size')).toContain('clamp(');
     for (const selector of LEVELS.slice(1)) {
       expect(decl(selector, 'font-size')).not.toContain('clamp(');
     }

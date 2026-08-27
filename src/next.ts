@@ -1418,6 +1418,22 @@ export function createDocsRoute<
     const { components, link } = await loadComponents();
 
     /*
+     * The copy button's props for *this* page, or `undefined` for no button.
+     *
+     * ⚠️ THE PAGE'S OWN SAY WINS, IN BOTH DIRECTIONS. A landing page that is a
+     * hero and a row of cards has no prose behind it, so the button would hand
+     * a reader a file of headings and link text — working, and pointless.
+     * `copyPage: false` in that one file is the answer, and `true` turns it
+     * back on where the route turned it off. Absent, the route decides.
+     */
+    const pageCopyPage: DocsCopyPageConfig | undefined =
+      doc.frontmatter.copyPage === false
+        ? undefined
+        : doc.frontmatter.copyPage === true
+          ? (copyPage ?? {})
+          : copyPage;
+
+    /*
      * TWO CHILDREN, AND THEY MUST STAY DIRECT CHILDREN OF THE GRID.
      *
      * `docs.Layout` renders `{children}` straight into `.wave-docs-layout`
@@ -1483,7 +1499,7 @@ export function createDocsRoute<
          * is positioned and this was not, so the grid pattern painted straight
          * over the button. See `.wave-docs-page-header`.
          */
-        copyPage === undefined
+        pageCopyPage === undefined
           ? null
           : createElement(
               'div',
@@ -1491,7 +1507,7 @@ export function createDocsRoute<
               createElement(DocsCopyPage, {
                 href: doc.href,
                 corpusUrl: `${config.basePath}/llms-full.txt`,
-                ...copyPage,
+                ...pageCopyPage,
               }),
             ),
         /*

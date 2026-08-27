@@ -257,6 +257,19 @@
      * shell already constrains the column. One of the six settable layout
      * tokens. */
     --wave-docs-measure: 46rem;
+    /*
+     * The page title's size, and the space above it — named because two things
+     * need to agree on them: the `h1` itself, and the "Copy page" button
+     * floated beside it. Hard-coding the offset on the button would leave two
+     * numbers to keep in step, and the drift is invisible until someone looks
+     * at a title and a control that no longer share a line.
+     *
+     * `0.67` is the `em` factor every browser's UA stylesheet uses for an
+     * `h1`'s block margin. It is written out here rather than inherited so the
+     * layout does not depend on a UA default staying what it is.
+     */
+    --wave-docs-h1-size: clamp(1.75rem, 1.45rem + 1.3vw, 2.0736rem);
+    --wave-docs-page-top: calc(0.67 * var(--wave-docs-h1-size));
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -618,15 +631,14 @@
   }
 
   /*
-   * ⚠️ THE UA'S OWN MARGIN, AND IT IS DEAD SPACE. Every browser gives `h1` a
-   * `0.67em` top margin — 22px at this size — which on the first element of a
-   * page opens it with a gap nothing asked for, and which put the title a row
-   * below the "Copy page" button floated beside it. The standard prose reset,
-   * and it applies to whatever the page opens with rather than to headings
-   * only.
+   * ⚠️ OURS, NOT THE UA'S, THOUGH IT IS THE SAME NUMBER. The space above a page
+   * title is deliberate and stays — what changed is where it comes from: a
+   * token the "Copy page" button floated beside it reads too, so the two share
+   * a line by construction rather than by both happening to match a browser
+   * default.
    */
-  .wave-docs-prose > :first-child {
-    margin-block-start: 0;
+  .wave-docs-prose > h1:first-child {
+    margin-block-start: var(--wave-docs-page-top);
   }
 
   .wave-docs-prose h1 {
@@ -634,7 +646,7 @@
      * three lines at 390px; everything below it stays fixed, because fluid type
      * against a fixed measure means characters-per-line silently drifts and the
      * measure token stops meaning what it says. */
-    font-size: clamp(1.75rem, 1.45rem + 1.3vw, 2.0736rem);
+    font-size: var(--wave-docs-h1-size);
     line-height: 1.15;
     letter-spacing: -0.021em;
     font-weight: 680;
@@ -3987,10 +3999,10 @@
     position: relative;
     z-index: 1;
     /*
-     * No block margin: the heading it floats beside starts at the top of the
-     * column, so this does too, and the two read as one row.
+     * The same space the title above it takes, so the two sit on one row. Both
+     * read `--wave-docs-page-top`; neither carries a number of its own.
      */
-    margin-block: 0;
+    margin-block: var(--wave-docs-page-top) 0;
   }
 
   .wave-docs-copy-page {

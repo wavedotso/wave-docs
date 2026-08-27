@@ -116,6 +116,20 @@ export interface DocFrontmatter {
    * page — one field, in the file that wants it.
    */
   actions?: DocAction[] | undefined;
+  /**
+   * Show the "Copy page" button on this page, overriding the route's
+   * `copyPage`.
+   *
+   * ⚠️ FOR THE PAGE WITH NOTHING TO COPY. A landing page that is a hero and a
+   * row of cards has no prose behind it, so the button offers a reader a file
+   * of headings and link text — present, working, and pointless. `false` in
+   * that one file is the answer, the same way `actions` turns the hero on in
+   * the file that wants it.
+   *
+   * `true` forces it on where the route turned it off. Both directions win
+   * over the route's setting; leave it out and the route decides.
+   */
+  copyPage?: boolean | undefined;
 }
 
 /* -------------------------------------------------------------------------

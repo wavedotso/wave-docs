@@ -132,6 +132,10 @@ button reads the corpus, and `docs.llmsFullTxt` refuses to serve one without
 application that would rather not spend the kilobyte. An explicit `true`
 overrides the default, for a host serving the corpus some other way.
 
+Any page overrides it in frontmatter — `copyPage: false` on a landing page that
+is a hero and a row of cards, `true` to turn it back on where the route turned
+it off.
+
 [Markdown for agents](../guides/llms.md) has the rest, including what the
 button costs and why it does not use a `.md` URL per page.
 
