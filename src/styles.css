@@ -3732,11 +3732,15 @@
    * reason.
    */
   .wave-docs-layout__sidebar-trigger:hover {
-    background-color: color-mix(
-      in oklab,
-      var(--wave-docs-accent) 30%,
-      transparent
-    );
+    /*
+     * ⚠️ THE SIDEBAR'S OWN TOKEN, NOT A MIX OF ITS OWN. This was
+     * `color-mix(in oklab, var(--wave-docs-accent) 30%, transparent)` — a blue
+     * arrived at independently, sitting directly against a navigation column
+     * whose active row is `--wave-docs-accent-subtle`. Two tints of one accent,
+     * a few pixels apart, neither able to follow the other when a host retunes
+     * the palette.
+     */
+    background-color: var(--wave-docs-accent-subtle);
   }
 
   @media (prefers-reduced-motion: no-preference) {
