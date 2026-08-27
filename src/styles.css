@@ -279,6 +279,17 @@
      */
     --wave-docs-h1-size: clamp(1.75rem, 1.45rem + 1.3vw, 2.0736rem);
     --wave-docs-page-top: calc(0.67 * var(--wave-docs-h1-size));
+    /*
+     * The title's line box. The "Copy page" button floated beside it matches
+     * this height and centres in it, so the two are centred on each other
+     * rather than merely starting at the same y — which is what a flex row
+     * with `align-items: center` would do if the heading were ours to put in
+     * one.
+     */
+    --wave-docs-h1-line-height: 1.15;
+    --wave-docs-page-title-line: calc(
+      var(--wave-docs-h1-line-height) * var(--wave-docs-h1-size)
+    );
   }
 
   /* Only for a host that has explicitly delegated the choice to the OS. */
@@ -656,7 +667,7 @@
      * against a fixed measure means characters-per-line silently drifts and the
      * measure token stops meaning what it says. */
     font-size: var(--wave-docs-h1-size);
-    line-height: 1.15;
+    line-height: var(--wave-docs-h1-line-height);
     letter-spacing: -0.021em;
     font-weight: 680;
   }
@@ -3960,6 +3971,15 @@
     float: inline-end;
     display: flex;
     justify-content: flex-end;
+    /*
+     * ⚠️ CENTRED ON THE TITLE'S LINE, NOT TOP-ALIGNED WITH IT. Both boxes
+     * started at the same y and the button is the shorter of the two, so it
+     * sat 3px high — measured, and visible. Matching the line box and
+     * centring in it is what a flex row would do if the heading were ours to
+     * put in one.
+     */
+    align-items: center;
+    min-height: var(--wave-docs-page-title-line);
     /* So a title never runs into it. */
     margin-inline-start: 1rem;
     /*

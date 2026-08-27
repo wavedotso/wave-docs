@@ -1145,7 +1145,17 @@ describe('the type scale', () => {
     const leading = LEVELS.map((selector) => {
       const value = decl(selector, 'line-height');
       expect(value, `${selector} declares no line-height`).toBeDefined();
-      return Number(value);
+      /*
+       * ⚠️ THE `h1`'S LEADING IS A TOKEN AND THE INVARIANT IS NOT. It reads
+       * `--wave-docs-h1-line-height` because the "Copy page" button floated
+       * beside it matches the title's line box to centre on it — two things
+       * needing one number. Resolved rather than parsed, or this reads `NaN`
+       * and fails on a change that altered nothing about the scale.
+       */
+      const resolved = /^var\((--[a-z0-9-]+)\)$/.exec(value ?? '');
+      return Number(
+        resolved === null ? value : decl(':root', resolved[1] as string),
+      );
     });
 
     expect(new Set(leading).size, `shared leading: ${leading}`).toBe(
