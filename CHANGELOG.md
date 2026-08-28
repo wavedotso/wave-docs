@@ -1,5 +1,121 @@
 # @waveso/docs
 
+## 0.14.0
+
+### Minor Changes
+
+- 5c0d65e: **`copyPage` is a frontmatter field too, and it wins over the route in both
+  directions.**
+
+  ⚠️ IT EXISTS FOR THE PAGE WITH NOTHING TO COPY. A landing page that is a hero
+  and a row of cards has no prose behind it, so the button hands a reader a file
+  of headings and link text — present, working, and pointless. `copyPage: false`
+  in that one file is the answer, the same shape as `actions` turning the hero on
+  in the file that wants it. `true` turns it back on where the route turned it
+  off; absent, the route decides.
+
+  This package's own home page sets `false`.
+
+- 37dd991: **A search result's trail reads names, not slugs.**
+
+  `Getting started › Installation`, where it used to be
+  `getting-started › installation`. `docs.Layout` builds the lookup from the
+  navigation and passes it to the dialog as `crumbTitles`; a host composing the
+  dialog by hand and passing none gets slugs, not gaps.
+
+  ⚠️ THE TITLES ARE NOT IN THE SEARCH INDEX, AND THAT IS THE WHOLE REASON THIS IS
+  AFFORDABLE. `search-index.json` is 46 KB gzipped on this package's own site and
+  the README publishes that number; a title on every record would grow the one
+  artifact the package is sold on. This is one entry per _directory_, out of a
+  tree the layout already holds and already serialises for the sidebar.
+
+  ⚠️ AND A GROUP HAS NO SLUG OF ITS OWN. `DocNavGroup` is a title, a children
+  array and an optional `href` — nothing names its directory — so the path comes
+  from the first descendant page's slug, cut at the depth the group sits at. Keyed
+  by the cumulative path rather than the bare segment, because `guides/api` and
+  `reference/api` are both `api` and the second would otherwise rename the first.
+
+  ⚠️ AND THE ROOT PAGE'S `/` IS GONE. A page at the site root has no trail, and a
+  lone slash was a filler for that — the one row still speaking in URLs while
+  every other row spoke in names. It shows the name its navigation entry carries
+  instead.
+
+  Measured: the dialog grows 40 bytes gzipped, and the published figure for
+  "Search dialog and router wiring" moves from 9.8 KB to 9.9 KB. A document here
+  may not understate what this package costs.
+
+### Patch Changes
+
+- 3591dd3: **README examples compile again, and a failing check no longer litters the repo.**
+
+  ⚠️ `process.exit` DOES NOT RUN `finally`, AND TWO CALLS WERE INSIDE THE `try`.
+  `scripts/check-readme.ts` builds a temporary project in the repository root —
+  inside it, so Node's own module resolution finds the real `node_modules` and
+  `@waveso/docs/next` resolves through the published `exports` map exactly as a
+  consumer resolves it. The cleanup is in a `finally`, so it only ever ran on a
+  _passing_ check: every failure left a 76 KB directory behind, gitignored and
+  therefore unnoticed until there were 24 of them. A Ctrl-C did the same.
+
+  `process.exitCode` and a `return` end the run with the same status and let the
+  cleanup happen. Verified by forcing four failures in a row: none leaked.
+
+  And the check was failing. Three examples added with the corpus and the copy
+  button were missing their imports, and two claimed the same `lib/docs.ts` path —
+  which the script's own duplicate-path guard catches, because two fences claiming
+  one file tell a reader to put two different bodies in the same place. CI runs
+  `check:readme`, so this would have failed on push rather than shipped; it is not
+  in `pnpm test`, which is why it went unseen locally.
+
+- bb42e8b: **The "Copy page" button is centred on the title's line, not top-aligned with it.**
+
+  ⚠️ TWO BOXES OF DIFFERENT HEIGHTS SHARING A TOP EDGE ARE NOT ALIGNED. The header
+  started at the title's `y` and the button is the shorter of the two, so it sat
+  3px high against the line box and 6.4px high against the title's actual ink —
+  small, and visible.
+
+  The header now matches the title's line box and centres inside it, which is what
+  `align-items: center` would do if the heading were ours to put in a flex row.
+  Both the height and the leading come from tokens the `h1` reads too —
+  `--wave-docs-page-title-line` and `--wave-docs-h1-line-height` — so the two
+  cannot drift. Measured: both centres at 73.3px, off by zero.
+
+  `styles.test.ts` resolves the leading through the token rather than parsing the
+  declaration, for the same reason it already follows `--wave-docs-h1-size`: the
+  invariant is that leading rises as size falls, and moving the number into a
+  token did not change it.
+
+- ea5ca71: **The sidebar trigger's pill is the icon.**
+
+  ⚠️ IT CARRIED A GLYPH INSIDE A SHAPE THAT ALREADY SAID THE SAME THING. Three
+  docsify dots, then two grip bars — and a rounded bar on the seam between two
+  panes _is_ the handle, so anything painted on it is a second label for the
+  first. The marks are gone and the width came down from `1rem` to `0.375rem`,
+  which is what makes it read as a handle rather than as a button that happens to
+  be tall.
+
+  ⚠️ AND THE PADDING IS NOW DERIVED FROM THE WIDTH, BECAUSE THINNING THE PILL
+  BROKE THE TARGET. The strip is `width: auto`, so the button is exactly as wide
+  as the bar inside it; at a fixed `4px` of padding that came to **14px** — a
+  pointer target the width of a pencil line, on the one control a reader reaches
+  for without looking. `padding-inline: (1.5rem - var(--wave-docs-trigger-width))
+/ 2` holds the target at 24px, WCAG 2.5.8's floor, whatever the paint becomes.
+
+  `nav.browser.test.tsx` predicted this in a comment — "narrow the token again and
+  the target fails" — and it did, exactly. That test now asserts the derived
+  relationship rather than the old literals, so the next narrowing cannot repeat
+  it.
+
+- 878b1c7: **The sidebar trigger's hover is the sidebar's own tint.**
+
+  ⚠️ IT WAS A BLUE ARRIVED AT INDEPENDENTLY. `color-mix(in oklab,
+var(--wave-docs-accent) 30%, transparent)` sat directly against a navigation
+  column whose active row is `--wave-docs-accent-subtle` — two tints of one accent
+  a few pixels apart, neither able to follow the other when a host retunes the
+  palette.
+
+  Now both read the same token. Measured: `lab(95.3453 -2.89604 -8.75145)` on the
+  strip and on the current page's row.
+
 ## 0.13.0
 
 ### Minor Changes
