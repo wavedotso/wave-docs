@@ -125,6 +125,18 @@ function main(): void {
    * through a `paths` alias that would check a different thing.
    */
   const dir = mkdtempSync(path.join(ROOT, '.readme-check-'));
+
+  /*
+   * ⚠️ NOTHING INSIDE THIS `try` MAY CALL `process.exit`, AND TWO THINGS DID.
+   * `process.exit` terminates without running `finally`, so the cleanup below
+   * only ever happened on a *passing* run — every failure left a 76 KB
+   * directory in the repository root. Gitignored, so nobody noticed until
+   * there were 24 of them.
+   *
+   * `process.exitCode` and a `return` end the run with the same status and let
+   * the cleanup happen. The one `process.exit` above is outside the `try`,
+   * before the directory exists, and is fine.
+   */
   try {
     /*
      * Two fences claiming one path is a real defect, not a harness detail: the
@@ -141,7 +153,8 @@ function main(): void {
             `README.md:${previous.line} and README.md:${example.line}. ` +
             'Give one of them a different path, or drop its path comment.',
         );
-        process.exit(1);
+        process.exitCode = 1;
+        return;
       }
       claimed.set(example.file, example);
 
@@ -217,7 +230,8 @@ function main(): void {
           'does not compile. Fix the README, or mark the fence ' +
           '`<!-- typecheck: skip — why -->` if it is deliberately a fragment.',
       );
-      process.exit(1);
+      process.exitCode = 1;
+      return;
     }
 
     console.log(`check:readme: ${examples.length} example(s) compile.`);

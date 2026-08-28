@@ -1179,6 +1179,8 @@ A button that puts the page's markdown on the reader's clipboard. **On by defaul
 It reads `/llms-full.txt` and slices out the page it is on, so there is no per-page artifact, no build step and nothing to configure. `copyPage: false` turns it off; an object overrides `label`, `copiedLabel` and `failedLabel`.
 
 ```ts
+import { createDocsRoute } from '@waveso/docs/next';
+
 export const docs = createDocsRoute({
   contentDir: 'content/docs',
   siteUrl: 'https://example.com',
@@ -1223,6 +1225,8 @@ export const dynamic = 'force-static';
 
 ```ts
 // app/llms-full.txt/route.ts
+import { docs } from '@/lib/docs';
+
 export const GET = docs.llmsFullTxt;
 export const dynamic = 'force-static';
 ```
@@ -1230,6 +1234,8 @@ export const dynamic = 'force-static';
 Configure them once, where the route is created:
 
 ```ts
+import { createDocsRoute } from '@waveso/docs/next';
+
 export const docs = createDocsRoute({
   contentDir: 'content/docs',
   siteUrl: 'https://example.com',
