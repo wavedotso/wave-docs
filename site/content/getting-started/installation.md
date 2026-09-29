@@ -82,6 +82,7 @@ to read dimensions with it — but it is your dependency, in your own
 | Node.js | ≥ 22.12.0 |
 | React | 19 |
 | Next.js | 16 (optional peer — only `@waveso/docs/next` needs it) |
+| Vite | Any (**not a peer** — `@waveso/docs/vite` imports nothing of Vite's) |
 | Module format | **ESM only** |
 | TypeScript | 5.9+ |
 

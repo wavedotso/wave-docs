@@ -12,6 +12,8 @@ not documented is not importable — see [Stability](./stability.md).
 | Subpath | Environment | Contents |
 | --- | --- | --- |
 | `@waveso/docs/next` | Node | `createDocsRoute`, `createDocsSitemap`, `createDocsRedirects` |
+| `@waveso/docs/vite` | Node | `waveDocs`, `WAVE_DOCS_MODULE_ID` — see [Vite](../guides/vite.md) |
+| `@waveso/docs/vite-client` | — | Ambient types for `virtual:wave-docs`. Type-only, and there is no JavaScript file at all |
 | `@waveso/docs/source` | Node | `createDocsSource`, `resolveDocsConfig` |
 | `@waveso/docs/render` | Node | `createDocsRenderer`, `resolveMarkdownLink` |
 | `@waveso/docs/highlighter` | Node | `createDocsHighlighter`, `DEFAULT_DOCS_LANGS`, `DEFAULT_DOCS_THEMES` |
@@ -90,9 +92,13 @@ so nothing is resolved away as assumed-present, and asserted exactly — with
 | `@waveso/docs/llms-txt` | none |
 | `@waveso/docs/source` | `node:fs/promises`, `node:path` |
 | `@waveso/docs/next` | `node:crypto`, `node:fs/promises`, `node:path` |
+| `@waveso/docs/vite` | `node:fs/promises`, `node:path` |
 
 `source` needs the filesystem because reading a content directory is what it is
 for; `next` inherits its two and adds `node:crypto` for the search index's ETag.
+`vite` inherits the same two and adds nothing — it emits the index as a file
+rather than serving it, so there is no ETag to compute, and it imports `vite`
+itself nowhere.
 A subset assertion would pass the moment a new builtin appeared, which defeats
 the point of the file — one `node:crypto` import three modules deep costs
 nothing locally and rules out every non-Node runtime at once. Both spellings
@@ -129,6 +135,13 @@ Two React subpaths import Next statically, and are named so the exception is
 visible in the file list: `react/next-link` and `react/next-search`. Every other
 component takes its link and image components as props, which is what keeps the
 renderer testable without a router.
+
+**There is no Vite peer at all**, which is the difference between the two
+adapters rather than an oversight. `@waveso/docs/next` has to reach for
+`next/link` and `next/image` because it renders them; `@waveso/docs/vite` renders
+nothing of Vite's — it returns a plain object with the hook names Vite calls, and
+its types are declared structurally rather than imported. So nothing here pins a
+Vite major, and there is no version of Vite for it to be incompatible with.
 
 ## No barrel file
 
