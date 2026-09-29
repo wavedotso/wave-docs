@@ -54,7 +54,15 @@ export default defineConfig({
   // Ship the stylesheet alongside the modules. Routing the copy through tsdown
   // rather than a trailing `cp` means it also happens under `--watch`, where
   // `clean: true` would otherwise wipe it.
-  copy: [{ from: 'src/styles.css', to: 'dist' }],
+  copy: [
+    { from: 'src/styles.css', to: 'dist' },
+    // The ambient `virtual:wave-docs` declaration. Excluded from `entry`
+    // above with every other `.d.ts`, so it is copied rather than emitted —
+    // and it must stay a `.d.ts`, because `moduleDetection: 'force'` makes
+    // every other file a module, where `declare module` is an augmentation of
+    // a module that does not exist.
+    { from: 'src/vite-client.d.ts', to: 'dist' },
+  ],
   // A library never bundles its deps; every bare import stays external in both
   // the JS and the emitted `.d.ts`. Without this, tsdown inlines type-only
   // packages into `dist/node_modules/**`, which ships a second copy of

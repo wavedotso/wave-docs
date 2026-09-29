@@ -233,6 +233,32 @@ describe('exports map', () => {
    * `resolveMarkdownLink` survives, from `./render`: six public names became
    * one, and it is the only one a `linkResolver` author cannot hand-roll.
    */
+  it('keeps `vite-client` free of top-level imports', () => {
+    /*
+     * ⚠️ THE ONE LINE THAT DECIDES WHETHER `virtual:wave-docs` HAS TYPES AT
+     * ALL. `declare module 'x'` is an *ambient declaration* in a script and a
+     * module *augmentation* in a module, and an augmentation of a module that
+     * does not exist is an error — so a single hoisted `import` at the top of
+     * this file turns the whole declaration off. The consumer's symptom is
+     * `TS2307: Cannot find module 'virtual:wave-docs'`, pointing at their code.
+     *
+     * It happened: the source used `import('./types.js')` inline types, and the
+     * declaration bundler hoisted them into real imports. The fix is that the
+     * inline types name the package (`import('@waveso/docs/types')`) rather than
+     * a relative path, which leaves nothing relative to rewrite.
+     */
+    const declaration = readFileSync(
+      path.join(ROOT, 'dist', 'vite-client.d.ts'),
+      'utf8',
+    );
+    const hoisted = declaration
+      .split('\n')
+      .filter((line) => /^\s*(import|export)\s.*\sfrom\s/.test(line));
+
+    expect(hoisted).toEqual([]);
+    expect(declaration).toContain("declare module 'virtual:wave-docs'");
+  });
+
   it('does not re-expose the deleted plumbing subpaths', () => {
     const keys = Object.keys(section(manifest, 'exports'));
     expect(keys).not.toContain('./markdown-links');

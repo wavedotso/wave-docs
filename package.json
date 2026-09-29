@@ -68,6 +68,14 @@
       "browser": null,
       "default": "./dist/next.js"
     },
+    "./vite": {
+      "types": "./dist/vite.d.ts",
+      "browser": null,
+      "default": "./dist/vite.js"
+    },
+    "./vite-client": {
+      "types": "./dist/vite-client.d.ts"
+    },
     "./react/callout": {
       "types": "./dist/react/callout.d.ts",
       "default": "./dist/react/callout.js"
@@ -217,6 +225,7 @@
     "rolldown": "^1.2.4",
     "tsdown": "^0.22.14",
     "typescript": "^5.9.3",
+    "vite": "^8.3.1",
     "vitest": "^4.1.10"
   },
   "devEngines": {

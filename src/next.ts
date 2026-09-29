@@ -51,9 +51,12 @@ import type { PluggableList } from 'unified';
 import type { ComponentType, ReactNode } from 'react';
 import { Fragment, cache, createElement } from 'react';
 
-import { mapPooled } from './map-pooled.js';
-import { assertAnchors } from './anchors.js';
-import { describeSuggestion } from './link-suggestion.js';
+import {
+  collectDocRoutes,
+  docsRendererOptions,
+  renderDocs,
+  reportBrokenAnchor,
+} from './docs-build.js';
 import type { SerializableSearchOptions } from './search-options.js';
 import { findFunctionValuedOptions } from './search-options.js';
 import { DocsCopyPage } from './react/copy-page.js';
@@ -1080,15 +1083,7 @@ export function createDocsRoute<
     into: Set<string>,
     files: ReadonlyArray<DocFile<TFrontmatter>>,
   ): void => {
-    for (const file of files) {
-      into.add(file.href);
-      for (const alias of file.frontmatter.aliases ?? []) {
-        aliasRoutes.set(
-          toAliasRoute(alias, config.basePath, file.relativePath),
-          file.href,
-        );
-      }
-    }
+    collectDocRoutes(into, aliasRoutes, files, config.basePath);
   };
 
   const loadRoutes = (): Promise<void> =>
@@ -1100,36 +1095,13 @@ export function createDocsRoute<
     ));
 
   const loadRenderer = (): DocsRenderer =>
-    (renderer ??= createDocsRenderer({
-      config,
-      knownRoutes,
-      draftRoutes,
-      aliasRoutes,
-      ...(options.highlighter === undefined
-        ? {}
-        : { highlighter: options.highlighter }),
-      ...(options.langs === undefined ? {} : { langs: options.langs }),
-      ...(options.themes === undefined ? {} : { themes: options.themes }),
-      ...(options.excludeLangs === undefined
-        ? {}
-        : { excludeLangs: options.excludeLangs }),
-      ...(codeLabels === undefined ? {} : { codeLabels }),
-      ...(options.titleHeading === undefined
-        ? {}
-        : { titleHeading: options.titleHeading }),
-      ...(options.remarkPlugins === undefined
-        ? {}
-        : { remarkPlugins: options.remarkPlugins }),
-      ...(options.rehypePlugins === undefined
-        ? {}
-        : { rehypePlugins: options.rehypePlugins }),
-      ...(options.linkResolver === undefined
-        ? {}
-        : { linkResolver: options.linkResolver }),
-      ...(options.imageResolver === undefined
-        ? {}
-        : { imageResolver: options.imageResolver }),
-    }));
+    (renderer ??= createDocsRenderer(
+      docsRendererOptions(
+        config,
+        { knownRoutes, draftRoutes, aliasRoutes },
+        { ...options, ...(codeLabels === undefined ? {} : { codeLabels }) },
+      ),
+    ));
 
   /** Re-read the disk on the route's schedule before delegating. */
   const rescanned = <TArgs extends unknown[], TResult>(
@@ -1203,34 +1175,17 @@ export function createDocsRoute<
     const files = await source.all();
     await loadRoutes();
     const renderer = loadRenderer();
-    const rendered = await mapPooled(files, RENDER_CONCURRENCY, (file) =>
-      renderer.render(file),
-    );
 
     /*
-     * ⚠️ CROSS-PAGE ANCHORS CAN ONLY BE CHECKED HERE, AND THIS IS THE FIRST
-     * MOMENT THEY CAN. `render` sees one page, so it can prove `#setup` exists
-     * on the page being rendered and nothing about `./other.md#setup` — the ids
-     * of `other` do not exist until `other` has been rendered. Once every page
-     * is in hand they all do.
+     * The cross-page anchor pass lives in `renderDocs`, because it is the one
+     * check that needs every page at once and neither adapter owns it.
      *
      * `renderAll` runs in every build that serves search: the index route is
      * `force-static`, so Next prerenders it, so this pass happens. A consumer
      * who renders pages by hand and never calls it gets the same-page half,
      * which is the half with line numbers anyway.
      */
-    assertAnchors(rendered, (from, link, known) => {
-      reportAnchor(
-        `@waveso/docs: ${from} links to '${link.href}', and '${link.route}' ` +
-          `has no '#${link.fragment}'.${describeSuggestion(
-            link.fragment,
-            known,
-          )} Heading ids come from the heading text, so renaming a heading ` +
-          'renames its anchor.',
-      );
-    });
-
-    return rendered;
+    return renderDocs(files, renderer, reportAnchor);
   };
 
   /**
@@ -1241,11 +1196,7 @@ export function createDocsRoute<
    * halves share `onBrokenAnchors`, because to an author they are one mistake.
    */
   const reportAnchor = (message: string): void => {
-    if (config.onBrokenAnchors === 'ignore') return;
-    if (config.onBrokenAnchors === 'throw') {
-      throw docsError('broken-anchor', message);
-    }
-    console.warn(message);
+    reportBrokenAnchor(config.onBrokenAnchors, message);
   };
 
   const searchIndexUrl = `${config.basePath}/search-index.json`;

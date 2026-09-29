@@ -11,6 +11,7 @@
     "theming",
     "layout",
     "translating",
+    "vite",
     "plugins"
   ]
 }

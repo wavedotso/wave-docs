@@ -40,6 +40,14 @@ const EXPECTED: Record<string, readonly string[]> = {
   'search-index': [],
   source: ['node:fs/promises', 'node:path'],
   next: ['node:crypto', 'node:fs/promises', 'node:path'],
+  /*
+   * `vite` inherits `source`'s two and adds nothing. No `node:crypto`, because
+   * the plugin emits files rather than serving them and so has no ETag to
+   * compute — and no `vite` import either: the plugin's own types are declared
+   * structurally, which is why this package declares no Vite peer and pins no
+   * Vite major.
+   */
+  vite: ['node:fs/promises', 'node:path'],
 };
 
 /**
