@@ -989,7 +989,7 @@ function SearchResultOption({
          * say is the heading, and the heading opens the accessible name.
          */}
         <span className="wave-docs-search-result-location" aria-hidden="true">
-          {toDisplaySegments(hit.href, crumbTitles).map(
+          {toDisplaySegments(slugOf(hit), crumbTitles).map(
             (segment, index, all) => (
               /*
                * Keyed by the path so far rather than by index: two segments of a
@@ -1268,7 +1268,29 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
 }
 
 /**
- * The route, without its anchor, for display only.
+ * The page a hit lands on, by its slug: the record's `id` without its anchor.
+ *
+ * ⚠️ THE SLUG, NOT THE `href`, AND THAT IS WHAT MAKES THE TITLES MATCH. The
+ * crumb titles are keyed by slug, and an `href` carries the site's `basePath`
+ * and percent-encodes its segments. Split for display, `/docs/agents/x` keyed
+ * `docs`, then `docs/agents`, against titles keyed `agents` and `agents/x`:
+ * nothing ever matched under a mounted `basePath`, `/docs` included, so every
+ * row showed its raw route, the mount first. The record's `id` is the slug
+ * already, raw, as the titles are.
+ *
+ * Which records carry an anchor is read off the `href`, as the row's icon
+ * reads it: a `#` in a segment is percent-encoded there, so the `href`'s only
+ * `#` is the anchor's. An anchor never holds a `#`, so the id's last one is
+ * where its anchor starts.
+ */
+function slugOf(hit: SearchHit): string {
+  if (!hit.href.includes('#')) return hit.id;
+  const hash = hit.id.lastIndexOf('#');
+  return hash === -1 ? hit.id : hit.id.slice(0, hash);
+}
+
+/**
+ * The page's trail, for display only.
  *
  * ⚠️ THE ANCHOR IS NOISE HERE, AND ALMOST ALWAYS A REPEAT. A section's anchor
  * is slugged from its heading, so `/docs/styling#layout-tokens` under a row
@@ -1284,11 +1306,9 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
  * the section — that is the whole point of section-scoped records.
  */
 function toDisplaySegments(
-  href: string,
+  slug: string,
   titles: DocsCrumbTitles | undefined,
 ): string[] {
-  const hash = href.indexOf('#');
-  const route = hash === -1 ? href : href.slice(0, hash);
   /*
    * ⚠️ A BREADCRUMB, NOT A ROUTE, AND THE SEPARATOR IS THE WHOLE DIFFERENCE.
    * The segments are already a trail from the site's root to the page; slashes
@@ -1310,7 +1330,7 @@ function toDisplaySegments(
    * the sidebar and the pager draw — which is the real argument. Everything
    * else in this package is that one set; a Unicode dingbat was a second.
    */
-  const segments = route.split('/').filter(Boolean);
+  const segments = slug.split('/').filter(Boolean);
 
   /*
    * ⚠️ THE ROOT PAGE HAS NO TRAIL, AND `/` WAS A FILLER FOR THAT. Every other

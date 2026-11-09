@@ -69,7 +69,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 14.9 KB |
+| Everything the quick start ships, gzipped | 15 KB |
 | Search dialog and router wiring | 9.9 KB |
 | Navigation: one sidebar, open and closed | 3.1 KB |
 | Table of contents | 1 KB |
@@ -78,7 +78,7 @@ Every figure below is a **ceiling**, and `pnpm size` fails the build if the meas
 | hast over the wire vs HTML, code and tables | 1.12× |
 | Highlighting vs no highlighting | 2.00× |
 
-The first row is the honest total: a reader who lands on a page of your documentation downloads under 14.9 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
+The first row is the honest total: a reader who lands on a page of your documentation downloads under 15 KB gzipped of JavaScript from this package, and that is the whole of it. No markdown parser and no syntax highlighter reach the browser at all — those run in Node at build time. Drop the search dialog and it is under 4 KB.
 
 The one real cost is the middle pair: shipping a tree instead of a string is about 20% more brotli on a prose page, and about 12% on a page with code and tables, where Shiki's token spans dominate both representations equally. That is the price of never handing markup to `dangerouslySetInnerHTML`, and it is the first number a skeptical reviewer should ask for.
 
@@ -608,7 +608,7 @@ GFM (tables, strikethrough, task lists, autolinks), GitHub alert syntax (`> [!NO
 
 Raw HTML in the source is **dropped**, not passed through. `rehype-raw` is not in the chain — on its own it happily reparses `<script>` back into the tree.
 
-A bare YouTube URL on its own line becomes a click-to-load facade: one ~14.9 KB thumbnail instead of ~717 KB of embed and player JavaScript on page load. A labelled link keeps its label and stays a link.
+A bare YouTube URL on its own line becomes a click-to-load facade: one ~15 KB thumbnail instead of ~717 KB of embed and player JavaScript on page load. A labelled link keeps its label and stays a link.
 
 Eighteen grammars load by default — what technical documentation actually contains:
 
@@ -881,7 +881,7 @@ If your site sets Next's own `basePath` config, prefix `indexUrl` yourself: Next
 | `minQueryLength` | `number` | `2` | Shortest query that runs |
 | `debounceMs` | `number` | `120` | Input debounce |
 | `className` | `string` | — | Extra classes for the trigger button |
-| `crumbTitles` | `Record<string, string>` | — | Route segment paths to display names, so a result's trail reads `Getting started › Installation` rather than `getting-started › installation`. `docs.Layout` builds it from the navigation and passes it; without it each segment falls back to its slug |
+| `crumbTitles` | `Record<string, string>` | — | Slug paths to display names (`getting-started/installation`, no `basePath`), so a result's trail reads `Getting started › Installation` rather than `getting-started › installation`. `docs.Layout` builds it from the navigation and passes it; without it each segment falls back to its slug |
 | `triggerLabel` | `string` | `'Search'` | The trigger's text |
 | `placeholder` | `string` | `'Search documentation'` | The input's placeholder |
 | `dialogLabel` | `string` | `'Search documentation'` | The dialog's accessible name |

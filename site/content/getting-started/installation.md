@@ -109,7 +109,7 @@ numbers this package is held to, not numbers somebody remembered to update.
 
 | | At most |
 | --- | --- |
-| Everything the quick start ships, gzipped | 14.9 KB |
+| Everything the quick start ships, gzipped | 15 KB |
 | Search dialog and router wiring | 9.9 KB |
 | Navigation: one sidebar, open and closed | 3.1 KB |
 | Table of contents | 1 KB |
@@ -119,7 +119,7 @@ numbers this package is held to, not numbers somebody remembered to update.
 | Highlighting vs no highlighting | 2.00× |
 
 **The first row is the honest total.** A reader who lands on a page of your
-documentation downloads under 14.9 KB gzipped of JavaScript from this package,
+documentation downloads under 15 KB gzipped of JavaScript from this package,
 and that is the whole of it. No markdown parser and no syntax highlighter reach
 the browser at all — those run in Node at build time. Drop the search dialog
 and it is under 4 KB.

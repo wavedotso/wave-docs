@@ -3568,7 +3568,12 @@
     }
   }
 
-  /* First child of the navigation, above the tree. */
+  /* The host's mark, when it sets one: first in the navigation, above the search. */
+  .wave-docs-layout__brand {
+    margin-block-end: 1rem;
+  }
+
+  /* First child of the navigation after the brand, above the tree. */
   .wave-docs-layout__search {
     margin-block-end: 1rem;
   }
@@ -4703,6 +4708,16 @@
    * sits on the baseline the way a letter does, with no alignment to correct.
    */
   .wave-docs-search-result-sep {
+    /*
+     * ⚠️ INLINE, ON THE BASELINE, SAID OUT LOUD. Both are an inline SVG's
+     * defaults, and this rule leaned on them — until a Tailwind host: its
+     * preflight sets `svg { display: block; vertical-align: middle }` in
+     * `@layer base`, and every crumb dropped to a line of its own. This sheet's
+     * `components` layer outranks `base` whatever the specificity, so saying
+     * it here wins.
+     */
+    display: inline;
+    vertical-align: baseline;
     height: 7px;
     width: auto;
     /*

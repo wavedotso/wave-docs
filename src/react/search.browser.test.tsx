@@ -203,3 +203,50 @@ describe('the search dialog sizes to its content', () => {
     expect(box.bottom).toBeLessThanOrEqual(Math.ceil(dialogBox.bottom));
   });
 });
+
+/**
+ * ⚠️ THE TRAIL STOOD ONE CRUMB PER LINE IN EVERY TAILWIND HOST. The chevron
+ * between two crumbs is an inline `<svg>`, and Tailwind's preflight sets
+ * `svg { display: block; vertical-align: middle }` in `@layer base` — so each
+ * chevron broke the line, and a three-crumb trail took five. The package's own
+ * site ships no reset, so nothing showed it there. The reset is reproduced
+ * here, in the layer Tailwind puts it in.
+ */
+describe('the trail under a host reset', () => {
+  const RESET = `
+    @layer theme, base, components, utilities;
+    @layer base {
+      img, svg, video { display: block; vertical-align: middle; }
+    }`;
+
+  const CHEVRON =
+    '<svg class="wave-docs-search-result-sep" aria-hidden="true" viewBox="8 5 8 14" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>';
+
+  function location(crumb: string): HTMLElement {
+    mount(0);
+    document.head.querySelector('#host-reset')?.remove();
+    const reset = document.createElement('style');
+    reset.id = 'host-reset';
+    reset.textContent = RESET;
+    // Before the package's sheet, as a host's own CSS loads first.
+    document.head.prepend(reset);
+
+    const results = document.querySelector('.wave-docs-search-results');
+    if (!(results instanceof HTMLElement)) throw new Error('no results list');
+    results.innerHTML = row('Agent skills', crumb);
+    const line = results.querySelector('.wave-docs-search-result-location');
+    if (!(line instanceof HTMLElement)) throw new Error('no location line');
+    return line;
+  }
+
+  it('keeps the crumbs and their chevrons on one line', () => {
+    const plain = height(location('Learn'));
+    const trail = location(`Learn${CHEVRON}Agents${CHEVRON}Agent skills`);
+
+    expect(height(trail)).toBe(plain);
+    const chevron = trail.querySelector('svg');
+    if (chevron === null) throw new Error('no chevron');
+    expect(getComputedStyle(chevron).display).toBe('inline');
+    expect(getComputedStyle(chevron).verticalAlign).toBe('baseline');
+  });
+});

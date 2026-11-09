@@ -662,8 +662,14 @@ describe('SearchDialog', () => {
        * one machine resolved, while the package's own chevron has no font to be
        * missing from. The count below is what pins that it is drawn at all.
        */
-      expect(location?.textContent).toBe('docsguideinstall');
-      expect(location?.querySelectorAll('svg')).toHaveLength(2);
+      /*
+       * ⚠️ FROM THE SLUG, SO THE MOUNT IS NOT IN IT. The hit lives at
+       * `/docs/guide/install`, and `/docs` is the same on every row: it says
+       * nothing about where a hit lands, and when the trail was split from the
+       * `href` it was also what kept the titles from ever matching.
+       */
+      expect(location?.textContent).toBe('guideinstall');
+      expect(location?.querySelectorAll('svg')).toHaveLength(1);
       // The link still carries it, which is what makes the hit a deep link.
       expect(option.querySelector('a')?.getAttribute('href')).toBe(
         '/docs/guide/install#peer-dependencies',
@@ -700,7 +706,58 @@ describe('SearchDialog', () => {
 
       expect(
         lead.querySelector('.wave-docs-search-result-location')?.textContent,
-      ).toBe('docsguideinstall');
+      ).toBe('guideinstall');
+    });
+
+    /*
+     * ⚠️ THE TITLES NEVER MATCHED UNDER A MOUNTED `basePath`, `/docs`
+     * INCLUDED. They are keyed by slug and the trail was split from the
+     * `href`, so `docs/guide` was looked up against `guide` and every row fell
+     * back to its raw route. This fixture is mounted at `/docs` on purpose.
+     */
+    it('names the trail from the navigation under a mounted basePath', async () => {
+      const { user, trigger } = renderDialog({
+        crumbTitles: { guide: 'Guide', 'guide/install': 'Installation' },
+      });
+      await search(user, trigger, 'install');
+
+      const lead = screen.getByRole('option', { name: 'Installation' });
+      expect(
+        lead.querySelector('.wave-docs-search-result-location')?.textContent,
+      ).toBe('GuideInstallation');
+    });
+
+    /*
+     * A slug with characters a URL escapes: the `href` carries `caf%C3%A9`,
+     * the slug and its title key carry `café`. Read off the `href`, the row
+     * showed the escapes and matched no title.
+     */
+    it('reads a percent-encoded route by its slug', async () => {
+      const url = '/encoded/search-index.json';
+      const index = buildSearchIndex([
+        {
+          id: 'menu/café',
+          title: 'Café',
+          heading: 'Café',
+          ancestors: [],
+          href: '/docs/menu/caf%C3%A9',
+          text: 'Espresso, and the rest of the menu.',
+        },
+      ]);
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(new Response(index, { status: 200 })),
+      );
+
+      const { user, trigger } = renderDialog({
+        indexUrl: url,
+        crumbTitles: { menu: 'Menu' },
+      });
+      await search(user, trigger, 'espresso');
+
+      const option = screen.getByRole('option', { name: 'Café' });
+      expect(
+        option.querySelector('.wave-docs-search-result-location')?.textContent,
+      ).toBe('Menucafé');
     });
 
     it('gives every row a second line, so the list is not ragged', async () => {
@@ -720,7 +777,7 @@ describe('SearchDialog', () => {
         // Present, and always the same kind of thing. The defect this replaced
         // was a slot that held a page name under one row and an address under
         // the next.
-        expect(location?.textContent).toMatch(/^docs/);
+        expect(location?.textContent).toMatch(/^guide/);
       }
     });
 
