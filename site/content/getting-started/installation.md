@@ -110,7 +110,7 @@ numbers this package is held to, not numbers somebody remembered to update.
 | | At most |
 | --- | --- |
 | Everything the quick start ships, gzipped | 15 KB |
-| Search dialog and router wiring | 9.9 KB |
+| Search dialog and router wiring | 10 KB |
 | Navigation: one sidebar, open and closed | 3.1 KB |
 | Table of contents | 1 KB |
 | Copy-button runtime | 1.1 KB |

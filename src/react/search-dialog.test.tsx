@@ -669,7 +669,14 @@ describe('SearchDialog', () => {
        * `href` it was also what kept the titles from ever matching.
        */
       expect(location?.textContent).toBe('guideinstall');
-      expect(location?.querySelectorAll('svg')).toHaveLength(1);
+      /*
+       * Three: the home mark, then a chevron before each of the two crumbs.
+       * Every crumb gets one now, because something always precedes it.
+       */
+      expect(location?.querySelectorAll('svg')).toHaveLength(3);
+      expect(location?.firstElementChild?.getAttribute('class')).toBe(
+        'wave-docs-search-result-home',
+      );
       // The link still carries it, which is what makes the hit a deep link.
       expect(option.querySelector('a')?.getAttribute('href')).toBe(
         '/docs/guide/install#peer-dependencies',
@@ -778,7 +785,70 @@ describe('SearchDialog', () => {
         // was a slot that held a page name under one row and an address under
         // the next.
         expect(location?.textContent).toMatch(/^guide/);
+        // And it opens at the root on every row, which is what makes the line
+        // read as a location rather than as a second label.
+        expect(
+          location?.querySelector('.wave-docs-search-result-home'),
+        ).not.toBeNull();
       }
+    });
+
+    /*
+     * ⚠️ THE ROW THAT USED TO NEED A FILLER. The site's own index has no
+     * trail, and an empty second line left the list ragged — so it fell back
+     * first to a lone `/`, then to the index's own title, which is the same
+     * word already sitting on line one. The home mark is the whole trail here:
+     * no filler, no empty line, and nothing repeated from the heading above.
+     */
+    it('shows the home mark alone for the site index, with no filler', async () => {
+      const url = '/root-row/search-index.json';
+      const index = buildSearchIndex([
+        {
+          id: '',
+          title: 'Overview',
+          heading: 'Overview',
+          ancestors: [],
+          href: '/docs',
+          text: 'Installing and configuring the package.',
+        },
+      ]);
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(new Response(index, { status: 200 })),
+      );
+
+      const { user, trigger } = renderDialog({
+        indexUrl: url,
+        crumbTitles: { '': 'Overview' },
+      });
+      await search(user, trigger, 'installing');
+
+      const location = screen
+        .getByRole('option', { name: 'Overview' })
+        .querySelector('.wave-docs-search-result-location');
+
+      expect(location?.textContent).toBe('');
+      expect(location?.querySelectorAll('svg')).toHaveLength(1);
+      expect(
+        location?.querySelector('.wave-docs-search-result-home'),
+      ).not.toBeNull();
+    });
+
+    /*
+     * ⚠️ THE CROP IS THE ALIGNMENT, SO IT IS THE THING WORTH PINNING. Lucide
+     * draws the house on `0 0 24 24` with two units of empty floor beneath it,
+     * and `vertical-align: baseline` aligns the box — so the full viewBox hangs
+     * the house 8.3% of its height above the baseline. Measured ink: x 2..22,
+     * y 1..22. Restoring `0 0 24 24` is a change nothing else would catch.
+     */
+    it('crops the home mark to its ink', async () => {
+      const { user, trigger } = renderDialog();
+      await search(user, trigger, 'install');
+
+      const home = screen
+        .getAllByRole('option')[0]
+        ?.querySelector('.wave-docs-search-result-home');
+
+      expect(home?.getAttribute('viewBox')).toBe('2 1 20 21');
     });
 
     it('does not answer a one-character query', async () => {

@@ -989,6 +989,7 @@ function SearchResultOption({
          * say is the heading, and the heading opens the accessible name.
          */}
         <span className="wave-docs-search-result-location" aria-hidden="true">
+          <TrailHome />
           {toDisplaySegments(slugOf(hit), crumbTitles).map(
             (segment, index, all) => (
               /*
@@ -997,7 +998,12 @@ function SearchResultOption({
                * accumulated prefix is unique by construction.
                */
               <Fragment key={all.slice(0, index + 1).join('/')}>
-                {index === 0 ? null : <PathChevron />}
+                {/*
+                 * Every crumb, including the first: the home mark precedes them
+                 * all, so there is no longer a leading name for a separator to
+                 * be wrong in front of.
+                 */}
+                <PathChevron />
                 {segment}
               </Fragment>
             ),
@@ -1268,6 +1274,43 @@ function isSearchHit(hit: SearchHit | undefined): hit is SearchHit {
 }
 
 /**
+ * The trail's first crumb: the top of the documentation.
+ *
+ * ⚠️ IT IS GRAMMAR, NOT INFORMATION, AND THAT IS WHY A CONSTANT MARK EARNS ITS
+ * PLACE HERE WHEN `/docs` DID NOT. The mount was constant *and* shaped like a
+ * name, so it competed with the real segments while saying nothing. This says
+ * one thing no name can: the line under the heading is a location rather than
+ * a second label — which is what stops the last crumb reading as a repeat of
+ * the heading above it, since a breadcrumb ending on the current page is what
+ * a breadcrumb is.
+ *
+ * ⚠️ THE `viewBox` IS CROPPED TO THE INK, LIKE THE CHEVRON'S. Lucide draws on
+ * `0 0 24 24` with the house spanning y 1..22, so two of those units are empty
+ * floor — and `vertical-align: baseline` aligns the *box*, which would hang the
+ * house 8.3% of its height above the baseline. Measured by rasterising at 40×
+ * and reading the ink bounds: x 2..22, y 1..22. Cropping is the alignment; there
+ * is no offset anywhere.
+ */
+function TrailHome(): ReactNode {
+  return (
+    <svg
+      className="wave-docs-search-result-home"
+      aria-hidden="true"
+      focusable="false"
+      viewBox="2 1 20 21"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+      <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
+}
+
+/**
  * The page a hit lands on, by its slug: the record's `id` without its anchor.
  *
  * ⚠️ THE SLUG, NOT THE `href`, AND THAT IS WHAT MAKES THE TITLES MATCH. The
@@ -1333,13 +1376,13 @@ function toDisplaySegments(
   const segments = slug.split('/').filter(Boolean);
 
   /*
-   * ⚠️ THE ROOT PAGE HAS NO TRAIL, AND `/` WAS A FILLER FOR THAT. Every other
-   * row shows names, so a lone slash there was the one row still speaking in
-   * URLs — and it was there only because the alternative was an empty line and
-   * a ragged list. The site's own index has a name in the navigation, which is
-   * what a reader would call "the top".
+   * ⚠️ THE ROOT PAGE RETURNS NOTHING, AND THAT IS NOW COMPLETE RATHER THAN
+   * RAGGED. It used to fall back to the site's own index title, and before that
+   * to a lone `/` — a filler, because an empty second line left the list uneven.
+   * `TrailHome` renders before this list and is unconditional, so the root row
+   * is the home mark alone: no filler, no empty line, and no name repeated from
+   * the heading directly above it.
    */
-  if (segments.length === 0) return [titles?.[''] ?? '/'];
 
   /*
    * ⚠️ KEYED BY THE CUMULATIVE PATH, NOT THE BARE SEGMENT. `guides/api` and

@@ -220,7 +220,7 @@ describe('the trail under a host reset', () => {
     }`;
 
   const CHEVRON =
-    '<svg class="wave-docs-search-result-sep" aria-hidden="true" viewBox="8 5 8 14" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>';
+    '<svg class="wave-docs-search-result-sep" aria-hidden="true" stroke-width="2" viewBox="8 5 8 14" fill="none" stroke="currentColor"><path d="m9 18 6-6-6-6"/></svg>';
 
   function location(crumb: string): HTMLElement {
     mount(0);
@@ -239,14 +239,67 @@ describe('the trail under a host reset', () => {
     return line;
   }
 
+  const HOME =
+    '<svg class="wave-docs-search-result-home" aria-hidden="true" stroke-width="2" viewBox="2 1 20 21" fill="none" stroke="currentColor"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
+
   it('keeps the crumbs and their chevrons on one line', () => {
     const plain = height(location('Learn'));
-    const trail = location(`Learn${CHEVRON}Agents${CHEVRON}Agent skills`);
+    const trail = location(`${HOME}${CHEVRON}Agents${CHEVRON}Agent skills`);
 
     expect(height(trail)).toBe(plain);
-    const chevron = trail.querySelector('svg');
+    const chevron = trail.querySelector('.wave-docs-search-result-sep');
     if (chevron === null) throw new Error('no chevron');
     expect(getComputedStyle(chevron).display).toBe('inline');
     expect(getComputedStyle(chevron).verticalAlign).toBe('baseline');
+  });
+
+  /*
+   * ⚠️ THE HOME MARK IS A SECOND SVG ON THAT LINE, SO THE RESET REACHES IT TOO.
+   * One selector covers both, and this is what fails if they are ever split and
+   * only the separator keeps the declarations.
+   */
+  it('keeps the home mark inline under the same reset', () => {
+    const trail = location(`${HOME}${CHEVRON}Agents`);
+
+    const home = trail.querySelector('.wave-docs-search-result-home');
+    if (home === null) throw new Error('no home mark');
+    expect(getComputedStyle(home).display).toBe('inline');
+    expect(getComputedStyle(home).verticalAlign).toBe('baseline');
+  });
+
+  /*
+   * ⚠️ THE CROP IS THE ALIGNMENT, AND THIS IS WHAT PROVES THE NUMBERS IN IT.
+   * `vertical-align: baseline` puts the element's *box* on the baseline, so a
+   * `getBoundingClientRect` check passes whatever the `viewBox` says — the
+   * first version of this test asserted exactly that and caught nothing. What
+   * decides where the house lands is whether the ink fills the box, which only
+   * `getBBox` can answer: it returns the geometry in user units, and the stroke
+   * adds half its width on each side.
+   *
+   * Lucide draws the house with two user units of empty floor beneath it. Left
+   * uncropped, that is 8.3% of the box, and the house hangs that far above the
+   * baseline.
+   */
+  it('crops the home mark so its ink fills the box', () => {
+    const trail = location(`${HOME}${CHEVRON}Agents`);
+    const home = trail.querySelector('.wave-docs-search-result-home');
+    if (!(home instanceof SVGGraphicsElement)) throw new Error('no home mark');
+
+    const [vx, vy, vw, vh] = (home.getAttribute('viewBox') ?? '')
+      .split(/\s+/)
+      .map(Number);
+    const half =
+      Number(getComputedStyle(home).strokeWidth.replace('px', '')) / 2;
+    const box = home.getBBox();
+
+    // Every edge of the ink, stroke included, is an edge of the box.
+    expect(box.x - half - (vx as number)).toBeCloseTo(0, 1);
+    expect(box.y - half - (vy as number)).toBeCloseTo(0, 1);
+    expect(
+      (vx as number) + (vw as number) - (box.x + box.width + half),
+    ).toBeCloseTo(0, 1);
+    expect(
+      (vy as number) + (vh as number) - (box.y + box.height + half),
+    ).toBeCloseTo(0, 1);
   });
 });

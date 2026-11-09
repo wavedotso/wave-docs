@@ -4707,18 +4707,20 @@
    * The `viewBox` is cropped to the painted ink, so the box is the glyph: it
    * sits on the baseline the way a letter does, with no alignment to correct.
    */
+  /*
+   * ⚠️ INLINE, ON THE BASELINE, SAID OUT LOUD, AND FOR BOTH GLYPHS AT ONCE.
+   * Both are an inline SVG's defaults, and this rule leaned on them — until a
+   * Tailwind host: its preflight sets `svg { display: block; vertical-align:
+   * middle }` in `@layer base`, and every crumb dropped to a line of its own.
+   * This sheet's `components` layer outranks `base` whatever the specificity,
+   * so saying it here wins. One selector rather than two, because the home mark
+   * is a second SVG on the same line and would otherwise have reintroduced the
+   * same defect on its own.
+   */
+  .wave-docs-search-result-home,
   .wave-docs-search-result-sep {
-    /*
-     * ⚠️ INLINE, ON THE BASELINE, SAID OUT LOUD. Both are an inline SVG's
-     * defaults, and this rule leaned on them — until a Tailwind host: its
-     * preflight sets `svg { display: block; vertical-align: middle }` in
-     * `@layer base`, and every crumb dropped to a line of its own. This sheet's
-     * `components` layer outranks `base` whatever the specificity, so saying
-     * it here wins.
-     */
     display: inline;
     vertical-align: baseline;
-    height: 7px;
     width: auto;
     /*
      * The `viewBox` is exactly the stroke's extent, so the tip lands on the
@@ -4727,9 +4729,28 @@
      * anti-aliasing.
      */
     overflow: visible;
+    color: var(--wave-docs-fg-subtle);
+  }
+
+  /*
+   * The separator is punctuation, so it is deliberately smaller than a letter;
+   * the home mark below is a glyph and sits at the text's cap height.
+   */
+  .wave-docs-search-result-sep {
+    height: 7px;
     /* The air either side. */
     margin-inline: 4px;
-    color: var(--wave-docs-fg-subtle);
+  }
+
+  /*
+   * ⚠️ 9px AGAINST A 0.75rem LINE, WHOSE CAP HEIGHT IS ABOUT 8.6px. The mark
+   * reads as a capital in the line rather than as an object dropped into it.
+   * Its `viewBox` is cropped to the ink, so `vertical-align: baseline` lands
+   * the house on the baseline and not 8.3% of its height above it — see
+   * `TrailHome`. No offset: the crop is the alignment.
+   */
+  .wave-docs-search-result-home {
+    height: 9px;
   }
 
   .wave-docs-search-result-heading {
