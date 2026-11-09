@@ -1,5 +1,49 @@
 # @waveso/docs
 
+## 0.16.0
+
+### Minor Changes
+
+- 09b7aca: **`docs.Layout` takes a `brand`: the site's mark, at the top of the sidebar.**
+
+  It renders above the search trigger, inside the navigation the sidebar's trigger moves, in a `.wave-docs-layout__brand` wrapper with the same room under it as the search. Nothing renders when it is unset, so existing sites are unchanged.
+
+  It is not the header's `title` come back. It adds no bar across the top, so a host with a navbar of its own still gets no second one; it answers the one region a host cannot reach from outside `docs.Layout`, the top of the sidebar, for a site whose docs carry no navbar of their own.
+
+### Patch Changes
+
+- 43bedf5: **The search trail reads as names on one line, under a mounted `basePath` and in a Tailwind host.**
+
+  Two defects in the second line of a search result, both invisible on a root-mounted site with no CSS reset:
+
+  - **The titles never matched under a mounted `basePath`, `/docs` included.** The trail was split from the hit's `href`, which carries the mount and percent-encodes its segments, while the crumb titles are keyed by slug. So every row showed its raw route, the mount first: `learn › agents › agent-skills`. The trail is now read from the record's slug, its `id` without the anchor, so it shows `Agents › Agent skills`, unescaped, and leaves out the mount, the same on every row.
+  - **Each crumb stood on its own line in a Tailwind host.** Tailwind's preflight sets `svg { display: block; vertical-align: middle }`, and the chevron between two crumbs is an SVG. `.wave-docs-search-result-sep` now says `display: inline` and `vertical-align: baseline` itself, in the `components` layer, which outranks the reset.
+
+- facb454: **A search result's trail opens at the documentation root.**
+
+  The second line of a result now begins with a mark for the root, then a chevron
+  before every crumb: `⌂ › Guides › Theming`.
+
+  It is grammar rather than information, which is what earns a constant mark here
+  when the `basePath` did not: the mount was constant _and_ shaped like a name, so
+  it competed with the real segments while saying nothing. This says the one thing
+  no name can — that the line under the heading is a location. Without it the last
+  crumb reads as a repeat of the heading directly above, because a breadcrumb ends
+  on the page it names.
+
+  The root page needed a filler for the same reason, and no longer does. It was a
+  bare `/` first, then the page's own navigation title, which was the word already
+  on the line above. It is the home mark alone now.
+
+  The mark's `viewBox` is cropped to its ink. `vertical-align: baseline` aligns an
+  element's box, and Lucide leaves two user units of empty floor under the house —
+  8.3% of the box — so the full viewBox would hang it that far above the baseline.
+  Cropping is the alignment; there is no offset. One selector carries `display:
+inline` and `vertical-align: baseline` for both glyphs, so a Tailwind preflight
+  cannot break the new one the way it broke the separator.
+
+  About 90 gzipped bytes.
+
 ## 0.15.0
 
 ### Minor Changes
