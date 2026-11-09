@@ -1,5 +1,5 @@
 /**
- * The docs shell: skip link, sidebar, search trigger, grid. There is
+ * The docs shell: skip link, sidebar, brand, search trigger, grid. There is
  * no header: the sidebar is the chrome at every width, and the comment on it
  * below is why.
  *
@@ -101,6 +101,14 @@ export interface DocsLayoutShellProps {
    * here.
    */
   icons?: boolean | DocsIconMap | undefined;
+  /**
+   * The site's mark, at the top of the sidebar above the search trigger:
+   * usually its logo and name, linking home. Nothing when unset.
+   *
+   * In the sidebar, not across the top: a host with a navbar of its own
+   * gets no second bar, and the mark moves with the tree at every width.
+   */
+  brand?: ReactNode;
 }
 
 export function DocsLayoutShell({
@@ -110,6 +118,7 @@ export function DocsLayoutShell({
   search = true,
   labels,
   icons,
+  brand,
 }: DocsLayoutShellProps): ReactNode {
   const text = resolveLabels(labels);
 
@@ -153,6 +162,17 @@ export function DocsLayoutShell({
               : { externalLink: labels.externalLink })}
             {...(icons === undefined ? {} : { icons })}
           >
+            {/*
+             * Truthiness, not `=== undefined`: `brand={isPro && <Logo />}` is
+             * the ordinary way to write a conditional one, and it hands over
+             * `false` rather than nothing. Checked only for `undefined` and
+             * `null`, that rendered an empty wrapper — and the wrapper carries
+             * `margin-block-end`, so a brand that was off still spaced the
+             * search away from the top.
+             */}
+            {brand ? (
+              <div className="wave-docs-layout__brand">{brand}</div>
+            ) : null}
             {search === false ? null : (
               <DocsSearch
                 indexUrl={searchIndexUrl}

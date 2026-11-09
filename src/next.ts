@@ -566,6 +566,12 @@ export interface DocsLayoutProps {
    *
    * The argument that justified `actions` was that the header bar was the one
    * region nothing else could reach. There is no header bar.
+   *
+   * `brand`, below, is not `title` come back. It renders inside the sidebar,
+   * above the search, so it adds no bar at the top; and it answers the one
+   * region a host cannot reach from outside, which is the top of the sidebar.
+   * A site whose docs carry no navbar of their own has nowhere else to put
+   * its mark.
    */
   /**
    * The search trigger. Defaults to on, and the URL is always derived.
@@ -619,6 +625,15 @@ export interface DocsLayoutProps {
    * at the boundary.
    */
   icons?: boolean | DocsIconMap | undefined;
+  /**
+   * The site's mark, at the top of the sidebar above the search trigger:
+   * usually its logo and name, linking home, in a
+   * `.wave-docs-layout__brand` wrapper. Nothing renders when unset.
+   *
+   * A node the host renders, so a Server Component's output is fine here:
+   * it crosses into the sidebar as rendered markup, not as a component.
+   */
+  brand?: ReactNode;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -1580,6 +1595,7 @@ export function createDocsRoute<
       search,
       labels,
       icons,
+      brand,
     }: DocsLayoutProps): Promise<ReactNode> {
       /*
        * Lazy, and load-bearing. `layout.tsx` is itself a Server Component, but
@@ -1669,6 +1685,7 @@ export function createDocsRoute<
         search: searchProps,
         ...(shellLabels === undefined ? {} : { labels: shellLabels }),
         ...(icons === undefined ? {} : { icons }),
+        ...(brand === undefined ? {} : { brand }),
       });
     },
 

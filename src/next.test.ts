@@ -582,9 +582,14 @@ describe('docs.Layout', () => {
      * authors, which is a different thing from a node the host renders. The
      * argument in the paragraph above still holds for the day a fourth one
      * arrives.
+     *
+     * It fired a fourth time for `brand`, a node the host renders, and the
+     * answer was yes: the top of the sidebar is the one region a host cannot
+     * reach from outside `docs.Layout`, and a site whose docs have no navbar
+     * of their own had nowhere to put its mark.
      */
     expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
-      'children' | 'search' | 'labels' | 'icons'
+      'children' | 'search' | 'labels' | 'icons' | 'brand'
     >();
   });
 
@@ -614,6 +619,25 @@ describe('docs.Layout', () => {
     // Absent, not `undefined`: this prop crosses to a Client Component, and an
     // unconfigured site must not pay for a key in every page's payload.
     expect('icons' in element.props).toBe(false);
+  });
+
+  it('passes the brand through to the shell', async () => {
+    const brand = 'Acme';
+    const element = await route.Layout({ children: null, brand });
+
+    if (!isValidElement<{ brand?: unknown }>(element)) {
+      throw new Error('Layout did not return an element');
+    }
+    expect(element.props.brand).toBe(brand);
+  });
+
+  it('omits the brand entirely when a host sets none', async () => {
+    const element = await route.Layout({ children: null });
+
+    if (!isValidElement<Record<string, unknown>>(element)) {
+      throw new Error('Layout did not return an element');
+    }
+    expect('brand' in element.props).toBe(false);
   });
 
   it('passes labels through to the shell', async () => {

@@ -382,10 +382,25 @@ If that header of yours is sticky, say how tall it is once and the shell's stick
 | `children` | `ReactNode` | — | What `docs.Page` returns — the `<main>` and the TOC, as two siblings |
 | `search` | `boolean \| DocsSearchProps` | `true` | The search trigger. An object configures the dialog |
 | `labels` | `DocsLabels` | the route's | Overrides `createDocsRoute`'s labels, key by key |
+| `icons` | `boolean \| DocsIconMap` | `true` | The sidebar's marker column — see [Sidebar icons](#sidebar-icons) |
+| `brand` | `ReactNode` | — | The site's mark, at the top of the sidebar above the search |
 
-Three props, and one of them is `children`. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. A theme toggle and a repository link go in the layout you write around this one.
+Five props, and one of them is `children`. That is deliberate, and it is the difference between this and an eleven-slot layout: everything else a docs shell gets asked for is already reachable. An announcement banner goes *above* `<docs.Layout>` in your own layout, because this does not own `<body>`. A content footer goes inside `children`. Sidebar links, social icons and separators are `DocNavNode`s you author in `meta.json`. A theme toggle and a repository link go in the layout you write around this one.
 
-**`title` and `actions` were removed in 0.7.0, with the header they lived in.** `title` was a brand slot, and a brand belongs to the index page's own title — content, authored and translatable, part of what the reader came for. The argument for `actions` was that the header bar was the one region nothing else could reach; there is no header bar, and the host wraps `docs.Layout` exactly as it already wraps `<html>` and `<body>`, so there is no region only this package can reach. The one place a host cannot reach through this prop list is *inside* the sidebar, and the answer to that is [composing the primitives yourself](#composing-it-yourself).
+**`title` and `actions` were removed in 0.7.0, with the header they lived in.** `title` was a brand slot, and a brand belongs to the index page's own title — content, authored and translatable, part of what the reader came for. The argument for `actions` was that the header bar was the one region nothing else could reach; there is no header bar, and the host wraps `docs.Layout` exactly as it already wraps `<html>` and `<body>`, so there is no region only this package can reach. The one place a host cannot reach from outside is the top of the sidebar, and `brand` is for that: a node rendered there, above the search, in `.wave-docs-layout__brand`. It is not `title` come back — it adds no bar across the top, and it moves with the tree at every width. Anything deeper inside the sidebar is [composing the primitives yourself](#composing-it-yourself).
+
+<!-- typecheck: skip — the one prop is the point; the layout around it is the one above -->
+```tsx
+<docs.Layout
+  brand={
+    <Link href="/">
+      <Logo /> Acme
+    </Link>
+  }
+>
+  {children}
+</docs.Layout>
+```
 
 `search` takes anything `DocsSearch` takes except `indexUrl`, which stays derived from your `basePath`. You do not need to repeat `miniSearchOptions` here to match `createDocsRoute` — the route's own value is forwarded, so the object that built the index is the object that queries it.
 
@@ -593,7 +608,7 @@ GFM (tables, strikethrough, task lists, autolinks), GitHub alert syntax (`> [!NO
 
 Raw HTML in the source is **dropped**, not passed through. `rehype-raw` is not in the chain — on its own it happily reparses `<script>` back into the tree.
 
-A bare YouTube URL on its own line becomes a click-to-load facade: one ~15 KB thumbnail instead of ~717 KB of embed and player JavaScript on page load. A labelled link keeps its label and stays a link.
+A bare YouTube URL on its own line becomes a click-to-load facade: one ~14.9 KB thumbnail instead of ~717 KB of embed and player JavaScript on page load. A labelled link keeps its label and stays a link.
 
 Eighteen grammars load by default — what technical documentation actually contains:
 

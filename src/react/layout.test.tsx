@@ -247,6 +247,49 @@ describe('DocsLayoutShell', () => {
   });
 
   /**
+   * The brand is in the navigation the trigger moves, and before the search,
+   * so it travels with them at every width and reads first.
+   */
+  it('puts a brand inside the sidebar, above the search, only when set', () => {
+    const container = renderShell({ brand: <a href="/">Acme</a> });
+
+    const nav = container.querySelector('.wave-docs-layout__sidebar-nav');
+    const brand = container.querySelector('.wave-docs-layout__brand');
+    const search = container.querySelector('button.wave-docs-search-trigger');
+    if (nav === null || brand === null || search === null) {
+      throw new Error('expected the nav, a brand and a search trigger');
+    }
+
+    expect(nav.contains(brand)).toBe(true);
+    expect(brand).toContainElement(screen.getByRole('link', { name: 'Acme' }));
+    expect(
+      brand.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders no brand wrapper when none is set', () => {
+    const container = renderShell();
+
+    expect(container.querySelector('.wave-docs-layout__brand')).toBeNull();
+  });
+
+  /**
+   * ⚠️ `false` AND `''` ARE WHAT A CONDITIONAL BRAND ACTUALLY HANDS OVER.
+   * `brand={isPro && <Logo />}` is the ordinary way to write one, and it is
+   * neither `undefined` nor `null` — so a guard on those two alone rendered an
+   * empty wrapper, and the wrapper carries `margin-block-end`. The defect was
+   * a brand that was off still pushing the search down.
+   */
+  it.each([
+    ['false', false],
+    ['an empty string', ''],
+  ])('renders no brand wrapper for %s', (_name, brand) => {
+    const container = renderShell({ brand });
+
+    expect(container.querySelector('.wave-docs-layout__brand')).toBeNull();
+  });
+
+  /**
    * The trigger names the box it moves, so a screen reader announces the
    * relationship the sighted reader can see.
    */
