@@ -634,6 +634,13 @@ export interface DocsLayoutProps {
    * it crosses into the sidebar as rendered markup, not as a component.
    */
   brand?: ReactNode;
+  /**
+   * Where the brand links, usually the site's root: `'/'`. Optional: unset,
+   * the brand is not a link. Set, it is a plain anchor in
+   * `.wave-docs-layout__brand-link`, with the shell's focus ring, so the
+   * page loads in full and the host's own landing runs.
+   */
+  brandHref?: string | undefined;
 }
 
 /** Props Next hands a page in the App Router. */
@@ -1596,6 +1603,7 @@ export function createDocsRoute<
       labels,
       icons,
       brand,
+      brandHref,
     }: DocsLayoutProps): Promise<ReactNode> {
       /*
        * Lazy, and load-bearing. `layout.tsx` is itself a Server Component, but
@@ -1686,6 +1694,7 @@ export function createDocsRoute<
         ...(shellLabels === undefined ? {} : { labels: shellLabels }),
         ...(icons === undefined ? {} : { icons }),
         ...(brand === undefined ? {} : { brand }),
+        ...(brandHref === undefined ? {} : { brandHref }),
       });
     },
 

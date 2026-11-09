@@ -2043,3 +2043,51 @@ describe('authored strings keep their own shape', () => {
     expect(rule).toContain('--wave-docs-fg-subtle');
   });
 });
+
+describe('the sidebar brand', () => {
+  /**
+   * ⚠️ `brandHref` SAYS WHERE THE BRAND POINTS AND MUST NOT CHANGE HOW IT
+   * LOOKS. The content sits one level deeper when it is a link, so the layout
+   * has to be declared for the wrapper *and* the anchor. With it on the anchor
+   * alone, the same `<Logo /> Acme` was a centred row with a gap when linked
+   * and raw inline flow without one when not — measured identical after the
+   * fix at 20px tall with the mark 28px in, either way.
+   */
+  it('lays the brand out the same linked or not', () => {
+    const at = rawSheet.indexOf('.wave-docs-layout__brand,');
+    expect(at, 'the shared brand layout rule is gone').toBeGreaterThan(-1);
+
+    const prelude = rawSheet.slice(at, rawSheet.indexOf('{', at));
+    const body = rawSheet.slice(
+      rawSheet.indexOf('{', at),
+      rawSheet.indexOf('}', at),
+    );
+
+    expect(prelude).toContain('.wave-docs-layout__brand-link');
+    expect(body).toContain('display: flex');
+    expect(body).toContain('gap: 0.5rem');
+  });
+
+  /**
+   * ⚠️ THE RING IS THE SHELL'S, NOT A COPY OF IT. The brand sits above the
+   * tree, so it is outside `.wave-docs-sidebar` and does not inherit — and the
+   * first version answered that by restating `outline: 2px solid …` in a rule
+   * of its own. Two copies drift the day the ring changes, and nothing would
+   * have caught it.
+   */
+  it('takes the shell’s own focus ring rather than restating it', () => {
+    const anchor = '.wave-docs-layout__brand-link:focus-visible';
+    const at = rawSheet.indexOf(anchor);
+    expect(at, `${anchor} not found`).toBeGreaterThan(-1);
+
+    // The rule it belongs to is the shared list, which prose links head.
+    const open = rawSheet.indexOf('{', at);
+    const prelude = rawSheet.slice(rawSheet.lastIndexOf('}', at) + 1, open);
+    expect(prelude).toContain('.wave-docs-prose a:focus-visible');
+
+    // And it is the only place the brand link mentions an outline.
+    expect(
+      rawSheet.match(/\.wave-docs-layout__brand-link:focus-visible/g),
+    ).toHaveLength(1);
+  });
+});

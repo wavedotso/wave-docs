@@ -731,6 +731,13 @@
 
   .wave-docs-prose a:focus-visible,
   .wave-docs-sidebar :is(a, button):focus-visible,
+  /*
+   * The brand sits above the tree, so it is outside `.wave-docs-sidebar` and
+   * does not inherit the row above. It joins the list rather than restating the
+   * declarations: a second copy drifts the day the ring changes, and nothing
+   * would catch it.
+   */
+  .wave-docs-layout__brand-link:focus-visible,
   .wave-docs-toc a:focus-visible,
   .wave-docs-youtube__facade:focus-visible {
     outline: 2px solid var(--wave-docs-accent);
@@ -3569,8 +3576,30 @@
   }
 
   /* The host's mark, when it sets one: first in the navigation, above the search. */
+  /*
+   * ⚠️ THE LAYOUT IS ON BOTH, BECAUSE THE CONTENT SITS ONE LEVEL DEEPER WHEN IT
+   * IS A LINK. `brandHref` says where the brand points and must not also change
+   * how it looks — with the flex on the anchor alone, the same
+   * `<Logo /> Acme` was a centred row with a gap when linked and raw inline flow
+   * without one when not.
+   */
+  .wave-docs-layout__brand,
+  .wave-docs-layout__brand-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
   .wave-docs-layout__brand {
     margin-block-end: 1rem;
+  }
+
+  /* The brand as a link: the text's own color, no underline. The focus ring is
+   * the shell's, and is declared with the rest of them. */
+  .wave-docs-layout__brand-link {
+    border-radius: var(--wave-docs-radius-sm);
+    color: inherit;
+    text-decoration: none;
   }
 
   /* First child of the navigation after the brand, above the tree. */

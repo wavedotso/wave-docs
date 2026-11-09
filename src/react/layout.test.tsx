@@ -267,6 +267,20 @@ describe('DocsLayoutShell', () => {
     ).toBeTruthy();
   });
 
+  it('links the brand to its address, and only when one is set', () => {
+    const linked = renderShell({ brand: 'Acme', brandHref: '/' });
+    const link = linked.querySelector('.wave-docs-layout__brand > a');
+    expect(link?.getAttribute('href')).toBe('/');
+    expect(link?.classList.contains('wave-docs-layout__brand-link')).toBe(true);
+    expect(link?.textContent).toBe('Acme');
+
+    const plain = renderShell({ brand: 'Acme' });
+    expect(plain.querySelector('.wave-docs-layout__brand a')).toBeNull();
+    expect(plain.querySelector('.wave-docs-layout__brand')?.textContent).toBe(
+      'Acme',
+    );
+  });
+
   it('renders no brand wrapper when none is set', () => {
     const container = renderShell();
 

@@ -589,7 +589,7 @@ describe('docs.Layout', () => {
      * of their own had nowhere to put its mark.
      */
     expectTypeOf<keyof DocsLayoutProps>().toEqualTypeOf<
-      'children' | 'search' | 'labels' | 'icons' | 'brand'
+      'children' | 'search' | 'labels' | 'icons' | 'brand' | 'brandHref'
     >();
   });
 
@@ -631,6 +631,19 @@ describe('docs.Layout', () => {
     expect(element.props.brand).toBe(brand);
   });
 
+  it("passes the brand's address through to the shell", async () => {
+    const element = await route.Layout({
+      children: null,
+      brand: 'Acme',
+      brandHref: '/',
+    });
+
+    if (!isValidElement<{ brandHref?: unknown }>(element)) {
+      throw new Error('Layout did not return an element');
+    }
+    expect(element.props.brandHref).toBe('/');
+  });
+
   it('omits the brand entirely when a host sets none', async () => {
     const element = await route.Layout({ children: null });
 
@@ -638,6 +651,7 @@ describe('docs.Layout', () => {
       throw new Error('Layout did not return an element');
     }
     expect('brand' in element.props).toBe(false);
+    expect('brandHref' in element.props).toBe(false);
   });
 
   it('passes labels through to the shell', async () => {

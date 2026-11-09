@@ -109,6 +109,14 @@ export interface DocsLayoutShellProps {
    * gets no second bar, and the mark moves with the tree at every width.
    */
   brand?: ReactNode;
+  /**
+   * Where the brand links, usually the site's root: `'/'`. Unset, the brand
+   * is not a link.
+   *
+   * A plain anchor, not a router link: the root is usually outside the docs,
+   * so the page loads in full and the host's own landing runs there.
+   */
+  brandHref?: string | undefined;
 }
 
 export function DocsLayoutShell({
@@ -119,6 +127,7 @@ export function DocsLayoutShell({
   labels,
   icons,
   brand,
+  brandHref,
 }: DocsLayoutShellProps): ReactNode {
   const text = resolveLabels(labels);
 
@@ -171,7 +180,15 @@ export function DocsLayoutShell({
              * search away from the top.
              */}
             {brand ? (
-              <div className="wave-docs-layout__brand">{brand}</div>
+              <div className="wave-docs-layout__brand">
+                {brandHref === undefined ? (
+                  brand
+                ) : (
+                  <a href={brandHref} className="wave-docs-layout__brand-link">
+                    {brand}
+                  </a>
+                )}
+              </div>
             ) : null}
             {search === false ? null : (
               <DocsSearch
