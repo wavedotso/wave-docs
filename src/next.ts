@@ -639,6 +639,9 @@ export interface DocsLayoutProps {
    * the brand is not a link. Set, it is a plain anchor in
    * `.wave-docs-layout__brand-link`, with the shell's focus ring, so the
    * page loads in full and the host's own landing runs.
+   *
+   * Ignored when `brand` is unset: there is nothing to wrap, so nothing
+   * renders.
    */
   brandHref?: string | undefined;
 }

@@ -281,6 +281,18 @@ describe('DocsLayoutShell', () => {
     );
   });
 
+  /**
+   * `brand` and `brandHref` are independently optional, so an address with
+   * nothing to attach it to type-checks. It is dropped rather than rendered as
+   * an empty link — pinned because nothing else defines which it is.
+   */
+  it('renders nothing for an address with no brand', () => {
+    const container = renderShell({ brandHref: '/' });
+
+    expect(container.querySelector('.wave-docs-layout__brand')).toBeNull();
+    expect(container.querySelector('.wave-docs-layout__brand-link')).toBeNull();
+  });
+
   it('renders no brand wrapper when none is set', () => {
     const container = renderShell();
 

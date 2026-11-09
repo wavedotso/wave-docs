@@ -115,6 +115,9 @@ export interface DocsLayoutShellProps {
    *
    * A plain anchor, not a router link: the root is usually outside the docs,
    * so the page loads in full and the host's own landing runs there.
+   *
+   * Ignored when `brand` is unset: there is nothing to wrap, so nothing
+   * renders.
    */
   brandHref?: string | undefined;
 }
